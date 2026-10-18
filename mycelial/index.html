@@ -229,6 +229,29 @@
   .vc.is-small .vc-name b, .vc.is-small .vc-name span { display: block; overflow: hidden; text-overflow: ellipsis; }
   .vc.is-small .vc-name i { display: none; }
   .vc.is-small .vc-name span { font-size: .86em; }
+  /* The subtitle's note: a quiet gold ¹ that opens a small card in the raise slide's hover-card language
+     (collage.js places it beside the mark, inside the screen). */
+  .vc-fn { line-height: 0; }
+  .vc-fn button { all: unset; position: relative; padding: 0 .12em 0 .08em; cursor: pointer; font: italic 500 .72em/1 "Cormorant Garamond", serif;
+    color: var(--gold); opacity: .8; vertical-align: .5em; transition: opacity .25s ease, color .25s ease; }
+  .vc-fn button::after { content: ""; position: absolute; inset: -12px -10px; } /* a comfortable target */
+  .vc-fn button[aria-expanded="true"], .vc-fn button:focus-visible { opacity: 1; color: #ffd991; }
+  @media (hover: hover) { .vc-fn button:hover { opacity: 1; color: #ffd991; } }
+  .vc-fn button:focus-visible { outline: 1px solid #f0c67e80; outline-offset: 3px; border-radius: 2px; }
+  .vc-note { position: absolute; left: 0; top: 0; z-index: 6; box-sizing: border-box; width: min(19.5rem, calc(100vw - 32px)); padding: .95rem 1.05rem 1rem;
+    background: #14100c; border: 1px solid #f0c8772e; border-radius: 7px; box-shadow: 0 0 34px #e0ab5e14, 0 14px 40px #000c;
+    font: 400 .93rem/1.42 "EB Garamond", serif; color: #cbbfa9; text-align: left;
+    opacity: 0; visibility: hidden; translate: 0 6px; transition: opacity .2s ease, translate .2s ease, visibility 0s linear .2s; }
+  .vc-note.is-open { opacity: 1; visibility: visible; translate: none; transition: opacity .3s ease, translate .4s cubic-bezier(.2, .7, .2, 1), visibility 0s; }
+  .vc-note svg { display: block; width: 100%; height: auto; overflow: visible; margin-bottom: .7rem; }
+  .vc-note svg text { font: italic 400 11.5px "EB Garamond", serif; fill: #a39684; }
+  .vc-note svg .big { font: italic 500 14.5px "Cormorant Garamond", serif; fill: #f0c67e; }
+  .vc-note svg .tag { font: normal 400 7.5px "DM Sans", system-ui, sans-serif; letter-spacing: .26em; fill: #8f826f; }
+  .vc-note p { margin: 0 0 .55rem; text-wrap: pretty; }
+  .vc-note a { position: relative; font: italic 500 .95rem/1.2 "Cormorant Garamond", serif; color: #f0c67e; text-decoration: none; letter-spacing: .02em; }
+  .vc-note a::after { content: ""; position: absolute; inset: -9px -5px; }
+  .vc-note a:focus-visible { color: #ffe3a8; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; outline: none; }
+  @media (hover: hover) { .vc-note a:hover { color: #ffe3a8; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; } }
   /* Under the ring: what these films are. */
   .vc-host .vc-label { position: absolute; top: var(--ring-foot, 80%); left: calc(var(--ring-x, 50%) - var(--ring-half, 40%)); width: calc(2 * var(--ring-half, 40%));
     margin: 0; pointer-events: auto; }
@@ -1431,7 +1454,7 @@
     <div class="split">
       <div>
         <h1>Open-source AI has unimaginable creative potential <em>waiting to be unlocked.</em></h1>
-        <div class="body">The centuries-long shift from practical work towards human expression is accelerating. Open-source AI lets everyone take part&nbsp;— as artists, as builders, and in the economy growing around them.</div>
+        <div class="body">The centuries-long shift from practical work towards human expression is accelerating.<sup class="vc-fn"><button type="button" aria-expanded="false" aria-controls="vc-note" aria-label="Note: the creator economy">1</button></sup> Open-source AI lets everyone take part&nbsp;— as artists, as builders, and in the economy growing around them.</div>
       </div>
       <div class="vis">
         <div class="vc" data-collage>
@@ -1445,6 +1468,19 @@
         </div>
         <p class="vc-label">Recipients of the last <a href="https://arcagidan.com/" target="_blank" rel="noopener">Arca Gidan Prize</a>, our open-source AI art competition</p>
       </div>
+    </div>
+    <!-- The subtitle's note (collage.js opens it from the ¹ after "accelerating"): figures from Goldman Sachs
+         Research's "The creator economy could approach half a trillion dollars by 2027" (19 April 2023). -->
+    <div class="vc-note" id="vc-note" role="note" aria-label="The creator economy">
+      <svg viewBox="0 0 252 66" aria-hidden="true">
+        <text class="tag" x="0" y="7">THE CREATOR ECONOMY</text>
+        <rect x="0" y="17" width="68" height="13" rx="1.5" fill="#e0ab5e"/>
+        <text x="76" y="27.5"><tspan class="big">$250B</tspan> · 2023</text>
+        <rect x=".5" y="44.5" width="130" height="13" rx="1.5" fill="none" stroke="#e0ab5e" stroke-width="1" stroke-dasharray="3 2.5"/>
+        <text x="139" y="55"><tspan class="big">$480B</tspan> · 2027, projected</text>
+      </svg>
+      <p>About 50 million people worldwide earn from what they create — a number Goldman Sachs expects to grow 10–20% a year.</p>
+      <a href="https://www.goldmansachs.com/insights/articles/the-creator-economy-could-approach-half-a-trillion-dollars-by-2027" target="_blank" rel="noopener">Goldman Sachs Research, Apr 2023 ↗</a>
     </div>
   </section>
 
@@ -2040,7 +2076,7 @@
   let tx = null;
   addEventListener('touchstart', (e) => {
     const t = e.touches[0];
-    tx = { x: t.clientX, y: t.clientY, interactive: !!e.target.closest?.('button, a, [role="button"], .fw-card, .fw-full, .fw-ask, .vc, .vc-box, .st-card, .st-flag') };
+    tx = { x: t.clientX, y: t.clientY, interactive: !!e.target.closest?.('button, a, [role="button"], .fw-card, .fw-full, .fw-ask, .vc, .vc-box, .vc-note, .st-card, .st-flag') };
   }, { passive: true });
   addEventListener('touchend', (e) => {
     if (tx === null) return;

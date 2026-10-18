@@ -610,6 +610,71 @@
     syncMotion();
   });
 
+  // ---- The subtitle's note -----------------------------------------------------------------------------------
+  // The ¹ after "accelerating" opens a small card: on a mouse resting on it (and on the card, while the pointer
+  // crosses to it), on a click or a tap, or on keyboard focus. It stands inside the screen near the mark.
+  const mark = sub?.querySelector('.vc-fn button'), note = slide.querySelector('.vc-note');
+  if (mark && note) {
+    let shut = 0;
+    // Under the subtitle where there is room; else beside the words, over the ring; else over the words.
+    const place = () => {
+      const m = mark.getBoundingClientRect(), s0 = slide.getBoundingClientRect(), w = note.offsetWidth, h = note.offsetHeight;
+      const foot = (chrome?.getBoundingClientRect().top ?? innerHeight) - 10, words = text.getBoundingClientRect();
+      let x = clamp(m.left - 18, 16, innerWidth - 16 - w), y = sub.getBoundingClientRect().bottom + 10;
+      if (y + h > foot) {
+        if (words.right + 18 + w <= innerWidth - 16) { x = words.right + 18; y = clamp(m.top + m.height / 2 - h / 2, 10, foot - h); }
+        else y = Math.max(10, m.top - 10 - h);
+      }
+      note.style.left = `${(x - s0.left).toFixed(1)}px`;
+      note.style.top = `${(y - s0.top).toFixed(1)}px`;
+    };
+    let pinned = false, keyed = false, via = 'mouse';
+    const show = (on) => {
+      clearTimeout(shut);
+      if (on && !slide.classList.contains('on')) return;
+      if (on) place(); else pinned = keyed = false;
+      note.classList.toggle('is-open', on);
+      mark.setAttribute('aria-expanded', String(on));
+    };
+    const later = () => { clearTimeout(shut); if (!pinned) shut = setTimeout(() => show(false), 260); };
+    // A mouse resting on the mark opens it, and crossing to the card keeps it open; a click pins it open.
+    mark.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') show(true); });
+    mark.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') later(); });
+    note.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') clearTimeout(shut); });
+    note.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') later(); });
+    mark.addEventListener('pointerdown', (e) => { via = e.pointerType; });
+    // A click or tap on the mark (or Enter) opens it, or closes it if a tap or a key had opened it; neither the
+    // mark nor the card turns the slide.
+    mark.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const was = mark.getAttribute('aria-expanded') === 'true';
+      if (e.detail > 0 && via === 'mouse') { show(true); pinned = true; } else { show(!was); pinned = !was; }
+      via = 'mouse';
+    });
+    note.addEventListener('click', (e) => e.stopPropagation());
+    // A press anywhere else closes it.
+    addEventListener('pointerdown', (e) => { if (note.classList.contains('is-open') && !note.contains(e.target) && !mark.contains(e.target)) show(false); }, true);
+    // From the keyboard: focus opens it, Tab goes on into its link and from there on to the ring, Esc closes it.
+    let hush = false; // Esc hands focus back to the mark without opening it again
+    mark.addEventListener('focus', () => { if (!hush && mark.matches(':focus-visible')) { show(true); keyed = true; } });
+    mark.addEventListener('blur', (e) => { if (keyed && !note.contains(e.relatedTarget)) show(false); });
+    const link = note.querySelector('a');
+    addEventListener('keydown', (e) => {
+      if (!note.classList.contains('is-open')) return;
+      if (e.key === 'Escape') { show(false); hush = true; mark.focus({ preventScroll: true }); hush = false; return; }
+      if (e.key !== 'Tab') return;
+      if (document.activeElement === mark && !e.shiftKey) { e.preventDefault(); link.focus({ preventScroll: true }); }
+      else if (document.activeElement === link) {
+        e.preventDefault();
+        if (e.shiftKey) { mark.focus({ preventScroll: true }); return; }
+        show(false);
+        tiles[0].focus({ preventScroll: true });
+      }
+    });
+    new MutationObserver(() => { if (!slide.classList.contains('on')) show(false); }).observe(slide, { attributes: true, attributeFilter: ['class'] });
+    window.deckOnResize(() => { if (note.classList.contains('is-open')) place(); });
+  }
+
   // ---- The player, built once ------------------------------------------------------------------------------------
   const box2 = document.createElement('div');
   box2.className = 'vc-box';
