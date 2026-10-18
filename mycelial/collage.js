@@ -156,6 +156,24 @@
     return 1 - SHADE * dark;
   };
   const chrome = document.querySelector('.chrome');
+  let refit = false;
+  const fitWords = (span) => {
+    const st = slide.style, was = text.offsetHeight;
+    ['--sub-gap', '--sub-lh', '--sub-size'].forEach((k) => st.removeProperty(k));
+    let extra = span - text.offsetHeight;
+    if (extra > 2 && sub) {
+      const fs = parseFloat(getComputedStyle(sub).fontSize), lines = Math.max(1, Math.round(sub.offsetHeight / (fs * 1.55)));
+      const gap = Math.min(extra * 0.3, fs * 2);
+      extra -= gap;
+      const lh = Math.min(extra / (lines * fs), 0.25);
+      extra -= lh * lines * fs;
+      const grow = clamp(1 + extra / (lines * fs * (1.55 + lh)), 1, 1.2);
+      st.setProperty('--sub-gap', `${gap.toFixed(1)}px`);
+      st.setProperty('--sub-lh', (1.55 + lh).toFixed(3));
+      st.setProperty('--sub-size', grow.toFixed(3));
+    }
+    return Math.abs(text.offsetHeight - was) > 1;
+  };
   const layout = () => {
     const cs = getComputedStyle(vis);
     const pad = ['Top', 'Right', 'Bottom', 'Left'].map((s) => parseFloat(cs[`padding${s}`]) || 0);
@@ -248,6 +266,14 @@
       capTop = clamp(sole + ringDrop + (footer - sole - ringDrop) * (2 / 3) - capH / 2, base, Math.max(base, Math.min(footer - capH - 10, base + innerHeight * 0.07)));
     }
     slide.style.setProperty('--text-shift', `${drop.toFixed(1)}px`);
+    // Beside the ring the words span its height, the label level with the cards at the back and the subtitle's last
+    // line with the front card's foot: the subtitle takes the room, in a little more space after the headline, a
+    // looser leading and, last, a slightly larger size (its measure is in ems, so its lines break as before). Fitted,
+    // the ring is laid out again for the words' new edge.
+    if (!under2 && !refit) {
+      const span = G.k * (G.H * G.front - crown);
+      if (fitWords(span)) { refit = true; layout(); refit = false; return true; }
+    }
     box = { left, top, width: G.k * rw, height: G.k * rh };
     // Beside the words, whatever of a card stands behind a line of them goes into shade: the ring's mask is cut
     // from the words' own lines, feathered, so the words stay crisp over the cards and the rest of each card keeps
@@ -369,8 +395,8 @@
   // last frame while the play cue comes up over it, holds a moment, and the ring turns on (a preview that never
   // starts gives way to the hold's own timer, so the ring never stalls). Turning away, the side's own dimming takes
   // over from that darkness: pose keeps the deeper of the two.
-  const HOLD = 1400;
-  const left = (v) => ((v.duration || 4) - v.currentTime) * 1000 + HOLD + 1500; // until it has surely ended
+  const DIM = 1200, HOLD = 2500; // the darkening's (and the cue's) slow ease in, then the hold on them
+  const left = (v) => ((v.duration || 4) - v.currentTime) * 1000 + DIM + HOLD + 1500; // until it has surely ended
   const dark = tiles.map(() => 0);
   let fades = [];
   const darken = (i, to, T) => {
@@ -395,9 +421,9 @@
     });
     v.addEventListener('ended', () => {
       if (tile !== playing || turn) return;
-      darken(i, 0.5, 400);
+      darken(i, 0.5, DIM);
       if (!still) tile.classList.add('is-cue');
-      if (!paused()) rest(HOLD);
+      if (!paused()) rest(DIM + HOLD);
     });
     // Pointed at, pressed or focused, its poster is fetched.
     tile.addEventListener('pointerenter', () => prime(tile));
@@ -436,7 +462,12 @@
   const goal = () => (turn ? turn.to : angle);
   const nearest = (a) => Math.round(a / STEP) * STEP;
   const turnTo = (to, T, v0 = 0, asked = true) => {
-    tiles.forEach((t) => t.classList.remove('is-cue'));
+    tiles.forEach((t) => { // the cue goes as the ring turns, a little slower than it goes for a pointer
+      if (!t.classList.contains('is-cue')) return;
+      t.classList.add('cue-out');
+      t.classList.remove('is-cue');
+      setTimeout(() => t.classList.remove('cue-out'), 700);
+    });
     load(tiles[frontOf(to)]); // the film it brings round, fetched as it sets off
     if (still || T <= 0) { turn = null; angle = to; speed = 0; pose(); return; }
     turn = { from: angle, to, T, V: v0 * T, t0: performance.now(), asked };
@@ -677,18 +708,22 @@
   });
 
   // ---- The subtitle's note -----------------------------------------------------------------------------------
-  // The ¹ after "accelerating" opens a small card: on a mouse resting on it (and on the card, while the pointer
+  // The ¹ after "economy" opens a small card: on a mouse resting on it (and on the card, while the pointer
   // crosses to it), on a click or a tap, or on keyboard focus.
   const mark = sub?.querySelector('.vc-fn button'), note = slide.querySelector('.vc-note');
   if (mark && note) {
     let shut = 0;
-    // Just over the mark, centred on it as far as the screen allows, its notch pointing down at the figure; under
-    // it instead where there is no room above (a short window, a phone).
+    // Just over the mark, centred on it as far as the screen allows, its notch pointing down at the figure and its
+    // edge between two lines of the words (just over the mark's line); under that line instead where there is no
+    // room above (a short window, a phone).
+    const word = (() => { const r = document.createRange(), t = mark.closest('sup').previousSibling; r.setStart(t, Math.max(0, t.length - 7)); r.setEnd(t, t.length); return r; })();
     const place = () => {
       const m = mark.getBoundingClientRect(), s0 = slide.getBoundingClientRect(), w = note.offsetWidth, h = note.offsetHeight;
+      const line = word.getBoundingClientRect(), lead = (parseFloat(getComputedStyle(sub).lineHeight) - line.height) / 2;
       const mid = m.left + m.width / 2, x = clamp(mid - w / 2, 16, innerWidth - 16 - w);
-      const below = m.top - 11 - h < 10;
-      const y = below ? m.bottom + 11 : m.top - 11 - h;
+      const over = Math.min(m.top, line.top - lead) - 4, under = line.bottom + lead + 4;
+      const below = over - 7 - h < 10;
+      const y = below ? under + 7 : over - 7 - h;
       note.classList.toggle('is-below', below);
       note.style.setProperty('--notch', `${clamp(mid - x, 14, w - 14).toFixed(1)}px`);
       note.style.left = `${(x - s0.left).toFixed(1)}px`;

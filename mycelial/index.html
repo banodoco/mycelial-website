@@ -179,12 +179,14 @@
   .vc-host > .split { display: block; }
   .vc-host > .split > :first-child { position: relative; z-index: 2; width: fit-content; }
   /* The subtitle: quieter and smaller than the headline, set in even lines. */
-  .vc-host .split .body { max-width: 29em; text-wrap: balance; }
+  .vc-host .split .body { max-width: 23em; text-wrap: balance; }
   /* A short window (a laptop's, under its browser's bars and the dock) draws the words smaller rather than pushing
      them up past the slide's top. */
   @media (min-width: 761px) and (min-height: 501px) {
-    .vc-host .split h1 { font-size: clamp(1.9rem, min(3.6vw, 7vh), 3.6rem); }
-    .vc-host .split .body { margin-top: clamp(.9rem, 2.6vh, 1.5rem); font-size: clamp(1.05rem, min(1.35vw, 2.75vh), 1.3rem); line-height: 1.55; } /* the deck's body size */
+    .vc-host .split h1 { font-size: clamp(1.9rem, min(3.6vw, 7vh), 6rem); } /* growing on with a large screen, as the ring does */
+    /* The deck's body size, which collage.js may let grow a little (and loosen, and space) to span the ring. */
+    .vc-host .split .body { margin-top: calc(clamp(.9rem, 2.6vh, 1.5rem) + var(--sub-gap, 0px));
+      font-size: calc(clamp(1.05rem, min(1.35vw, 2.75vh), 1.5rem) * var(--sub-size, 1)); line-height: var(--sub-lh, 1.55); }
   }
   .vc-host .vis { position: absolute; inset: 0; z-index: 1; display: block; overflow: clip; pointer-events: none;
     padding: 6vh 2.4vw 72px 28vw; }
@@ -218,8 +220,10 @@
     background: rgb(13 10 7 / .55) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 12'%3E%3Cpath d='M0 0L10 6L0 12z' fill='%23f0c67e'/%3E%3C/svg%3E") 56% 50% / 9px 11px no-repeat; }
   .vc-tile.is-front:hover::after, .vc-tile.is-front:focus-visible::after { opacity: 1; transform: none; }
   @media (hover: none) { .vc-tile.is-front::after { opacity: .6; transform: scale(.76); } }
-  /* In the hold after its preview has played, the cue comes up softly, to say the film opens. */
-  .vc-tile.is-front.is-cue::after { opacity: 1; transform: none; transition-duration: .25s, .25s; }
+  /* In the hold after its preview has played, the cue comes up slowly (with the card's darkening, collage.js DIM), to
+     say the film opens; it goes, a little slower than for a pointer, as the ring turns on. */
+  .vc-tile.is-front.is-cue::after { opacity: 1; transform: none; transition-duration: 1.2s; transition-timing-function: ease-in-out; }
+  .vc-tile.cue-out::after { transition-duration: .6s; }
   /* Each card's title and artist sit inside its top edge on a soft shade, quiet; only the front card's can be read
      (collage.js fades the rest with --name). */
   .vc-name { position: absolute; z-index: 3; left: 0; right: 0; top: 0; padding: .55em .7em 1.6em; border-radius: 4px 4px 0 0; pointer-events: none;
@@ -243,7 +247,9 @@
   @media (hover: hover) { .vc-fn button:hover { color: #ffd991; text-shadow: 0 0 8px #ffd99188; } }
   .vc-fn button:focus-visible { outline: none; text-decoration: underline 1px #f0c67e99; text-underline-offset: 3px; }
   .vc-note { position: absolute; left: 0; top: 0; z-index: 6; box-sizing: border-box; width: min(19.5rem, calc(100vw - 32px)); padding: .95rem 1.05rem 1rem;
-    background: #14100c; border: 1px solid #f0c8772e; border-radius: 7px; box-shadow: 0 0 34px #e0ab5e14, 0 14px 40px #000c;
+    background: #14100c; border: 1px solid #f0c8772e; border-radius: 7px;
+    /* a soft halo of the ground round it, so the words it stands over fade out at its edges rather than being cut */
+    box-shadow: 0 0 26px 16px rgb(13 10 7 / .82), 0 0 34px #e0ab5e14, 0 14px 40px #000c;
     font: 400 .93rem/1.42 "EB Garamond", serif; color: #cbbfa9; text-align: left;
     opacity: 0; visibility: hidden; translate: 0 5px; transition: opacity .18s ease, translate .18s ease, visibility 0s linear .18s; }
   .vc-note.is-below { translate: 0 -5px; }
@@ -1463,13 +1469,13 @@
     <div class="split">
       <div>
         <h1>Open-source AI has unimaginable creative potential <em>waiting to be unlocked.</em></h1>
-        <div class="body">The centuries-long shift from practical work towards human expression is accelerating.<sup class="vc-fn"><button type="button" aria-expanded="false" aria-controls="vc-note" aria-label="Note: the creator economy">1</button></sup> Open-source AI lets everyone take part&nbsp;— as artists, as builders, and in the economy growing around them.</div>
+        <div class="body">The centuries-long shift from practical work towards human expression is accelerating. Open-source AI lets everyone take part&nbsp;— as artists, as builders, and in the economy<sup class="vc-fn"><button type="button" aria-expanded="false" aria-controls="vc-note" aria-label="Note: the creator economy">1</button></sup> growing around them.</div>
       </div>
       <div class="vis">
         <div class="vc" data-collage>
           <button class="vc-tile" type="button" data-film="731a60e7e584d380918dd3c3503276d5" data-at="6" data-page="https://arcagidan.com/submissions/entry/590bc5e0-62b5-4649-9da0-676e0057df4f" data-preview="../assets/cards/arca/everyone-all-at-once-preview.mp4" data-crop="50% 50%" data-square="50% 50%" data-title="Everyone All at Once" data-artist="VisualFrisson" aria-label="Play Everyone All at Once by VisualFrisson"><picture><source type="image/avif" srcset="../assets/cards/arca/everyone-all-at-once.avif"><img src="../assets/cards/arca/everyone-all-at-once.jpg" width="848" height="476" alt="" decoding="async"></picture><video muted playsinline preload="none"></video></button>
-          <button class="vc-tile" type="button" data-film="8be9148eb0006c9738c46a6c1c49bfc9" data-at="112.5" data-focus="55% 50%" data-page="https://arcagidan.com/submissions/entry/3b32b51f-cb9a-4f20-ad87-5993f8e0a511" data-preview="../assets/cards/arca/the-cellist-preview.mp4" data-crop="50% 40%" data-square="50% 42%" data-title="The Cellist" data-artist="Material_Rabbit" aria-label="Play The Cellist by Material_Rabbit"><picture><source type="image/avif" srcset="../assets/cards/arca/the-cellist.avif"><img src="../assets/cards/arca/the-cellist.jpg" width="400" height="600" alt="" decoding="async" fetchpriority="low"></picture><video muted playsinline preload="none"></video></button>
           <button class="vc-tile" type="button" data-film="062116e31ef01a199790f1fc3c94d96d" data-at="63.25" data-focus="42% 50%" data-page="https://arcagidan.com/submissions/entry/ec26de7e-c088-41b1-b943-826e15db6900" data-preview="../assets/cards/arca/sliver-of-light-preview.mp4" data-crop="50% 50%" data-square="50% 38%" data-title="Sliver of Light" data-artist="Calvin Herbst" aria-label="Play Sliver of Light by Calvin Herbst"><picture><source type="image/avif" srcset="../assets/cards/arca/sliver-of-light.avif"><img src="../assets/cards/arca/sliver-of-light.jpg" width="404" height="718" alt="" decoding="async" fetchpriority="low"></picture><video muted playsinline preload="none"></video></button>
+          <button class="vc-tile" type="button" data-film="8be9148eb0006c9738c46a6c1c49bfc9" data-at="112.5" data-focus="55% 50%" data-page="https://arcagidan.com/submissions/entry/3b32b51f-cb9a-4f20-ad87-5993f8e0a511" data-preview="../assets/cards/arca/the-cellist-preview.mp4" data-crop="50% 40%" data-square="50% 42%" data-title="The Cellist" data-artist="Material_Rabbit" aria-label="Play The Cellist by Material_Rabbit"><picture><source type="image/avif" srcset="../assets/cards/arca/the-cellist.avif"><img src="../assets/cards/arca/the-cellist.jpg" width="400" height="600" alt="" decoding="async" fetchpriority="low"></picture><video muted playsinline preload="none"></video></button>
           <button class="vc-tile" type="button" data-film="bbde24517b072c44633ea9aa1fcae093" data-at="80.5" data-focus="68% 50%" data-page="https://arcagidan.com/submissions/entry/98873f06-e1a5-45bc-9698-cba8be8cf5e9" data-preview="../assets/cards/arca/temporal-drift-preview.mp4" data-crop="50% 50%" data-square="50% 50%" data-title="Temporal Drift" data-artist="EmmaCatnip" aria-label="Play Temporal Drift by EmmaCatnip"><picture><source type="image/avif" srcset="../assets/cards/arca/temporal-drift.avif"><img src="../assets/cards/arca/temporal-drift.jpg" width="400" height="500" alt="" decoding="async" fetchpriority="low"></picture><video muted playsinline preload="none"></video></button>
           <button class="vc-tile" type="button" data-film="2eead7ea1c7f7c5a6e4caeb43ff810dd" data-at="69" data-focus="42% 50%" data-page="https://arcagidan.com/submissions/entry/13c435a1-057a-441b-b729-545d61cb111b" data-preview="../assets/cards/arca/cherrybomb-preview.mp4" data-crop="50% 25%" data-square="50% 15%" data-title="Cherrybomb (Original Music)" data-artist="sagansagansagans" aria-label="Play Cherrybomb (Original Music) by sagansagansagans"><picture><source type="image/avif" srcset="../assets/cards/arca/cherrybomb.avif"><img src="../assets/cards/arca/cherrybomb.jpg" width="404" height="672" alt="" decoding="async" fetchpriority="low"></picture><video muted playsinline preload="none"></video></button>
           <button class="vc-tile" type="button" data-film="7f425a012f58cde8a38b60dc2b34e96a" data-at="52" data-focus="50% 50%" data-page="https://arcagidan.com/submissions/entry/c1cff3c7-9803-41a1-8195-7cb23e777f98" data-preview="../assets/cards/arca/iterum-preview.mp4" data-crop="50% 50%" data-square="50% 30%" data-title="Iterum" data-artist="schmede" aria-label="Play Iterum by schmede"><picture><source type="image/avif" srcset="../assets/cards/arca/iterum.avif"><img src="../assets/cards/arca/iterum.jpg" width="400" height="500" alt="" decoding="async" fetchpriority="low"></picture><video muted playsinline preload="none"></video></button>
