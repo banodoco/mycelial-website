@@ -183,7 +183,7 @@
     // however many films stand on it: more of them simply stand closer together.
     const tall = W < H * 0.9, cssUnder = cs.getPropertyValue('--ring-under').trim() === '1';
     Object.assign(G, tall
-      ? { R: 1.35, cam: 2.5, lift: 19 * DEG, yaw: 28 * DEG }
+      ? { R: 1.7, cam: 2.5, lift: 26 * DEG, yaw: 26 * DEG }
       : { R: 1.7, cam: 2.5, lift: 24 * DEG, yaw: 24 * DEG });
     // The view: the camera's distance in ring radii, and its height as the angle it looks down at the ring's middle.
     const view = (lift) => {
