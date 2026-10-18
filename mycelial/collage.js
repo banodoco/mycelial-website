@@ -179,8 +179,12 @@
     // shade behind the words, below) to the slide's right margin, in about four fifths of the height from the
     // words' top margin to the footer, leaving the rest to share out over it and round its label. The camera
     // looks down as steeply as that room allows: a short, wide window sees the ring a little flatter.
-    const BLEED = 0.125, right = pad[3] + W - 0.025 * vis.clientWidth, room = right - words.right;
-    const kOf = (q) => Math.min(room / ((1 - BLEED) * (q.x1 - q.x0)), (foot - pad[0]) / (q.y1 - q.y0), (0.78 * (footer - t0)) / (q.y1 - q.y0));
+    // Between two walls: the words on the left, the screen's edge on the right, the rightmost card at rest
+    // standing just in from it.
+    const BLEED = 0.125, edge = vis.clientWidth - 20;
+    const restRight = () => Math.max(...tiles.map((_, i) => Math.max(...[0, 1].map((u) => see(...corner(stand(wrap(i * STEP)), u, 1))[0]))));
+    const reachOf = (q) => restRight() - q.x0 - BLEED * (q.x1 - q.x0); // from the ring's left edge to that card's
+    const kOf = (q) => Math.min((edge - words.right) / reachOf(q), (foot - pad[0]) / (q.y1 - q.y0), (0.78 * (footer - t0)) / (q.y1 - q.y0));
     let steep = null;
     if (!tall && !cssUnder) {
       for (let l = 26; l >= 15; l--) { const k = kOf(view(l * DEG)); if (!steep || k > steep.k * 1.02) steep = { l, k }; }
@@ -190,7 +194,7 @@
     // the front one (unscaled, down from the horizon).
     const crown = Math.min(...tiles.map((_, i) => see(...corner(stand(wrap(i * STEP)), 0.5, 0))[1]));
     const heart = (crown + G.H * G.front) / 2;
-    const kBeside = kOf(r);
+    const kBeside = kOf(r), span = reachOf(r);
     const below = Math.max(pad[0], tb.bottom - vb.top + 20);
     const kUnder = Math.min((vis.clientWidth - 2 * pad[1]) / (innerWidth > 760 ? 0.92 : cover) / rw, (foot - below) / rh);
     const under2 = cssUnder || kUnder > kBeside * 1.15;
@@ -203,7 +207,7 @@
     const place = () => {
       G.cx = -G.k * r.x0; G.cy = -G.k * r.y0;
       const wide = G.k * rw;
-      left = under2 ? (vis.clientWidth - wide) / 2 : words.right - BLEED * wide + Math.max(0, room - (1 - BLEED) * wide) / 2;
+      left = under2 ? (vis.clientWidth - wide) / 2 : words.right - BLEED * wide + Math.max(0, edge - words.right - G.k * span) / 2;
       top = level ? level - G.cy - G.k * heart : floorY + Math.max(0, foot - floorY - G.k * rh) * 0.55;
     };
     place();
