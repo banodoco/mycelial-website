@@ -704,7 +704,7 @@
     keepSky();
   }
   const syncMotion = () => {
-    if (motionOff() && slide.classList.contains('on')) { stop(); clearTimers(); settledState(); drawPic(now()); window.deckEntryDone?.(slide); return; }
+    if (motionOff() && slide.classList.contains('on')) { stop(); settledState(); drawPic(now()); window.deckEntryDone?.(slide); return; }
     if (motionBlocked() && morph?.back) { endUnmorph(); leave(); return; } // a reverse never waits behind the overview
     if (motionBlocked()) {
       if (!running || paused) return;
