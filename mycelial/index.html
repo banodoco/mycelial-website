@@ -2013,7 +2013,8 @@
   const fromHash = () => {
     go((parseInt(location.hash.slice(1), 10) || history.state?.deckSlide || 1) - 1, 'replace');
     // Consume old deep links even if they already point at the selected slide.
-    if (location.hash) history.replaceState(history.state, '', `${location.pathname}${location.search}`);
+    // Record the slide too: a link to the slide already showing turns nothing, so nothing else writes it.
+    if (location.hash) history.replaceState({ ...history.state, deckSlide: i + 1 }, '', `${location.pathname}${location.search}`);
   };
   addEventListener('popstate', () => { if (ov.classList.contains('on')) toggleOv(false); fromHash(); });
   addEventListener('hashchange', fromHash);
