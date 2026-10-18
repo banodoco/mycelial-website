@@ -261,6 +261,19 @@
            "the … ecosystem" (Hannah: two lines, not three — and it is two at
            1440x900, 1280x800 and 375x812). -->
       <p class="sub">Mycelial builds spaces, initiatives and tools for the open source AI art community.</p>
+      <!-- Two quiet cues, not destinations (prototype, 2026-10-18): Explore
+           shows the navigator the way a scroll does, Overview opens the
+           menu's site map. Both call into existing controls; see hero-cues.js. -->
+      <div class="hero-cues">
+        <button class="hero-cue hero-cue-explore" type="button" aria-label="Explore the chapters">
+          <span class="hero-cue-word">Explore</span>
+          <svg class="hero-cue-arrow" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2.6 8H13.2M8.8 3.6 13.2 8 8.8 12.4"/></svg>
+        </button>
+        <button class="hero-cue hero-cue-overview" type="button" aria-label="Overview of the site" aria-haspopup="dialog">
+          <span class="hero-cue-word">Overview</span>
+          <svg class="hero-cue-arrow" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2.6 8H13.2M8.8 3.6 13.2 8 8.8 12.4"/></svg>
+        </button>
+      </div>
       <!-- The journey navigator is a fixed bottom-centre row (2026-08-26
            restage): five chapter destinations, all of them real since Equip
            shipped (2026-08-30) — the third slot was a placeholder until then.
@@ -326,7 +339,10 @@
           const railTop = probe.getBoundingClientRect().top;
           probe.remove();
           const normalTop = hero.offsetTop + parseFloat(heroStyle.paddingTop);
-          const contentHeight = heading.offsetHeight + parseFloat(headingStyle.marginBottom) + sub.offsetHeight;
+          // The cues ride with the copy, so they belong to the block being centred.
+          const cues = hero.querySelector('.hero-cues');
+          const cueHeight = cues ? cues.offsetHeight + parseFloat(getComputedStyle(cues).marginTop) : 0;
+          const contentHeight = heading.offsetHeight + parseFloat(headingStyle.marginBottom) + sub.offsetHeight + cueHeight;
           const centeredTop = (header.getBoundingClientRect().bottom + railTop - contentHeight) / 2;
           hero.style.setProperty('--hero-growth-offset', `${Math.max(0, centeredTop - normalTop)}px`);
         };

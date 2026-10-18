@@ -78,6 +78,7 @@ import { createSceneNote, NOTE } from './journey/boot/scene-note.js';
 import { createHeroMode, growthView } from './journey/boot/hero-mode.js';
 import { createEntryQueue } from './journey/boot/entry-queue.js';
 import { createJourneyHandoff } from './journey/boot/handoff.js';
+import { attachHeroCues } from './hero-cues.js';
 // Fetch/parse the full journey graph during the quiet preparation frame. The
 // previous late import began only after the 7.6s hero timer and moved a whole
 // module waterfall into the settled scene.
@@ -245,7 +246,7 @@ const skipIntro = matchMedia('(prefers-reduced-motion: reduce)').matches
   || captureQ !== null;
 if (skipIntro) {
   const st = document.createElement('style');
-  st.textContent = '#stage, .spill, nav, h1 .hl, .ui .hero h1::after, .sub, .cta, .co, .co * { animation: none !important; }';
+  st.textContent = '#stage, .spill, nav, h1 .hl, .ui .hero h1::after, .sub, .cta, .hero-cues, .co, .co * { animation: none !important; }';
   document.head.appendChild(st);
 }
 
@@ -345,6 +346,11 @@ if (logoLink) {
     else entryQueue.request('mission', { fast: false });
   });
 }
+
+// The hero's Explore and Overview cues call into the navigator and the menu.
+// Wired here with the other hero controls, before the scene is awaited, so
+// an early press is held rather than lost (their own register: hero-cues.js).
+attachHeroCues(document.querySelector('.ui .hero-cues'));
 
 /* THE ONE PLACE THIS FILE WAITS. Everything above runs on ~60 KB of
    leaves; everything below needs a scene, so it needs three.js, and a

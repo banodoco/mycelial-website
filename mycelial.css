@@ -230,6 +230,106 @@ body:has(.manifesto-static) .manifesto-static .sub { font-size: 17px; line-heigh
   .ui .hero { padding-top: 1vh; }
   .ui .hero h1 { font-size: 9.6vw; }
 }
+
+/* THE HERO'S TWO CUES (prototype, 2026-10-18). Wayfinding, not calls to
+   action: the reference's spaced small capitals in the headline's accent
+   gold, no fill and no frame, so the headline stays the only loud thing.
+   Each arrow says where its control lives — Explore's is aimed at the
+   navigator by hero-cues.js, Overview's at the menu in the top-right.
+   Inside .hero, so they leave with the copy. They trail its fade slightly. */
+.ui .hero .hero-cues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2.5rem;
+  margin-top: 2.4rem;
+  animation: fade-on var(--hero-entry-duration) ease .5s both;
+}
+.ui .hero .hero-cue {
+  --cue-aim: 45deg;
+  display: inline-flex;
+  align-items: center;
+  gap: .7rem;
+  width: fit-content;
+  margin: 0;
+  padding: .55rem 0;
+  border: 0;
+  background: none;
+  color: #f3bd7c;
+  font: 400 11px/1 var(--mycelial-body);
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color .2s;
+}
+.ui .hero .hero-cue-overview { --cue-aim: -45deg; }
+/* Tracking trails the last letter; pull it back so the arrow keeps the gap. */
+.ui .hero .hero-cue-word { margin-right: -.24em; }
+.ui .hero .hero-cue-arrow {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  rotate: var(--cue-aim);
+  transition: translate .25s cubic-bezier(.22, 1, .36, 1);
+}
+.ui .hero .hero-cue:hover { color: var(--gold-bright); }
+/* The nudge travels along the arrow's own bearing. */
+.ui .hero .hero-cue:hover .hero-cue-arrow {
+  translate: calc(cos(var(--cue-aim)) * 2.5px) calc(sin(var(--cue-aim)) * 2.5px);
+}
+.ui .hero .hero-cue:focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+/* PL-1.4's 44px touch box, padded rather than drawn (hero.css .cta). */
+@media (pointer: coarse), (max-width: 720px), (max-height: 560px) {
+  .ui .hero .hero-cue { position: relative; }
+  .ui .hero .hero-cue::before {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+}
+@media (max-height: 700px) and (min-width: 1025px) {
+  .ui .hero .hero-cues { margin-top: 1.9rem; }
+}
+@media (max-width: 1024px) {
+  .ui .hero .hero-cues { margin-top: 2rem; }
+}
+/* Portrait frames centre the copy (hero.css), and the cues join its axis.
+   The navigator is then nearly straight below; hero-cues.js refines it. */
+@media (max-width: 900px) and (orientation: portrait) {
+  .ui .hero .hero-cues { justify-content: center; }
+  .ui .hero .hero-cue-explore { --cue-aim: 90deg; }
+}
+/* Phones: the specimen's cap rises to just under the copy, and the row makes
+   the block ~30px taller. The block starts that much higher instead (the
+   header keeps its own padding), and the row stays slim; the 44px pad above
+   still makes the touch box. */
+@media (max-width: 600px) {
+  .ui .hero { padding-top: 0; }
+  .ui .hero .hero-cues { justify-content: center; gap: 0 2rem; margin-top: .7rem; }
+  .ui .hero .hero-cue { padding: .2rem 0; font-size: 10px; letter-spacing: .22em; }
+  .ui .hero .hero-cue-word { margin-right: -.22em; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  body.hero-entry-pending .ui .hero .hero-cues {
+    opacity: 0;
+    animation: none !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui .hero .hero-cues { animation: none; }
+  .ui .hero .hero-cue-arrow { transition: none; }
+}
 /* Secondary documents use the same recognizable signature. */
 .logo:has(.mycelial-secondary-name) { display: flex; align-items: center; gap: 10px; width: auto; min-width: 170px; color: var(--parchment); }
 .mycelial-secondary-mark { width: 46px; height: 46px; object-fit: contain; }
