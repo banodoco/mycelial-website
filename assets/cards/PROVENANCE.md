@@ -110,6 +110,31 @@ own hero videos), which nothing used any more.
   the cello being played, the bow and both hands (112.5 s), so the five tiles are
   not all faces.
 
+## Added 2026-10-18 (deck slide 1 ring): two more Arca Gidan Prize recipients
+Iterum (schmede, Ridge) and Temporal Drift (EmmaCatnip, Crest), both Edition 2
+recipients (the same competition, `edition-2`, as the five above; `winner` true
+in `submission_details`, read 2026-10-18 from the Supabase backend arcagidan.com
+reads). Titles and artists as that data shows them (the site's display names).
+Cut from each entry's original upload (`fallback_video_url`, 1920×1080), with the
+same grade as above, but cropped to **4:5** (the carousel's card shape: 864×1080
+of the frame, scaled to 400×500 stills and 352×440 previews):
+- `<name>.avif` (q84) + `<name>.jpg` (progressive q78) — 400×500.
+- `<name>-preview.mp4` — 3.5 s from the same frame and crop, silent, H.264
+  Constrained Baseline level 3.0, faststart, source frame rate. Iterum crf 29
+  (~300 kb/s); Temporal Drift crf 35 (~460 kb/s, matching the existing
+  previews; its busy 16 fps animation needs the higher crf to reach that rate).
+
+| name | title — artist (prize) | entry page | frame · preview | original |
+|---|---|---|---|---|
+| iterum | Iterum — schmede (Ridge) | /submissions/entry/c1cff3c7-9803-41a1-8195-7cb23e777f98 | 52.0 s (focus 50%) · 52.0–55.5 s, 352×440 | 1920×1080, 29.97 fps |
+| temporal-drift | Temporal Drift — EmmaCatnip (Crest) | /submissions/entry/98873f06-e1a5-45bc-9698-cba8be8cf5e9 | 80.5 s (focus 68%) · 80.5–84.0 s, 352×440 | 1920×1080, 16 fps |
+
+Frames chosen by contact sheet for variety (no face close-ups): the angel walking
+away down the trench, wings spread; the rabbit with the pocket watch, the girl's
+hand reaching in from the left. Stream ids: Iterum 7f425a012f58cde8a38b60dc2b34e96a,
+Temporal Drift bbde24517b072c44633ea9aa1fcae093. `/entry/<id>` on arcagidan.com
+only client-side redirects to `/submissions/entry/<id>`, so the latter is canonical.
+
 ## pom/ — pom.voyage (POM's own site)
 - pom.jpg — POM's profile picture, the site's "How I see me" square
   (https://pom.voyage/assets/how-i-see-me.jpg, 400×400, the same picture as
