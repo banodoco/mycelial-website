@@ -20,9 +20,8 @@
   let still = window.deckStill ? window.deckStill() : matchMedia('(prefers-reduced-motion: reduce)').matches;
   const STREAM = 'https://customer-xt84pg68d7eakb9h.cloudflarestream.com'; // where arcagidan.com hosts its films
   const FILM = 16 / 9; // every film here is 16:9
-  // The cards' shape: square, or (to compare, with ?cards=45 in the address) the 4:5 of To be continued's still.
-  const CARD = new URLSearchParams(location.search).get('cards') === '45' ? 4 / 5 : 1;
-  const cropOf = (t) => (CARD === 1 ? t.dataset.square : t.dataset.crop) || '50% 50%';
+  const CARD = 1; // every card is square (its width over its height)
+  const cropOf = (t) => t.dataset.square || '50% 50%';
   let open = null;
   const primed = new Map(); // tile → its film's poster, fetched ahead of a click
   const resting = new Map(); // tile → the timer that brings its still back
@@ -31,8 +30,8 @@
   const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
   const wrap = (a) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI)); // to (-π, π]
 
-  // Each card crops its still and preview to its shape round its subject (data-square, or data-crop for 4:5: an
-  // object-position), and carries its title and artist inside its top edge.
+  // Each card crops its still and preview to a square round its subject (data-square, an object-position), and
+  // carries its title and artist inside its top edge.
   tiles.forEach((t) => {
     t.querySelectorAll('img, video').forEach((m) => { m.style.objectPosition = cropOf(t); });
     const name = document.createElement('span');
@@ -811,7 +810,7 @@
   };
   // The card is a crop of its still, and the still a full-height crop of its film's frame (data-focus places it there).
   // Laid over the card, the player is that frame scaled to the card's size and clipped to the card's crop, so the full
-  // frame opens out of it. On the ring the card is a quad in perspective: the player starts from a 4:5 rect over it.
+  // frame opens out of it. On the ring the card is a quad in perspective: the player starts from a square over it.
   const crop = (tile) => {
     const q = root.faces().find((f) => f.tile === tile);
     let r = tile.getBoundingClientRect();
