@@ -75,11 +75,12 @@
   const anchorEls = CLIPS.map((c) => {
     const el = document.createElement('div');
     place(el, c.at, c.len);
-    el.innerHTML = `<img class="as-still" src="../assets/astrid/${c.name}-anchor.jpg" alt=""><span class="as-film" style="background-image:url(../assets/astrid/${c.name}-strip.jpg)"></span><span class="as-name">${c.name}</span><span class="as-kind">image</span>`;
+    el.innerHTML = `<img class="as-still" data-src="../assets/astrid/${c.name}-anchor.jpg" alt=""><span class="as-film" data-bg="../assets/astrid/${c.name}-strip.jpg"></span><span class="as-name">${c.name}</span><span class="as-kind">image</span>`;
     lanes.V1.appendChild(el);
     return el;
   });
   const motionEls = anchorEls;
+  window.deckLoadPictures?.(slide); // the pictures built above, if the slide was warmed before this script ran
   const kind = (el, k) => { el.querySelector('.as-kind').textContent = k; };
   const fxEls = FX.map((f) => {
     const el = document.createElement('div');
@@ -173,7 +174,7 @@
     if (Math.abs(cw * pdpr - pic.width) > 1 || Math.abs(ch * pdpr - pic.height) > 1) sizePic();
     const src = view.mode === 'still' ? anchors[view.i] : view.mode === 'play' ? videos[view.i] : null;
     root.classList.toggle('has-pic', !!src);
-    const ready = !!src && (src.tagName === 'VIDEO' ? src.readyState >= 2 : src.complete);
+    const ready = !!src && (src.tagName === 'VIDEO' ? src.readyState >= 2 : src.complete && src.naturalWidth > 0);
     const key = view.mode === 'play' && ready ? '' : `${view.mode}|${view.i}|${ready}`;
     if (key && key === picKey) return; // the same picture as last frame
     picKey = key;

@@ -1,4 +1,5 @@
 """Focused HTTP checks for the standalone Mycelial deck gate."""
+import gzip
 import http.client
 import os
 import re
@@ -151,6 +152,84 @@ class AngelServerTests(unittest.TestCase):
         response = revoked.request('GET', '/deck/assets/cards/arca/everyone-all-at-once.avif',
                                    headers={'Cookie': cookie})
         self.assertEqual(response['status'], 404)
+
+    def test_text_is_gzipped_only_for_clients_that_accept_it(self):
+        path = '/vendor/three/three.module.js'
+        plain = self.server.request('GET', path)
+        self.assertEqual(plain['status'], 200)
+        self.assertIsNone(plain['headers'].get('Content-Encoding'))
+        self.assertEqual(plain['headers']['Vary'], 'Accept-Encoding')
+        packed = self.server.request('GET', path, headers={'Accept-Encoding': 'gzip, deflate, br'})
+        self.assertEqual(packed['headers']['Content-Encoding'], 'gzip')
+        self.assertEqual(packed['headers']['Vary'], 'Accept-Encoding')
+        self.assertEqual(int(packed['headers']['Content-Length']), len(packed['body']))
+        self.assertLess(len(packed['body']), len(plain['body']) / 2)
+        self.assertEqual(gzip.decompress(packed['body']), plain['body'])
+        self.assertIn('javascript', packed['headers']['Content-Type'])
+        self.assertEqual(packed['headers']['Cache-Control'], plain['headers']['Cache-Control'])
+        # The second request is served from the cache with identical bytes.
+        again = self.server.request('GET', path, headers={'Accept-Encoding': 'gzip'})
+        self.assertEqual(again['body'], packed['body'])
+        refused = self.server.request('GET', path, headers={'Accept-Encoding': 'gzip;q=0, identity'})
+        self.assertIsNone(refused['headers'].get('Content-Encoding'))
+        self.assertEqual(refused['body'], plain['body'])
+
+    def test_gzip_head_matches_get_and_sends_no_body(self):
+        path = '/vendor/three/three.module.js'
+        got = self.server.request('GET', path, headers={'Accept-Encoding': 'gzip'})
+        head = self.server.request('HEAD', path, headers={'Accept-Encoding': 'gzip'})
+        self.assertEqual(head['status'], 200)
+        self.assertEqual(head['body'], b'')
+        self.assertEqual(head['headers']['Content-Encoding'], 'gzip')
+        self.assertEqual(head['headers']['Content-Length'], got['headers']['Content-Length'])
+
+    def test_range_and_media_are_never_compressed(self):
+        packed_ok = {'Accept-Encoding': 'gzip'}
+        ranged = self.server.request('GET', '/vendor/three/three.module.js',
+                                     headers={**packed_ok, 'Range': 'bytes=0-99'})
+        self.assertEqual(ranged['status'], 206)
+        self.assertIsNone(ranged['headers'].get('Content-Encoding'))
+        self.assertEqual(len(ranged['body']), 100)
+        clip = '/assets/astrid/first-light.mp4'
+        for headers in (packed_ok, {**packed_ok, 'Range': 'bytes=0-9'}):
+            response = self.server.request('GET', clip, headers=headers)
+            self.assertIn(response['status'], (200, 206))
+            self.assertIsNone(response['headers'].get('Content-Encoding'))
+            self.assertIsNone(response['headers'].get('Vary'))
+        partial = self.server.request('GET', clip, headers={**packed_ok, 'Range': 'bytes=0-9'})
+        self.assertEqual(partial['status'], 206)
+        self.assertEqual(len(partial['body']), 10)
+        self.assertEqual(partial['headers']['Content-Range'].split('/')[0], 'bytes 0-9')
+
+    def test_gated_deck_is_gzipped_without_loosening_the_gate(self):
+        gzip_header = {'Accept-Encoding': 'gzip'}
+        locked = self.server.request('GET', '/deck/angel/', headers=gzip_header)
+        self.assertEqual(locked['status'], 200)
+        gate = gzip.decompress(locked['body']) if locked['headers'].get('Content-Encoding') == 'gzip' else locked['body']
+        self.assertIn(b'personal key', gate)
+        self.assertNotIn(b'class="slide', gate)
+        opened = self.server.request('GET', '/deck/angel/?key=' + KEY, headers=gzip_header)
+        self.assertEqual(opened['status'], 200)
+        self.assertEqual(opened['headers']['Content-Encoding'], 'gzip')
+        self.assertEqual(opened['headers']['Cache-Control'], 'no-store')
+        self.assertEqual(opened['headers']['X-Robots-Tag'], 'noindex')
+        self.assertIn('deck_angel=', opened['headers']['Set-Cookie'])
+        plain = self.server.request('GET', '/deck/angel/?key=' + KEY)
+        self.assertIsNone(plain['headers'].get('Content-Encoding'))
+        self.assertEqual(gzip.decompress(opened['body']), plain['body'])
+        self.assertEqual(int(opened['headers']['Content-Length']), len(opened['body']))
+        # Scripts behind the gate need the key or cookie, compressed or not.
+        script = '/deck/angel/core.js'
+        self.assertEqual(self.server.request('GET', script, headers=gzip_header)['status'], 404)
+        cookie = opened['headers']['Set-Cookie'].split(';', 1)[0]
+        script_open = self.server.request('GET', script, headers={**gzip_header, 'Cookie': cookie})
+        self.assertEqual(script_open['status'], 200)
+        self.assertEqual(script_open['headers']['Content-Encoding'], 'gzip')
+        self.assertEqual(script_open['headers']['Cache-Control'], 'private, no-cache')
+
+    def test_missing_file_stays_404_with_gzip_accepted(self):
+        self.assertEqual(self.server.request('GET', '/no-such-file.js', headers={'Accept-Encoding': 'gzip'})['status'], 404)
+        self.assertEqual(self.server.request('HEAD', '/deck/angel/nope.js?key=' + KEY, headers={'Accept-Encoding': 'gzip'})['status'], 404)
 
     def test_unset_env_fails_closed(self):
         locked = Server(keys='')

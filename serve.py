@@ -11,7 +11,7 @@ sends byte ranges for <video> and stalls mid-playback when the server
 answers 200 with the whole body — that was the ADOS preview "freezing"
 after a second (2026-08-18).
 """
-import hashlib, hmac, http.server, json, os, posixpath, re, sys, urllib.parse
+import gzip, hashlib, hmac, http.server, io, json, os, posixpath, re, sys, threading, urllib.parse
 from http import cookies
 from pathlib import Path
 
@@ -38,6 +38,55 @@ DECK_SUFFIXES = frozenset({
     '.bin', '.webmanifest', '.xml', '.txt',
 })
 DECK_COOKIE_MESSAGE = b'banodoco-deck-angel/v1'
+
+# Text types worth compressing. Media, images and fonts are already compressed
+# (or are fetched by byte range), so they are always sent as stored.
+GZIP_SUFFIXES = frozenset({
+    '.html', '.js', '.mjs', '.css', '.json', '.svg', '.xml', '.txt', '.webmanifest',
+})
+GZIP_MIN_BYTES = 512
+GZIP_CACHE_LIMIT = 64 * 1024 * 1024
+_gzip_cache = {}  # (path, mtime_ns, size) -> compressed bytes
+_gzip_cache_bytes = 0
+_gzip_lock = threading.Lock()
+
+
+def accepts_gzip(header):
+    """True when an Accept-Encoding value allows gzip (q=0 forbids it)."""
+    for item in (header or '').split(','):
+        name, _, params = item.partition(';')
+        if name.strip().lower() not in ('gzip', 'x-gzip'):
+            continue
+        quality = re.search(r'(?:^|;)\s*q\s*=\s*([0-9.]+)', ';' + params, re.I)
+        try:
+            return quality is None or float(quality.group(1)) > 0
+        except ValueError:
+            return False
+    return False
+
+
+def gzipped_file(path):
+    """Compressed bytes for a file, memoised by path and mtime."""
+    global _gzip_cache_bytes
+    stat = os.stat(path)
+    key = (path, stat.st_mtime_ns, stat.st_size)
+    with _gzip_lock:
+        hit = _gzip_cache.get(key)
+    if hit is not None:
+        return hit
+    with open(path, 'rb') as fh:
+        data = fh.read()
+    packed = gzip.compress(data, 9, mtime=0)
+    with _gzip_lock:
+        # Drop stale versions of this path, and everything if the cache is full.
+        for old in [k for k in _gzip_cache if k[0] == path]:
+            _gzip_cache_bytes -= len(_gzip_cache.pop(old))
+        if _gzip_cache_bytes + len(packed) > GZIP_CACHE_LIMIT:
+            _gzip_cache.clear()
+            _gzip_cache_bytes = 0
+        _gzip_cache[key] = packed
+        _gzip_cache_bytes += len(packed)
+    return packed
 
 
 def valid_deck_key(value):
@@ -250,6 +299,9 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header('Cache-Control', 'no-store' if getattr(self, '_deck_html', False) else 'private, no-cache')
         else:
             self.send_header('Cache-Control', 'no-store, must-revalidate')
+        # Text responses differ by Accept-Encoding; directory URLs serve index.html.
+        if request_path.endswith('/') or self.compressible(request_path):
+            self.send_header('Vary', 'Accept-Encoding')
         self.send_header('Pragma', 'no-cache')
         self.send_header('Expires', '0')
         super().end_headers()
@@ -267,6 +319,10 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
                 self._deck_set_cookie = f'deck_angel={value}; Max-Age=2592000; Path=/deck/; HttpOnly; SameSite=Lax{secure}'
             if 'Range' in self.headers:
                 return self._range_body(str(target))
+            cookie = (('Set-Cookie', self._deck_set_cookie),) if getattr(self, '_deck_set_cookie', None) else ()
+            packed = self.send_gzip_or_none(str(target), cookie)
+            if packed is not None:
+                return packed
             self.send_response(200)
             self.send_header('Content-Type', self.guess_type(str(target)))
             self.send_header('Content-Length', str(os.path.getsize(target)))
@@ -282,10 +338,45 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
                 return None
             if os.path.isfile(path):
                 return self._range_body(path) or None
-        if self.refuses_release_mycelial_target(self.translate_path(self.path)):
+        path = self.translate_path(self.path)
+        if self.refuses_release_mycelial_target(path):
             self.send_error(404)
             return None
+        # A directory URL with a trailing slash serves its index.html.
+        if os.path.isdir(path) and self.path.split('?', 1)[0].endswith('/'):
+            path = os.path.join(path, 'index.html')
+        if os.path.isfile(path):
+            packed = self.send_gzip_or_none(path)
+            if packed is not None:
+                return packed
         return super().send_head()
+
+    def compressible(self, path):
+        return Path(path).suffix.lower() in GZIP_SUFFIXES
+
+    def send_gzip_or_none(self, path, extra_headers=()):
+        """Send a gzip 200 for a compressible text file and return its body,
+        or return None (nothing sent) when the response should go out as stored."""
+        if 'Range' in self.headers or not self.compressible(path):
+            return None
+        if not accepts_gzip(self.headers.get('Accept-Encoding')):
+            return None
+        try:
+            if os.path.getsize(path) < GZIP_MIN_BYTES:
+                return None
+            body = gzipped_file(path)
+            mtime = os.path.getmtime(path)
+        except OSError:
+            return None
+        self.send_response(200)
+        self.send_header('Content-Type', self.guess_type(path))
+        self.send_header('Content-Encoding', 'gzip')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Last-Modified', self.date_time_string(mtime))
+        for name, value in extra_headers:
+            self.send_header(name, value)
+        self.end_headers()
+        return io.BytesIO(body)
 
     def _range_body(self, path):
         """206 response for a satisfiable byte range; error already sent on
@@ -404,5 +495,5 @@ PORT = int(os.environ.get('PORT', 8137))
 # for browsers that pre-open sockets, and daemon threads keep Ctrl-C/restarts
 # prompt during local development.
 with ParallelHTTPServer(('', PORT), NoCacheHandler) as httpd:
-    print(f'serving glowshroom/ on :{PORT} with no-store + range support')
+    print(f'serving glowshroom/ on :{PORT} with no-store + range support + gzip')
     httpd.serve_forever()

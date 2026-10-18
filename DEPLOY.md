@@ -94,6 +94,11 @@ when that boundary is incomplete or leaks an excluded path.
   do not add hand-maintained `?v=` tokens. Source-mode `serve.py` uses no-store.
 - **Compression**: enable gzip/brotli — the 3.3 MB raw payload compresses to
   ~1 MB, and `vendor/three/three.module.js` (1.3 MB) is the bulk of it.
+  `serve.py` (what Railway runs) already gzips text types (html, js, mjs, css,
+  json, svg, xml, txt, webmanifest) for clients that accept it, caching the
+  compressed bytes per path and mtime; media, images, fonts and `Range`
+  requests are never compressed. It is stdlib-only, so no brotli. A host that
+  fronts the site with its own compressing proxy needs nothing more.
 - **CSP**: if any CSP is applied, the inline `<script type="importmap">` in
   index.html needs a nonce or sha-256 hash or the whole site dies.
 
