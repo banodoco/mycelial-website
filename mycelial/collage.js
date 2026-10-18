@@ -153,20 +153,18 @@
     if (W <= 0 || H <= 0) return false;
     // Seen well enough from above that the cards at the back show over the front one. The ring keeps its size
     // however many films stand on it: more of them simply stand closer together.
-    Object.assign(G, W < H * 0.9
+    const tall = W < H * 0.9, cssUnder = cs.getPropertyValue('--ring-under').trim() === '1';
+    Object.assign(G, tall
       ? { R: 1.35, cam: 2.5, lift: 19 * DEG, yaw: 28 * DEG }
-      : { R: 1.55, cam: 2.5, lift: 24 * DEG, yaw: 26 * DEG });
-    G.P = G.cam * G.R; // the camera's distance, in ring radii
-    G.H = G.P * Math.tan(G.lift); // and its height, as the angle it looks down at the ring's middle
-    G.front = G.P / (G.P - G.R);
+      : { R: 1.7, cam: 2.5, lift: 24 * DEG, yaw: 24 * DEG });
+    // The view: the camera's distance in ring radii, and its height as the angle it looks down at the ring's middle.
+    const view = (lift) => {
+      G.lift = lift; G.P = G.cam * G.R; G.H = G.P * Math.tan(lift); G.front = G.P / (G.P - G.R);
+      return reach();
+    };
     const under = label.offsetHeight + 16;
     // How much of the ring's width must be on screen: on a phone held upright the side cards run off its edges.
     const cover = W < H * 0.9 ? 0.72 : W < H * 1.25 ? 0.88 : 1;
-    const r = reach(), rw = r.x1 - r.x0, rh = r.y1 - r.y0;
-    // The ring's middle as the eye sees it at rest: half way from the tops of the cards at the back to the foot of
-    // the front one (unscaled, down from the horizon).
-    const crown = Math.min(...tiles.map((_, i) => see(...corner(stand(wrap(i * STEP)), 0.5, 0))[1]));
-    const heart = (crown + G.H * G.front) / 2;
     // The words where the slide's padding alone puts them (the last layout may have let them down: see below).
     const vb = vis.getBoundingClientRect(), shift = parseFloat(slide.style.getPropertyValue('--text-shift')) || 0;
     const tr = text.getBoundingClientRect();
@@ -177,14 +175,25 @@
     const footer = chrome?.getBoundingClientRect().top ?? innerHeight, capH = label.offsetHeight, t0 = tb.top - vb.top;
     const foot = pad[0] + H - under;
     const words = { right: tb.right - vb.left, bottom: tb.bottom - vb.top + 10 };
-    // Beside the words the ring's left edge runs an eighth of its width in under their end (the cards there sink
-    // into shade behind the words, below), and the ring takes about four fifths of the height from the words' top
-    // margin to the footer, leaving the rest to share out over it and round its label.
-    const BLEED = 0.125, right = pad[3] + W, room = right - words.right;
-    const kBeside = Math.min(room / ((1 - BLEED) * rw), (foot - pad[0]) / rh, (0.78 * (footer - t0)) / rh);
+    // Beside the words the ring spans from an eighth of its width in under their end (the cards there sink into
+    // shade behind the words, below) to the slide's right margin, in about four fifths of the height from the
+    // words' top margin to the footer, leaving the rest to share out over it and round its label. The camera
+    // looks down as steeply as that room allows: a short, wide window sees the ring a little flatter.
+    const BLEED = 0.125, right = pad[3] + W - 0.025 * vis.clientWidth, room = right - words.right;
+    const kOf = (q) => Math.min(room / ((1 - BLEED) * (q.x1 - q.x0)), (foot - pad[0]) / (q.y1 - q.y0), (0.78 * (footer - t0)) / (q.y1 - q.y0));
+    let steep = null;
+    if (!tall && !cssUnder) {
+      for (let l = 26; l >= 15; l--) { const k = kOf(view(l * DEG)); if (!steep || k > steep.k * 1.02) steep = { l, k }; }
+    }
+    const r = view(steep ? steep.l * DEG : G.lift), rw = r.x1 - r.x0, rh = r.y1 - r.y0;
+    // The ring's middle as the eye sees it at rest: half way from the tops of the cards at the back to the foot of
+    // the front one (unscaled, down from the horizon).
+    const crown = Math.min(...tiles.map((_, i) => see(...corner(stand(wrap(i * STEP)), 0.5, 0))[1]));
+    const heart = (crown + G.H * G.front) / 2;
+    const kBeside = kOf(r);
     const below = Math.max(pad[0], tb.bottom - vb.top + 20);
     const kUnder = Math.min((vis.clientWidth - 2 * pad[1]) / (innerWidth > 760 ? 0.92 : cover) / rw, (foot - below) / rh);
-    const under2 = cs.getPropertyValue('--ring-under').trim() === '1' || kUnder > kBeside * 1.15;
+    const under2 = cssUnder || kUnder > kBeside * 1.15;
     root.classList.toggle('is-under', under2);
     const floorY = under2 ? below : pad[0];
     const level = under2 ? 0 : (tb.top + tb.bottom) / 2 - vb.top;
@@ -194,7 +203,7 @@
     const place = () => {
       G.cx = -G.k * r.x0; G.cy = -G.k * r.y0;
       const wide = G.k * rw;
-      left = under2 ? (vis.clientWidth - wide) / 2 : words.right - BLEED * wide;
+      left = under2 ? (vis.clientWidth - wide) / 2 : words.right - BLEED * wide + Math.max(0, room - (1 - BLEED) * wide) / 2;
       top = level ? level - G.cy - G.k * heart : floorY + Math.max(0, foot - floorY - G.k * rh) * 0.55;
     };
     place();
