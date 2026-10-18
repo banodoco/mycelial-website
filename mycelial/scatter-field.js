@@ -175,7 +175,7 @@
   // Names and cards live in the lower screen: below the headline (floor) and
   // above the legend (ceil), never behind either.
   const text = slide.querySelector('.split > :first-child');
-  let floor = 0, ceil = 0, raised = false;
+  let floor = 0, ceil = 0, mid = 0, raised = false;
   const measure = () => {
     // On a phone held upright the field rises above the words (the phone CSS sets them at the foot, on the legend):
     // names and cards live between the top of the screen (floor) and the label (ceil).
@@ -192,6 +192,8 @@
     slide.style.removeProperty('--sf-top');
     floor = Math.max(h * 0.48, t && t.height ? t.bottom - s.top + h * 0.06 : h * 0.5);
     ceil = l.height ? l.top - s.top - 10 : h - 40;
+    // F's field is centred in the free space between the headline and the legend.
+    mid = t && t.height && l.height ? (t.bottom + l.top) / 2 - s.top : h * 0.68;
   };
   const resize = () => {
     const nextW = stage.clientWidth, nextH = stage.clientHeight;
@@ -230,7 +232,7 @@
   const below = () => document.documentElement.dataset.ver === 'f' || w <= 760;
   const aim = () => {
     if (raised) { cx = w / 2; cy = floor + (ceil - floor) * 0.56; F = Math.min(w * 0.42, h * 0.62) * 0.75; }
-    else if (below()) { cx = w / 2; cy = h * 0.68; F = Math.min(w * 0.42, h * 0.62) * 0.75; }
+    else if (below()) { cx = w / 2; cy = mid || h * 0.68; F = Math.min(w * 0.42, h * 0.62) * 0.75; }
     else { cx = w * 0.7; cy = h * 0.48; F = Math.min(w * 0.5, h) * 0.38; }
     // The glide home is one unhurried curve: it sets off with no jolt (zero
     // speed and acceleration), peaks gently about a second in, and fades out
