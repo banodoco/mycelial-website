@@ -20,7 +20,9 @@
   let still = window.deckStill ? window.deckStill() : matchMedia('(prefers-reduced-motion: reduce)').matches;
   const STREAM = 'https://customer-xt84pg68d7eakb9h.cloudflarestream.com'; // where arcagidan.com hosts its films
   const FILM = 16 / 9; // every film here is 16:9
-  const CARD = 4 / 5; // every card is the shape of To be continued's still
+  // The cards' shape: square, or (to compare, with ?cards=45 in the address) the 4:5 of To be continued's still.
+  const CARD = new URLSearchParams(location.search).get('cards') === '45' ? 4 / 5 : 1;
+  const cropOf = (t) => (CARD === 1 ? t.dataset.square : t.dataset.crop) || '50% 50%';
   let open = null;
   const primed = new Map(); // tile → its film's poster, fetched ahead of a click
   const resting = new Map(); // tile → the timer that brings its still back
@@ -29,10 +31,10 @@
   const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
   const wrap = (a) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI)); // to (-π, π]
 
-  // Each card crops its still and preview to 4:5 round its subject (data-crop, an object-position), and carries its
-  // title and artist inside its top edge.
+  // Each card crops its still and preview to its shape round its subject (data-square, or data-crop for 4:5: an
+  // object-position), and carries its title and artist inside its top edge.
   tiles.forEach((t) => {
-    t.querySelectorAll('img, video').forEach((m) => { m.style.objectPosition = t.dataset.crop || '50% 50%'; });
+    t.querySelectorAll('img, video').forEach((m) => { m.style.objectPosition = cropOf(t); });
     const name = document.createElement('span');
     name.className = 'vc-name';
     name.setAttribute('aria-hidden', 'true'); // the button already says it
@@ -716,7 +718,7 @@
     }
     const img = tile.querySelector('img'), still = +img.getAttribute('width') / +img.getAttribute('height') || CARD;
     const [fx, fy] = (tile.dataset.focus || '50% 50%').split(' ').map((n) => parseFloat(n) / 100);
-    const [ox, oy] = (tile.dataset.crop || '50% 50%').split(' ').map((n) => parseFloat(n) / 100);
+    const [ox, oy] = cropOf(tile).split(' ').map((n) => parseFloat(n) / 100);
     const sw = Math.min(1, still / FILM), sx = (1 - sw) * fx; // the still, in the frame
     const cw = sw * Math.min(1, CARD / still), ch = Math.min(1, still / CARD); // the card, in the frame
     return { r, cw, ch, sw, fx, fy, x0: sx + (sw - cw) * ox, y0: (1 - ch) * oy };
