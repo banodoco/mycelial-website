@@ -244,6 +244,8 @@
   .dt-dot i { position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%;
     background: radial-gradient(circle at 40% 35%, #fff1cf, #f0c877 55%, #c98f3e); box-shadow: 0 0 10px #ffd99177; transition: opacity .25s ease; }
   .dt-dot.is-moving i { opacity: 0; }
+  html[data-ver="f"]:has(.fw-raise.on) .dt-dot i { opacity: 0; } /* the closing mark takes the node’s place */
+  .fw-raise .num { min-height: 54px; visibility: hidden; } /* reserve the label’s place for the mark */
   .slide.dt-leaving:not(.dt-release) { opacity: 1; transition: none; }
   .slide.dt-leaving > :not(.num):not(.split), .slide.dt-leaving > .split > :not(:first-child) { opacity: 0; transition: opacity .45s ease; }
   .slide.dt-entering > .split > :first-child { opacity: 0; }
@@ -905,13 +907,15 @@
   .fw-stat a:hover, .fw-stat a:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
   /* Slide 11: three questions under the words (who, the money, the goal). Each opens a small card of its detail above
      it while hovered or focused (tapped, on a touch screen), one at a time; the card stays open while the pointer is on
-     it. They come in once the slide has settled (data-settled), and with animations off they are simply there. They sit
-     out of the words' flow, so the words, the mark behind them and the halo keep their places. */
+     it. They share the final slide's text reveal; with animations off they are simply there. On desktop the questions
+     belong to the centred text group; the compact phone list keeps its position beneath the words. */
   html[data-ver="f"] .fw-raise > .split { position: relative; }
   .fw-asks { position: absolute; left: 50%; top: 100%; z-index: 2; display: flex; justify-content: center; gap: clamp(1.5rem, 2.6vw, 2.6rem);
     margin-top: clamp(1.4rem, 3.4vh, 2.2rem); translate: -50% 0; white-space: nowrap;
     opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s linear .3s; }
   .slide.on[data-settled] .fw-asks, html.deck-motion-off .slide.on .fw-asks { opacity: 1; visibility: visible; transition: opacity 1.1s ease .45s, visibility 0s linear .45s; }
+  .slide.fw-raise.on .fw-asks { opacity: 1; visibility: visible; transition: none; } /* revealed with the complete text block */
+  .slide.fw-raise.dt-entering .fw-asks { opacity: 0; visibility: hidden; } /* wait for that shared reveal to begin */
   .fw-ask { position: relative; }
   .fw-ask-q { all: unset; position: relative; display: inline-flex; align-items: center; gap: .55em; padding: .3em 0; cursor: pointer;
     font: italic 400 clamp(1rem, 1.2vw, 1.18rem)/1.2 "Cormorant Garamond", serif; letter-spacing: .02em; color: var(--soft); transition: color .3s ease; }
@@ -980,8 +984,11 @@
     .fw-card .fw-ac { font-size: .56em; gap: .35em; padding: .35em .45em; } .fw-card .fw-ac-l { display: none; } .fw-card .fw-ac-stats > span { padding: .35em .4em; }
     .fw-stat { margin-top: .6rem; font-size: 1rem; }
     .fw-sub { margin-top: .7rem; font-size: .95rem; line-height: 1.4; max-width: 17em; }
-    .fw-asks { flex-direction: column; align-items: stretch; gap: 0; margin-top: 1rem; } /* a short list: its dots in one column */
-    .fw-ask { text-align: left; } /* each as wide as the list, so its card centres on the screen */
+    html[data-ver="f"] .fw-raise > .split { row-gap: .65rem; }
+    html[data-ver="f"] .fw-raise > .split > :first-child > .num { margin-bottom: 2.1rem; } /* air between the mark and headline */
+    .fw-raise .fw-asks { position: relative; left: auto; top: auto; translate: none; margin-top: 0; }
+    .fw-asks { flex-direction: column; align-items: stretch; gap: 0; } /* a short list: its dots in one column */
+    .fw-ask { text-align: center; } /* centred labels; full-width items keep their cards centred too */
     .fw-ask-q { font-size: 1.02rem; padding: .26em 0; }
     .fw-ask-card { width: min(22rem, calc(100vw - 32px)); font-size: .95rem; }
   }
@@ -1305,7 +1312,9 @@
     html[data-ver="f"] .fw-host h1 { font-size: clamp(1.2rem, 5.8svh, 1.65rem); max-width: 30em; }
     .fw-stat { margin-top: .5rem; font-size: .95rem; }
     html[data-ver="f"] .fw-top { padding-top: 26px; padding-bottom: 0; } /* room for the node over the label */
-    html[data-ver="f"] .fw-raise { padding-top: 85px; padding-bottom: 76px; } /* the halo rings the mark and the words */
+    html[data-ver="f"] .fw-raise { padding-top: 12px; padding-bottom: 66px; }
+    html[data-ver="f"] .fw-raise > .split { row-gap: .6rem; }
+    .fw-raise .fw-asks { position: relative; left: auto; top: auto; translate: none; margin-top: 0; }
     html[data-ver="f"] .fw-raise h1 { font-size: clamp(1.2rem, 5.8svh, 1.65rem); max-width: 20em; }
     .fw-sub { margin-top: .6rem; font-size: .92rem; line-height: 1.4; }
     .fw-asks { margin-top: .7rem; gap: 1.3rem; }
@@ -1574,7 +1583,7 @@
     </div>
   </section>
 
-  <section class="slide fw-host fw-raise" data-v="f">
+  <section class="slide fw-host fw-raise" data-v="f" aria-label="The raise">
     <div class="fw-alt" role="img" aria-label="The flywheel opened out into a halo round the words, with the six as icons on it: Arca Gidan, ArtCompute and Astrid above, Banodoco, 2RP and ADOS below"></div>
     <div class="num">11<span class="act">The raise</span></div>
     <div class="split">

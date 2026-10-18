@@ -631,12 +631,16 @@
   });
   const restore = () => homes.forEach((s, num) => s.insertBefore(num, s.querySelector(':scope > .split')));
 
-  const textOf = (s) => [columnOf(s)].filter(Boolean);
+  const textOf = (s) => [s.matches('.fw-raise') ? s.querySelector(':scope > .split') : columnOf(s)].filter(Boolean);
   // The node sits just above the start of the label (its end when right-aligned, its middle when centred).
   const anchorOf = (s) => {
     const col = columnOf(s);
     const first = col && (col.querySelector('.num') || col.querySelector('h1'));
     if (!first) return null;
+    if (s.matches('.fw-raise')) {
+      const r = first.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
     const range = document.createRange();
     range.selectNodeContents(first);
     const rects = [...range.getClientRects()].filter((r) => r.width > 0);
@@ -860,36 +864,27 @@
     name.removeAttribute('aria-hidden');
   };
 
-  // The last slide: as its node blooms, the Mycelial mark draws itself in large and faint behind the words, its
-  // middle on theirs, and folds away into them again on leaving.
+  // The closing slide uses the Mycelial mark in the label's reserved space.
   const deck = () => slides.filter((sl) => (sl.dataset.v || '').split(' ').includes(VER));
   const lastSlide = () => deck().at(-1);
   const levelOf = (s) => Math.max(0, deck().indexOf(s));
   const crownAt = () => {
-    const col = columnOf(lastSlide()), r = col && col.getBoundingClientRect();
-    if (!r || !r.width) return null;
-    const y = r.top + r.height / 2, room = 2 * Math.min(y - 12, innerHeight - 80 - y); // clear of the chrome at the foot
-    const across = innerWidth <= 760 && innerHeight > innerWidth ? innerWidth * 0.62 : innerWidth - 24; // inside an upright phone's narrow halo
-    const size = clamp(Math.max(r.height * 1.45, r.width * 0.62), 160, Math.min(across, innerHeight * 0.8, room));
-    return { x: r.left + r.width / 2, y, size: Math.round(size) };
+    const at = anchorOf(lastSlide());
+    return at && { x: at.x, y: at.y, size: 54 };
   };
-  // From slide 10 (glow given) the mark starts as the glow at the wheel's middle, at its place and size there, and grows
-  // into its own place in step with the wheel opening into the halo round it: the wheel reports how far it stands between
-  // the two slides (AstridMark.follow, its morph's own progress, at the deck's pace and hurry), and the mark stands at the
-  // same fraction of its own way, in place, size and light. 11→10 runs it back into the glow. The network's arrival
-  // finds it already there. Its surface is drawn once; only its transform and opacity move.
+  // On entry the arriving node grows into the mark. Returning to slide 10 can still fold it back into the wheel's
+  // central glow, following the wheel's progress. Its surface is drawn once; only its transform and opacity move.
   let following = null; // { glow, back }
   const crown = (at, now, glow) => {
     if (!now && !glow && mark && mark.crown && mark.folding === undefined) return; // already growing out of the glow
-    const c = crownAt() || { x: at.x, y: at.y, size: 160 };
-    const upright = innerWidth <= 760 && innerHeight > innerWidth; // preserve the phone treatment; keep the desktop crown behind the words
-    mark = { x: c.x, y: c.y, t: now ? 2 : -0.2, size: c.size, shrink: 0, trail: null, shed: 0, crown: true, faint: upright ? 0.22 : 0.14 };
+    const c = crownAt() || { x: at.x, y: at.y, size: 54 };
+    mark = { x: c.x, y: c.y, t: now ? 2 : -0.2, size: c.size, shrink: 0, trail: null, shed: 0, crown: true, faint: 0.75 };
     zones.push(Object.assign(disc(mark.x, mark.y, c.size * 0.42), { crown: true, a: now ? 1 : 0 }));
     markCv.getAnimations().forEach((a) => a.cancel());
     markCv.style.transform = markCv.style.opacity = markCv.style.transition = '';
     following = glow ? { glow, back: false } : null;
     if (glow) { markCv.style.transition = 'none'; followAt(0); } // it follows the wheel frame by frame, not its own fade
-    else if (!now) markCv.animate([{ opacity: 0, scale: '0.94' }, { opacity: 1, scale: '1' }], { duration: 1300, delay: 150, easing: 'cubic-bezier(.22,.7,.2,1)', fill: 'backwards' });
+    else if (!now) markCv.animate([{ opacity: 1, scale: '0.11' }, { opacity: 1, scale: '1' }], { duration: 850, easing: 'cubic-bezier(.22,.7,.2,1)', fill: 'backwards' });
     wake();
   };
   const followAt = (f) => {
@@ -1085,7 +1080,7 @@
     const to = anchorOf(next) || from;
     anchor = to;
     drift = { x: 0, y: 0 }; trail = { x: 0, y: 0 };
-    if (next === lastSlide() && prev === deck().at(-2)) { const g = glow(1); if (g) crown(to, false, g); }
+    // The closing mark grows only when the travelling node reaches its destination (arrive below).
 
     // The new text grows from its node while the old is still being drawn in (overlap), or once a picture crossing
     // its place has gone by (passing), the node's travel running alongside; the turn is done once the text is whole

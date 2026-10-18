@@ -371,12 +371,18 @@
       r[2] = Math.min(W * 0.405, W / 2 - iconR() - 32);
       r[3] = Math.min(H * 0.38, r[1] - iconR() - 24, H - 72 - iconR() - r[1]);
     }
+    // Phone layouts also frame the complete group, keeping the top icon and footer clear.
+    if (tall || short) {
+      const r = stages[2].ring;
+      r[0] = W / 2; r[1] = H / 2 - (tall ? 10 : 30);
+      r[2] = Math.min(W * (tall ? 0.41 : 0.43), W / 2 - iconR() - (tall ? 12 : 24));
+      r[3] = Math.min(H * 0.39, r[1] - iconR() - (tall ? 24 : 12), H - 64 - iconR() - r[1]);
+    }
     // Cards that sit on the ring (the icons) take their places on it now its size is known.
     stages.forEach((st, s) => st.cards.forEach((c, i) => {
       if (R.cards[i].at[s] !== 'ring') return;
       const t = c[2] * RAD, [cx, cy, rx, ry] = st.ring;
       c[0] = cx + rx * Math.cos(t); c[1] = cy + ry * Math.sin(t);
-      if (short && s === 2 && i === 1 && W < 700) c[1] += 14; // keep Astrid's top-centre icon clear of the short viewport edge
     }));
     paintSeat();
     return true;
