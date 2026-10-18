@@ -232,14 +232,14 @@
   /* The subtitle's note: a quiet gold ¹ that opens a small card in the raise slide's hover-card language
      (collage.js places it beside the mark, inside the screen). */
   .vc-fn { font-size: 1em; line-height: 0; vertical-align: baseline; }
-  .vc-fn button { all: unset; position: relative; display: inline-grid; place-items: center; box-sizing: border-box; width: 1.6em; height: 1.6em;
-    margin: 0 .05em 0 .3em; border: 1px solid rgb(240 198 126 / .7); border-radius: 50%; vertical-align: .5em; cursor: pointer;
-    font: 500 max(.62em, 10px)/1 "DM Sans", system-ui, sans-serif; color: #f0c67e; background: rgb(13 10 7 / .4);
-    transition: color .25s ease, border-color .25s ease, background-color .25s ease, box-shadow .25s ease; }
-  .vc-fn button::after { content: ""; position: absolute; inset: -9px; border-radius: 50%; } /* a comfortable target */
-  .vc-fn button[aria-expanded="true"], .vc-fn button:focus-visible { color: #ffd991; border-color: #ffd991; background: rgb(240 200 119 / .12); box-shadow: 0 0 10px #ffd99133; }
-  @media (hover: hover) { .vc-fn button:hover { color: #ffd991; border-color: #ffd991; background: rgb(240 200 119 / .12); box-shadow: 0 0 10px #ffd99133; } }
-  .vc-fn button:focus-visible { outline: 1px solid #f0c67e80; outline-offset: 3px; }
+  .vc-fn button { all: unset; position: relative; margin-left: .12em; vertical-align: .78em; cursor: pointer;
+    font: 500 .65em/1 "EB Garamond", serif; font-variant-numeric: lining-nums; color: #f0c67e;
+    transition: color .25s ease, text-shadow .25s ease; }
+  /* A comfortable target, round the figure without taking any room in the line. */
+  .vc-fn button::after { content: ""; position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; translate: -50% -50%; border-radius: 50%; }
+  .vc-fn button[aria-expanded="true"], .vc-fn button:focus-visible { color: #ffd991; text-shadow: 0 0 8px #ffd99188; }
+  @media (hover: hover) { .vc-fn button:hover { color: #ffd991; text-shadow: 0 0 8px #ffd99188; } }
+  .vc-fn button:focus-visible { outline: none; text-decoration: underline 1px #f0c67e99; text-underline-offset: 3px; }
   .vc-note { position: absolute; left: 0; top: 0; z-index: 6; box-sizing: border-box; width: min(19.5rem, calc(100vw - 32px)); padding: .95rem 1.05rem 1rem;
     background: #14100c; border: 1px solid #f0c8772e; border-radius: 7px; box-shadow: 0 0 34px #e0ab5e14, 0 14px 40px #000c;
     font: 400 .93rem/1.42 "EB Garamond", serif; color: #cbbfa9; text-align: left;
