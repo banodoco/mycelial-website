@@ -168,6 +168,7 @@
   let speed = 1, boost = 0, glide = 0, since = 9, roll = 0, camX = 0, camY = 0, steerX = 0, steerY = 0, leadX = 0, leadY = 0, settled = 1;
   // Arriving from slide 1 the vanishing point starts at the collage, holds, then glides home.
   let shift = { x: 0, y: 0, age: 9 };
+  let resting = false, restAt = null;
   let pointer = null, touched = false, hot = null, front = null, f = 0, shown = null, keyHover = null, keyLock = null, lastLit;
   let featured = null, held = 0, live = 0, clock = 0, running = false, last = 0, frameRaf = 0, holdFor = 0;
   const tags = labels.map((el) => ({ el, item: null }));
@@ -295,7 +296,8 @@
     // in two stages (no lurch when the mouse first moves), and just after an
     // arrival it wakes gradually, so the flight settles before the hand steers.
     settled = Math.min(1, settled + dt / 2.5);
-    if (pointer) { steerX = (pointer.x / w - 0.5) * 0.9; steerY = (pointer.y / h - 0.5) * 0.6; }
+    // Below the legend (on the way to the footer) the hand steers no lower than the legend's line.
+    if (pointer) { steerX = (pointer.x / w - 0.5) * 0.9; steerY = ((raised ? pointer.y : Math.min(pointer.y, ceil)) / h - 0.5) * 0.6; }
     const sr = 3.2 * settled * settled * (3 - 2 * settled);
     leadX += (steerX - leadX) * ease(sr); camX += (leadX - camX) * ease(sr);
     leadY += (steerY - leadY) * ease(sr); camY += (leadY - camY) * ease(sr);
@@ -655,6 +657,10 @@
       return;
     }
     if (running) return;
+    // Each visit sets off straight ahead: steering left from an earlier visit, or a mouse resting where it clicked
+    // (often low, by the footer's arrows), would tip the flight down and rush the lower field at us.
+    steerX = steerY = leadX = leadY = camX = camY = 0;
+    pointer = null; resting = true; restAt = null;
     const fromCollage = collageSlide && !collageSlide.classList.contains('on') && records.some((r) => r.target === collageSlide);
     if (fromCollage && !motionOff() && !window.deckNav?.rest) dissolve();
     start(!window.deckNav?.rest);
@@ -676,7 +682,16 @@
     const r = stage.getBoundingClientRect();
     pointer = { x: e.clientX - r.left, y: e.clientY - r.top };
   };
-  slide.addEventListener('pointermove', (e) => { if (e.pointerType !== 'touch') { locate(e); if (motionOff()) scheduleFrame(); } });
+  // A mouse at rest when the slide arrives steers nothing until it moves on from there.
+  slide.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch') return;
+    if (resting) {
+      if (!restAt) { restAt = { x: e.clientX, y: e.clientY }; return; }
+      if (Math.hypot(e.clientX - restAt.x, e.clientY - restAt.y) < 30) return;
+      resting = false;
+    }
+    locate(e); if (motionOff()) scheduleFrame();
+  });
   slide.addEventListener('pointerdown', (e) => { touched = e.pointerType === 'touch'; if (touched) { locate(e); if (motionOff()) scheduleFrame(); } });
   slide.addEventListener('pointerleave', () => { pointer = null; if (motionOff()) scheduleFrame(); });
   // Scroll to fly: down goes forward, up goes back, with momentum. If the
