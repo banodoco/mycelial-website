@@ -364,6 +364,13 @@
     // On its side the halo is held by the height, with room either side: it opens wider, so the icons below the
     // words stand clear of them.
     if (short) { const r = stages[2].ring; r[2] = Math.max(r[2], Math.min(r[2] * 1.2, W / 2 - Math.max(24, Math.min(64, W * 0.045)) - iconR() - 6)); }
+    // The closing slide frames the whole text group, with equal room above and below the six icons.
+    if (!tall && !short) {
+      const r = stages[2].ring;
+      r[0] = W / 2; r[1] = H * 0.475;
+      r[2] = Math.min(W * 0.405, W / 2 - iconR() - 32);
+      r[3] = Math.min(H * 0.38, r[1] - iconR() - 24, H - 72 - iconR() - r[1]);
+    }
     // Cards that sit on the ring (the icons) take their places on it now its size is known.
     stages.forEach((st, s) => st.cards.forEach((c, i) => {
       if (R.cards[i].at[s] !== 'ring') return;

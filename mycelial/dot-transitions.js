@@ -882,8 +882,8 @@
   const crown = (at, now, glow) => {
     if (!now && !glow && mark && mark.crown && mark.folding === undefined) return; // already growing out of the glow
     const c = crownAt() || { x: at.x, y: at.y, size: 160 };
-    const upright = innerWidth <= 760 && innerHeight > innerWidth; // an upright phone's words run across more of it: a little fainter there
-    mark = { x: c.x, y: c.y, t: now ? 2 : -0.2, size: c.size, shrink: 0, trail: null, shed: 0, crown: true, faint: upright ? 0.22 : 0.3 };
+    const upright = innerWidth <= 760 && innerHeight > innerWidth; // preserve the phone treatment; keep the desktop crown behind the words
+    mark = { x: c.x, y: c.y, t: now ? 2 : -0.2, size: c.size, shrink: 0, trail: null, shed: 0, crown: true, faint: upright ? 0.22 : 0.14 };
     zones.push(Object.assign(disc(mark.x, mark.y, c.size * 0.42), { crown: true, a: now ? 1 : 0 }));
     markCv.getAnimations().forEach((a) => a.cancel());
     markCv.style.transform = markCv.style.opacity = markCv.style.transition = '';

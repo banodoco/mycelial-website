@@ -958,6 +958,16 @@
   .fw-ask-card svg text { font: italic 400 11.5px "EB Garamond", serif; fill: #a39684; letter-spacing: .02em; }
   .fw-ask-card svg .big { font: italic 500 17px "Cormorant Garamond", serif; fill: #f0c67e; letter-spacing: 0; }
   .fw-ask-card svg .tag { font: normal 400 8px "DM Sans", system-ui, sans-serif; letter-spacing: .26em; fill: #8f826f; }
+  /* Centre the complete closing thought, including its questions, within the halo. */
+  @media (min-width: 761px) and (min-height: 501px) {
+    html[data-ver="f"] .fw-raise { padding-bottom: 5vh; }
+    html[data-ver="f"] .fw-raise > .num { margin-bottom: clamp(1rem, 2.8vh, 1.7rem); }
+    html[data-ver="f"] .fw-raise > .split { row-gap: clamp(.85rem, 2.4vh, 1.5rem); }
+    html[data-ver="f"] .fw-raise h1 { max-width: 20em; font-size: clamp(2rem, min(3.2vw, 6.4vh), 3.4rem); line-height: 1.08; }
+    html[data-ver="f"] .fw-raise h1 em { display: block; }
+    .fw-raise .fw-sub { margin-top: clamp(.85rem, 2.3vh, 1.4rem); max-width: 31em; line-height: 1.4; }
+    .fw-raise .fw-asks { position: relative; left: auto; top: auto; translate: none; margin-top: 0; }
+  }
   @media (prefers-reduced-motion: reduce) { .fw-asks, .fw-ask-card, .fw-ask-q, .fw-ask-q::before { transition: none !important; } }
   @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px) {
     html[data-ver="f"] .fw-host { padding-bottom: 84px; }
