@@ -717,6 +717,30 @@
     return p;
   };
 
+  // Astrid's first mention (.dt-flash, on slide 5) warms to her own orange as the reveal reaches it, then cools back
+  // to the headline's ink. It starts from the mask's own progress, so it peaks as the word comes in on any turn and
+  // at any pace; as an animation on the slide, the deck hurries it with the rest and finishes it when motion goes off.
+  const ORANGE = '255,122,46'; // her mink's coat (assets/astrid/mink-profile.png; mink.js, COLORS.o)
+  const FLASH_UP = 380, FLASH_DOWN = 1050;
+  const flashes = (el, at, far, duration) => [...el.querySelectorAll('.dt-flash')].map((w) => {
+    const b = w.getBoundingClientRect();
+    // The peak: the mask's soft edge has just passed the word's middle (seep() solved for that radius).
+    const d = Math.hypot(b.left + b.width / 2 - at.x, b.top + b.height / 2 - at.y);
+    const peak = (duration * Math.acos(1 - 2 * clamp((d + SOFT) / far))) / Math.PI;
+    const up = Math.min(FLASH_UP, peak);
+    return { w, up, from: seep((peak - up) / duration), lit: false };
+  });
+  const flash = ({ w, up }) => {
+    if (still) return; // motion switched off mid-reveal: the word just rests in its ink
+    w.getAnimations().forEach((a) => a.cancel()); // a flash from an earlier visit, so the ink is read clean
+    const ink = getComputedStyle(w).color, glow = (a) => `0 0 .25em rgba(${ORANGE},${0.45 * a}), 0 0 .8em rgba(${ORANGE},${0.2 * a})`;
+    w.animate([
+      { color: ink, textShadow: glow(0), easing: 'cubic-bezier(.35,0,.25,1)' },
+      { offset: up / (up + FLASH_DOWN), color: `rgb(${ORANGE})`, textShadow: glow(1), easing: 'cubic-bezier(.45,0,.3,1)' },
+      { color: ink, textShadow: glow(0) },
+    ], { duration: up + FLASH_DOWN });
+  };
+
   // Threads run from the node down into the text, and the words appear where
   // they reach. The circle's edge keeps pace with the threads' tips.
   const reveal = (s, at, delay = 0) => {
@@ -733,7 +757,11 @@
           hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 1.1, rest: 0, smooth: true, delay: delay / 1000, duration: (duration / 1000) * clamp(d / (far - SOFT), 0.3, 1) });
         }
       }
-      const run = tween(duration, seep, (k) => mask(el, at, k * far), delay);
+      const lit = flashes(el, at, far, duration);
+      const run = tween(duration, seep, (k) => {
+        mask(el, at, k * far);
+        for (const f of lit) if (!f.lit && k >= f.from) { f.lit = true; flash(f); }
+      }, delay);
       run.then((ok) => { if (ok) unmask(el); });
       tw.push(run);
     }
