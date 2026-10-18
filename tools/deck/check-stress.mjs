@@ -196,8 +196,7 @@ async function desktop(browser) {
   });
   await run(browser, 'C', 'Reverse 300 ms into every adjacent forward transition', async ({ page, check }) => {
     for (let n = 1; n <= 10; n++) {
-      // Slide 1 is already showing: a same-slide #N link leaves its new entry without deckSlide (reported, not asserted here).
-      if (n > 1) await hash(page, n);
+      await hash(page, n);
       await check(`start ${n}`, n);
       await page.keyboard.press('ArrowRight'); await sleep(300);
       await page.keyboard.press('ArrowLeft'); await check(`${n}→${n + 1}→${n}`, n);
@@ -240,7 +239,13 @@ async function desktop(browser) {
     await hash(page, 7); await check('after #7 link', 7);
     const afterLink = await historyInfo(page);
     if (afterLink.length !== afterArrows.length + 1) rec.failures.push(`#7 link should add exactly one entry: ${afterArrows.length} -> ${afterLink.length}`);
-    // Back returns to the entry that was holding slide 4; Forward to the link's entry (7).
+    // Following the link to the slide already showing is consumed too, and its entry keeps the slide.
+    await hash(page, 7); await check('same-slide #7 link', 7);
+    // Back onto the same-slide entry and Forward again must land on 7 with matching state.
+    await page.goBack({ timeout: 15000 }); await check('Back onto same-slide #7 entry', 7);
+    await page.goForward({ timeout: 15000 }); await check('Forward onto same-slide #7 entry', 7);
+    // Two more Backs pass the first link's entry and reach the one that was holding slide 4; Forward returns to 7.
+    await page.goBack({ timeout: 15000 }); await check('Back to the first #7 entry', 7);
     await page.goBack({ timeout: 15000 }); rec.backURL = page.url();
     await check('after Back', 4);
     await page.goForward({ timeout: 15000 }); rec.forwardURL = page.url();
