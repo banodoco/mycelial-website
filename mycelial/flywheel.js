@@ -93,14 +93,14 @@
       full: { name: 'ADOS', line: 'ADOS events bring the community together in the real world. We gather our community with people from the extended creative world to look at art, eat nice food, and create things.',
         door: 'See events →', href: 'https://ados.events/',
         stage: '<span class="fw-ad"><img src="../assets/cards/ados/la-2025-thumb.jpg" alt=""><span><small>Los Angeles — 7 November 2025</small><b>ADOS</b></span></span>' } },
-    // ArtCompute: its own terminal stat band (artcompute.org's figures, verified 2026-08-17) and three grantees; its
+    // ArtCompute: its own terminal readout, the GPU hours granted (artcompute.org's figure, verified 2026-08-17), and three grantees; its
     // icon is the picture artcompute.org shows for itself (its share image, a frame of its background reel).
     { name: 'ArtCompute', line: 'ArtCompute gives micro-grants to those pushing open AI models, approved by AI.', href: 'https://artcompute.org/', crop: [0.5, 0.3, 0.6],
-      media: `<span class="fw-ac"><span class="fw-ac-stats"><span><b>11</b>grants</span><span><b class="g">473</b>GPU hours</span><span><b class="v">AUTO</b>approval</span></span><span class="fw-ac-l">latest grants</span><span class="fw-avs">${AV('persoon')}${AV('loreweavr')}${AV('ashmotv')}</span></span>`,
+      media: `<span class="fw-ac"><span class="fw-ac-stats"><span><b class="g">473</b>GPU hours</span></span><span class="fw-ac-l">latest grants</span><span class="fw-avs">${AV('persoon')}${AV('loreweavr')}${AV('ashmotv')}</span></span>`,
       face: '<span class="fw-face fw-face-ac"></span>',
       full: { name: 'ArtCompute', line: 'ArtCompute gives micro-grants to those pushing open AI models, approved by AI. It is practical compute for people whose ambition has outrun their hardware.',
-        door: 'Request compute →', href: 'https://artcompute.org/',
-        stage: `<span class="fw-ac fw-ac-full"><span class="fw-ac-stats"><span><b>11</b>grants</span><span><b class="g">473</b>GPU hours</span><span><b class="v">AUTO</b>approval</span></span><span class="fw-ac-l">latest grants</span>${[['loreweavr', 'Loreweavr — Dual-LoRA Composition · 50h'], ['ashmotv', 'AshmoTV — Multi-angle IC-LoRA, LTX 2.3 · 50h'], ['persoon', 'Persoon — Obscura Remova IC-LoRA · 40h']].map(([a, t]) => `<span class="fw-ac-row">${AV(a)}<span>${t}</span><i>PAID</i></span>`).join('')}</span>` } },
+        door: 'Visit ArtCompute →', href: 'https://artcompute.org/',
+        stage: `<span class="fw-ac fw-ac-full"><span class="fw-ac-stats"><span><b class="g">473</b>GPU hours</span></span><span class="fw-ac-l">latest grants</span>${[['loreweavr', 'Loreweavr — Dual-LoRA Composition · 50h'], ['ashmotv', 'AshmoTV — Multi-angle IC-LoRA, LTX 2.3 · 50h'], ['persoon', 'Persoon — Obscura Remova IC-LoRA · 40h']].map(([a, t]) => `<span class="fw-ac-row">${AV(a)}<span>${t}</span><i>PAID</i></span>`).join('')}</span>` } },
     // 2RP: no link, as on the homepage (content.js): the publication is coming soon.
     { name: '2RP', line: '2RP is an art and tech publication that aims to highlight the best of the ecosystem.', soon: 'Coming soon', crop: [0.5, 0.45, 1],
       media: '<img src="../assets/cards/tworp/cover.jpg" alt="">',
