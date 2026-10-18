@@ -108,14 +108,44 @@
 
   // Fit the ring into .vis (inside its padding, above the label), wider than the space where a narrow screen lets the
   // side cards run off its edges.
-  let box = null, hole = null;
-  const HOLE = 0.08, HOLE_IN = 0.74; // what is left of a card under the words, and how far out that holds
-  // How much of the ring shows at a point in its box (the mask, for slide 2's motes).
-  const through = (x, y) => {
-    if (!hole) return 1;
-    const d = Math.hypot((x - hole.x) / hole.rx, (y - hole.y) / hole.ry);
-    return d >= 1 ? 1 : d <= HOLE_IN ? HOLE : HOLE + (1 - HOLE) * ((d - HOLE_IN) / (1 - HOLE_IN));
+  let box = null, holes = [];
+  const SHADE = 0.9; // how deep the shade under the words goes
+  // The words' lines, each one box however many inline pieces it has (its em, a link), let down by dy.
+  const lineBoxes = (dy) => {
+    const out = [];
+    for (const el of text.querySelectorAll('.num, h1, .body')) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      for (const r of range.getClientRects()) {
+        if (r.width < 2) continue;
+        const line = out.find((b) => Math.abs(b.mid - (r.top + r.bottom) / 2 - dy) < r.height * 0.4);
+        if (line) { line.left = Math.min(line.left, r.left); line.right = Math.max(line.right, r.right); continue; }
+        out.push({ left: r.left, right: r.right, top: r.top + dy, bottom: r.bottom + dy, h: r.height, mid: (r.top + r.bottom) / 2 + dy });
+      }
+    }
+    return out;
   };
+  // The mask: white where the ring shows, the lines' boxes in feathered dark.
+  const shadeOf = (w, h) => {
+    const rects = holes.map((b) => `<rect x="${b.x0.toFixed(1)}" y="${b.y0.toFixed(1)}" width="${(b.x1 - b.x0).toFixed(1)}" height="${(b.y1 - b.y0).toFixed(1)}" rx="${(b.f).toFixed(1)}"/>`).join('');
+    const f = Math.max(...holes.map((b) => b.f));
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(0)}" height="${h.toFixed(0)}"><defs>` +
+      `<filter id="f" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${(f * 0.55).toFixed(1)}"/></filter>` +
+      `<mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="${w.toFixed(0)}" height="${h.toFixed(0)}"><rect width="100%" height="100%" fill="#fff"/>` +
+      `<g filter="url(#f)" fill="#000" fill-opacity="${SHADE}">${rects}</g></mask></defs><rect width="100%" height="100%" fill="#fff" mask="url(#m)"/></svg>`;
+  };
+  // How much of the ring shows at a point in its box (the mask, for slide 2's motes): the same feathered boxes.
+  const through = (x, y) => {
+    let dark = 0;
+    for (const b of holes) {
+      const dx = Math.max(b.x0 - x, 0, x - b.x1), dy = Math.max(b.y0 - y, 0, y - b.y1), d = Math.hypot(dx, dy);
+      const inside = Math.min(x - b.x0, b.x1 - x, y - b.y0, b.y1 - y);
+      const e = inside > 0 ? 0.5 + 0.5 * clamp(inside / b.f) : 0.5 - 0.5 * clamp(d / b.f);
+      dark = Math.max(dark, e);
+    }
+    return 1 - SHADE * dark;
+  };
+  const chrome = document.querySelector('.chrome');
   const layout = () => {
     const cs = getComputedStyle(vis);
     const pad = ['Top', 'Right', 'Bottom', 'Left'].map((s) => parseFloat(cs[`padding${s}`]) || 0);
@@ -137,26 +167,34 @@
     // the front one (unscaled, down from the horizon).
     const crown = Math.min(...tiles.map((_, i) => see(...corner(stand(wrap(i * STEP)), 0.5, 0))[1]));
     const heart = (crown + G.H * G.front) / 2;
-    const vb = vis.getBoundingClientRect(), tb = text.getBoundingClientRect();
-    // Beside the words (a wide screen), the ring's middle stands level with the middle of the words, as large as the
-    // space either side of that line allows. Under them (a tall screen, where the CSS sets --ring-under), the ring
-    // and its label take the space below the words, a little below its middle.
-    const under2 = cs.getPropertyValue('--ring-under').trim() === '1';
-    const floorY = under2 ? Math.max(pad[0], tb.bottom - vb.top + 20) : pad[0], foot = pad[0] + H - under;
-    const level = under2 ? 0 : clamp((tb.top + tb.bottom) / 2 - vb.top, floorY + 40, foot - 40);
-    G.k = Math.max(1, Math.min((W / cover) / rw, (foot - floorY) / rh));
-    if (level) G.k = Math.max(1, Math.min(G.k, (level - floorY) / (heart - r.y0), (foot - level) / (r.y1 - heart)));
+    // The words where the slide's padding alone puts them (the last layout may have let them down: see below).
+    const vb = vis.getBoundingClientRect(), shift = parseFloat(slide.style.getPropertyValue('--text-shift')) || 0;
+    const tr = text.getBoundingClientRect();
+    const tb = { left: tr.left, right: tr.right, top: tr.top - shift, bottom: tr.bottom - shift, width: tr.width, height: tr.height };
+    // Beside the words (a wide screen), the ring's middle stands level with the middle of the words. Under them (a
+    // tall screen, where the CSS sets --ring-under, or a window too narrow for the ring to stand beside the words at
+    // a good size), the ring and its label take the space below the words, a little below its middle.
+    const footer = chrome?.getBoundingClientRect().top ?? innerHeight, capH = label.offsetHeight, t0 = tb.top - vb.top;
+    const foot = pad[0] + H - under;
+    const words = { right: tb.right - vb.left, bottom: tb.bottom - vb.top + 10 };
+    // Beside the words the ring's left edge runs an eighth of its width in under their end (the cards there sink
+    // into shade behind the words, below), and the ring takes about four fifths of the height from the words' top
+    // margin to the footer, leaving the rest to share out over it and round its label.
+    const BLEED = 0.125, right = pad[3] + W, room = right - words.right;
+    const kBeside = Math.min(room / ((1 - BLEED) * rw), (foot - pad[0]) / rh, (0.78 * (footer - t0)) / rh);
+    const below = Math.max(pad[0], tb.bottom - vb.top + 20);
+    const kUnder = Math.min((vis.clientWidth - 2 * pad[1]) / (innerWidth > 760 ? 0.92 : cover) / rw, (foot - below) / rh);
+    const under2 = cs.getPropertyValue('--ring-under').trim() === '1' || kUnder > kBeside * 1.15;
+    root.classList.toggle('is-under', under2);
+    const floorY = under2 ? below : pad[0];
+    const level = under2 ? 0 : (tb.top + tb.bottom) / 2 - vb.top;
+    G.k = Math.max(1, under2 ? kUnder : kBeside);
     const frontTop = () => G.cy + G.k * (G.H - 1) * G.front; // in the ring's box
-    // Across, the ring is centred in the room right of the words; only where it is wider than that room does it run
-    // left, under the words' end.
-    const words = { right: tb.right - vb.left + 14, bottom: tb.bottom - vb.top + 10 };
-    const right = pad[3] + W, room = right - (under2 ? pad[3] : Math.max(pad[3], words.right + 18));
     let left, top;
     const place = () => {
       G.cx = -G.k * r.x0; G.cy = -G.k * r.y0;
       const wide = G.k * rw;
-      left = wide <= room ? right - room / 2 - wide / 2 : Math.max(pad[3] + W / 2 - wide / 2, right - wide);
-      if (under2) left = pad[3] + W / 2 - wide / 2;
+      left = under2 ? (vis.clientWidth - wide) / 2 : words.right - BLEED * wide;
       top = level ? level - G.cy - G.k * heart : floorY + Math.max(0, foot - floorY - G.k * rh) * 0.55;
     };
     place();
@@ -164,29 +202,50 @@
     // meet, the ring is drawn a little smaller.
     for (let n = 0; n < 24 && G.k > 1 && !under2; n++) {
       const x = left + G.cx - G.k * (W1 / 2) * G.front, y = top + frontTop();
-      if (!(x < words.right && y < words.bottom)) break;
+      if (!(x < words.right + 24 && y < words.bottom)) break;
       G.k *= 0.97;
       place();
     }
+    // Then the whole (words, ring and label) is let down to sit centred between the slide's top and the footer: as
+    // much room over the higher of ring and words as under the label, which stands two thirds of the way from the
+    // front card's foot to the footer. The cards keep at least the words' top margin, and the words' label stays in
+    // the top fifth of the screen.
+    // (.vis covers the slide beside the words, and the slide's top is the screen's: the footer and the top fifth
+    // are taken from the screen, as the slide may still be sliding in.) Where the two limits meet, the ring keeps
+    // its margin and the words their place, and their middles part by a little.
+    let drop = 0, capTop = top + G.k * rh + 6;
+    if (!under2) {
+      const sole = top + G.cy + G.k * G.H * G.front;
+      const even = 0.75 * ((footer - sole) / 3 - capH / 2 - (Math.min(top, t0) - t0));
+      const ringDrop = Math.max(0, even, t0 - top);
+      drop = clamp(even, 0, Math.max(0, innerHeight * 0.2 - t0));
+      top += ringDrop;
+      // (never so far under a short ring that it loses it)
+      const base = top + G.k * rh + 4;
+      capTop = clamp(sole + ringDrop + (footer - sole - ringDrop) * (2 / 3) - capH / 2, base, Math.max(base, Math.min(footer - capH - 10, base + innerHeight * 0.07)));
+    }
+    slide.style.setProperty('--text-shift', `${drop.toFixed(1)}px`);
     box = { left, top, width: G.k * rw, height: G.k * rh };
-    // Beside the words, the cards passing under them fade into the ground (a soft hole in the ring's mask round the
-    // text), so the words stay clear and the network behind them shows as before.
-    hole = under2 ? null : {
-      x: (tb.left + tb.right) / 2 - vb.left - left, y: (tb.top + tb.bottom) / 2 - vb.top - top,
-      rx: tb.width / 2 + 90, ry: tb.height / 2 + 56,
-    };
-    const m = hole ? `radial-gradient(${hole.rx.toFixed(1)}px ${hole.ry.toFixed(1)}px at ${hole.x.toFixed(1)}px ${hole.y.toFixed(1)}px, rgb(0 0 0 / ${HOLE}) ${HOLE_IN * 100}%, #000)` : '';
+    // Beside the words, whatever of a card stands behind a line of them goes into shade: the ring's mask is cut
+    // from the words' own lines, feathered, so the words stay crisp over the cards and the rest of each card keeps
+    // its light (and the network behind the words, which the mask never touches, shows as before).
+    holes = under2 ? [] : lineBoxes(drop - shift).map((b) => ({
+      x0: b.left - vb.left - left - b.h * 0.35, x1: b.right - vb.left - left + b.h * 0.35,
+      y0: b.top - vb.top - top - b.h * 0.12, y1: b.bottom - vb.top - top + b.h * 0.12, f: Math.max(6, b.h * 0.3),
+    }));
+    const m = holes.length ? `url("data:image/svg+xml,${encodeURIComponent(shadeOf(G.k * rw, G.k * rh))}")` : '';
     root.style.webkitMaskImage = root.style.maskImage = m;
+    root.style.webkitMaskSize = root.style.maskSize = '100% 100%';
     Object.assign(root.style, { left: `${left.toFixed(1)}px`, top: `${top.toFixed(1)}px`, width: `${box.width.toFixed(1)}px`, height: `${box.height.toFixed(1)}px` });
     const cw = W1 * G.k * G.front;
     tiles.forEach((t) => { t.style.width = `${cw.toFixed(1)}px`; t.style.height = `${(cw / CARD).toFixed(1)}px`; });
     root.style.setProperty('--card', `${cw.toFixed(1)}px`); // the names are set to the cards' size
     root.classList.toggle('is-small', cw < 200); // a narrow card names its film on two short lines
     // The label: centred under the ring, as wide as the room either side of its middle allows.
-    const mid = left + box.width / 2, half = Math.min(mid - pad[3] + 16, vis.clientWidth - mid - 8, 300);
+    const mid = left + box.width / 2, half = Math.min(mid - (under2 ? 0 : pad[3]) + 16, vis.clientWidth - mid - 8, 300);
     vis.style.setProperty('--ring-x', `${mid.toFixed(1)}px`);
     vis.style.setProperty('--ring-half', `${Math.max(120, half).toFixed(1)}px`);
-    vis.style.setProperty('--ring-foot', `${(top + box.height + 6).toFixed(1)}px`);
+    vis.style.setProperty('--ring-foot', `${capTop.toFixed(1)}px`);
     floor.setAttribute('viewBox', `0 0 ${box.width.toFixed(1)} ${box.height.toFixed(1)}`);
     let d = '';
     for (let j = 0; j <= 96; j++) {
@@ -605,7 +664,10 @@
   });
   // Fonts landing change the caption's height; the first layout may come before .vis has a size.
   if (document.fonts) document.fonts.ready.then(relayout);
-  new ResizeObserver(relayout).observe(vis);
+  // The words change size as their fonts land and as the deck moves the slide's label into them.
+  const watch = new ResizeObserver(relayout);
+  watch.observe(vis);
+  watch.observe(text);
   relayout();
   syncMotion();
 })();
