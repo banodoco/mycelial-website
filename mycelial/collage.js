@@ -36,7 +36,8 @@
     const name = document.createElement('span');
     name.className = 'vc-name';
     name.setAttribute('aria-hidden', 'true'); // the button already says it
-    name.append(Object.assign(document.createElement('b'), { textContent: t.dataset.title }), ` · ${t.dataset.artist}`);
+    name.append(Object.assign(document.createElement('b'), { textContent: t.dataset.title }),
+      Object.assign(document.createElement('i'), { textContent: ' · ' }), Object.assign(document.createElement('span'), { textContent: t.dataset.artist }));
     t.appendChild(name);
   });
 
@@ -120,11 +121,11 @@
     const pad = ['Top', 'Right', 'Bottom', 'Left'].map((s) => parseFloat(cs[`padding${s}`]) || 0);
     const W = vis.clientWidth - pad[1] - pad[3], H = vis.clientHeight - pad[0] - pad[2];
     if (W <= 0 || H <= 0) return false;
-    // Seen well enough from above that the cards at the back show over the front one; the ring widens with the
-    // number of films, so each keeps a face to show.
+    // Seen well enough from above that the cards at the back show over the front one. The ring keeps its size
+    // however many films stand on it: more of them simply stand closer together.
     Object.assign(G, W < H * 0.9
-      ? { R: 1.0 + 0.07 * N, cam: 2.5, lift: 19 * DEG, yaw: 28 * DEG }
-      : { R: 1.2 + 0.07 * N, cam: 2.5, lift: 24 * DEG, yaw: 26 * DEG });
+      ? { R: 1.35, cam: 2.5, lift: 19 * DEG, yaw: 28 * DEG }
+      : { R: 1.55, cam: 2.5, lift: 24 * DEG, yaw: 26 * DEG });
     G.P = G.cam * G.R; // the camera's distance, in ring radii
     G.H = G.P * Math.tan(G.lift); // and its height, as the angle it looks down at the ring's middle
     G.front = G.P / (G.P - G.R);
@@ -180,6 +181,7 @@
     const cw = W1 * G.k * G.front;
     tiles.forEach((t) => { t.style.width = `${cw.toFixed(1)}px`; t.style.height = `${(cw / CARD).toFixed(1)}px`; });
     root.style.setProperty('--card', `${cw.toFixed(1)}px`); // the names are set to the cards' size
+    root.classList.toggle('is-small', cw < 200); // a narrow card names its film on two short lines
     // The label: centred under the ring, as wide as the room either side of its middle allows.
     const mid = left + box.width / 2, half = Math.min(mid - pad[3] + 16, vis.clientWidth - mid - 8, 300);
     vis.style.setProperty('--ring-x', `${mid.toFixed(1)}px`);
@@ -206,15 +208,17 @@
       t.style.transform = `matrix3d(${m.map((n) => +n.toFixed(6)).join(',')})`;
       // Only the front card is fully alive; the rest darken and pale with distance round the ring, as if in haze, and
       // only the front one's name can be read.
-      const near = (1 + Math.cos(a)) / 2, shade = 0.17 + 0.83 * near ** 3.6, sat = 0.3 + 0.7 * near ** 2;
+      // By places from the front, so however many films there are, the next ones rest as dim as ever.
+      const q = (Math.abs(a) / STEP) ** 2, near = (1 + Math.cos(a)) / 2;
+      const shade = 0.17 + 0.83 * Math.exp(-1.55 * q), sat = 0.3 + 0.7 * Math.exp(-0.85 * q);
       t.style.setProperty('--veil', (1 - shade).toFixed(3));
-      t.style.setProperty('--name', (near ** 14).toFixed(3));
+      t.style.setProperty('--name', Math.exp(-5.5 * q).toFixed(3));
       t.style.filter = sat > 0.995 ? '' : `saturate(${sat.toFixed(3)})`;
       const [nx, ny] = see(G.R * FLOOR * Math.sin(a), 0, G.R * FLOOR * Math.cos(a));
       nodes[i].setAttribute('cx', (G.cx + G.k * nx).toFixed(1));
       nodes[i].setAttribute('cy', (G.cy + G.k * ny).toFixed(1));
       nodes[i].setAttribute('r', (1.6 + 1.2 * near).toFixed(2));
-      nodes[i].style.opacity = (0.18 + 0.82 * near ** 6).toFixed(3);
+      nodes[i].style.opacity = (0.18 + 0.82 * Math.exp(-2.6 * q)).toFixed(3);
       return { t, i, a, m, depth, shade, sat };
     });
     [...posed].sort((p, q) => p.depth - q.depth).forEach((p, z) => { p.t.style.zIndex = String(z + 1); });
