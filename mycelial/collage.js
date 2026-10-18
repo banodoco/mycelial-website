@@ -155,23 +155,28 @@
     return 1 - SHADE * dark;
   };
   const chrome = document.querySelector('.chrome');
-  let refit = false;
-  const fitWords = (span) => {
-    const st = slide.style, was = text.offsetHeight;
-    ['--sub-gap', '--sub-lh', '--sub-size'].forEach((k) => st.removeProperty(k));
-    let extra = span - text.offsetHeight;
-    if (extra > 2 && sub) {
-      const fs = parseFloat(getComputedStyle(sub).fontSize), lines = Math.max(1, Math.round(sub.offsetHeight / (fs * 1.55)));
-      const gap = Math.min(extra * 0.35, fs * 1.8);
+  // The subtitle's share of the ring's height (see layout): computed from its unfitted measure, taken once per layout
+  // before anything is fitted, so its own growth never feeds back into the layout; a change too small to see keeps
+  // the last fit, so a pixel's rounding never sets it rocking.
+  const FIT = ['--sub-gap', '--sub-lh', '--sub-size'];
+  let fitted = { gap: 0, lh: 0, size: 1 };
+  const capacity = (base, maxGrow) => base.fs * 1.8 + base.lines * base.fs * (1.55 * (maxGrow - 1) + 0.12 * maxGrow);
+  const fitWords = (target, base, maxGrow) => {
+    let gap = 0, lh = 0, size = 1, extra = target - base.h;
+    if (extra > 2 && base.lines) {
+      const { fs, lines } = base;
+      gap = Math.min(extra * 0.35, fs * 1.8);
       extra -= gap;
-      const grow = clamp(1 + extra / (lines * fs * 1.55), 1, 1.2);
-      extra -= (grow - 1) * lines * fs * 1.55;
-      const lh = clamp(extra / (lines * fs * grow), 0, 0.12);
-      st.setProperty('--sub-gap', `${gap.toFixed(1)}px`);
-      st.setProperty('--sub-lh', (1.55 + lh).toFixed(3));
-      st.setProperty('--sub-size', grow.toFixed(3));
+      size = clamp(1 + extra / (lines * fs * 1.55), 1, maxGrow);
+      extra -= (size - 1) * lines * fs * 1.55;
+      lh = clamp(extra / (lines * fs * size), 0, 0.12);
     }
-    return Math.abs(text.offsetHeight - was) > 1;
+    if (Math.abs(gap - fitted.gap) < 1.5 && Math.abs(size - fitted.size) < 0.006 && Math.abs(lh - fitted.lh) < 0.006) ({ gap, lh, size } = fitted);
+    fitted = { gap, lh, size };
+    if (!gap && !lh && size === 1) return;
+    slide.style.setProperty('--sub-gap', `${gap.toFixed(1)}px`);
+    slide.style.setProperty('--sub-lh', (1.55 + lh).toFixed(3));
+    slide.style.setProperty('--sub-size', size.toFixed(3));
   };
   const layout = () => {
     const cs = getComputedStyle(vis);
@@ -192,9 +197,13 @@
     const under = label.offsetHeight + 16;
     // How much of the ring's width must be on screen: on a phone held upright the side cards run off its edges.
     const cover = W < H * 0.9 ? 0.72 : W < H * 1.25 ? 0.88 : 1;
-    // The words where the slide's padding alone puts them (the last layout may have let them down: see below).
+    // The words as they stand unfitted, where the slide's padding alone puts them (the last layout may have let them
+    // down and fitted the subtitle: see below).
     const vb = vis.getBoundingClientRect(), shift = parseFloat(slide.style.getPropertyValue('--text-shift')) || 0;
-    const tr = text.getBoundingClientRect();
+    FIT.forEach((k) => slide.style.removeProperty(k));
+    const tr = text.getBoundingClientRect(), sr = sub?.getBoundingClientRect();
+    const fs = sub ? parseFloat(getComputedStyle(sub).fontSize) : 16;
+    const base = { h: tr.height, fs, lines: sub ? Math.max(1, Math.round(sub.offsetHeight / (fs * 1.55))) : 0, subLeft: sr ? sr.left - vb.left : 0, subW: sub ? sub.offsetWidth : 0 };
     const tb = { left: tr.left, right: tr.right, top: tr.top - shift, bottom: tr.bottom - shift, width: tr.width, height: tr.height };
     // Beside the words (a wide screen), the ring's middle stands level with the middle of the words. Under them (a
     // tall screen, where the CSS sets --ring-under, or a window too narrow for the ring to stand beside the words at
@@ -227,21 +236,29 @@
     const under2 = cssUnder || kUnder > kBeside * 1.15;
     root.classList.toggle('is-under', under2);
     const floorY = under2 ? below : pad[0];
-    const level = under2 ? 0 : (tb.top + tb.bottom) / 2 - vb.top;
     G.k = Math.max(1, under2 ? kUnder : kBeside);
     const frontTop = () => G.cy + G.k * (G.H - 1) * G.front; // in the ring's box
+    const frontLeft = () => left + G.cx - G.k * (W1 / 2) * G.front;
+    // Beside the ring the words span its height, the label level with the cards at the back and the subtitle's last
+    // line with the front card's foot: the subtitle takes the room (fitWords), in a little more space after the
+    // headline, a slightly larger size (its measure is in ems, so its lines break as before, and it never grows into
+    // the front card) and, last, a little looser leading. So the ring's middle stands level with the middle of the
+    // words as they will be once fitted.
+    const tall2 = () => G.k * (G.H * G.front - crown);
+    const maxGrow = () => (base.subW ? clamp((frontLeft() - 24 - base.subLeft) / base.subW, 1, 1.2) : 1);
+    const wordsH = () => Math.max(tb.height, Math.min(tall2(), tb.height + capacity(base, maxGrow())));
     let left, top;
     const place = () => {
       G.cx = -G.k * r.x0; G.cy = -G.k * r.y0;
       const wide = G.k * rw;
       left = under2 ? (vis.clientWidth - wide) / 2 : words.right - BLEED * wide + Math.max(0, edge - words.right - G.k * span) / 2;
-      top = level ? level - G.cy - G.k * heart : floorY + Math.max(0, foot - floorY - G.k * rh) * 0.55;
+      top = under2 ? floorY + Math.max(0, foot - floorY - G.k * rh) * 0.55 : tb.top - vb.top + wordsH() / 2 - G.cy - G.k * heart;
     };
     place();
     // The cards pass under the words only as they recede: the front card stays clear of them, so where they would
     // meet, the ring is drawn a little smaller.
     for (let n = 0; n < 24 && G.k > 1 && !under2; n++) {
-      const x = left + G.cx - G.k * (W1 / 2) * G.front, y = top + frontTop();
+      const x = frontLeft(), y = top + frontTop();
       if (!(x < words.right + 24 && y < words.bottom)) break;
       G.k *= 0.97;
       place();
@@ -265,14 +282,8 @@
       capTop = clamp(sole + ringDrop + (footer - sole - ringDrop) * (2 / 3) - capH / 2, base, Math.max(base, Math.min(footer - capH - 10, base + innerHeight * 0.07)));
     }
     slide.style.setProperty('--text-shift', `${drop.toFixed(1)}px`);
-    // Beside the ring the words span its height, the label level with the cards at the back and the subtitle's last
-    // line with the front card's foot: the subtitle takes the room, in a little more space after the headline, a
-    // slightly larger size (its measure is in ems, so its lines break as before) and, last, a little looser leading.
-    // Fitted, the ring is laid out again for the words' new edge.
-    if (!under2 && !refit) {
-      const span = G.k * (G.H * G.front - crown);
-      if (fitWords(span)) { refit = true; layout(); refit = false; return true; }
-    }
+    if (under2) fitted = { gap: 0, lh: 0, size: 1 };
+    else fitWords(tall2(), base, maxGrow());
     box = { left, top, width: G.k * rw, height: G.k * rh };
     // The ring's box reaches a little past the ring, so the mask on it (below) never clips the cards' shadows or the
     // front node under the front card's foot.
@@ -281,7 +292,7 @@
     // Beside the words, whatever of a card stands behind a line of them goes into shade: the ring's mask is cut
     // from the words' own lines, feathered, so the words stay crisp over the cards and the rest of each card keeps
     // its light (and the network behind the words, which the mask never touches, shows as before).
-    holes = under2 ? [] : lineBoxes(drop - shift).map((b) => ({
+    holes = under2 ? [] : lineBoxes(0).map((b) => ({ // as they now stand, let down and fitted
       x0: b.left - vb.left - left + M - b.h * 0.35, x1: b.right - vb.left - left + M + b.h * 0.35,
       y0: b.top - vb.top - top + M - b.h * 0.12, y1: b.bottom - vb.top - top + M + b.h * 0.12, f: Math.max(6, b.h * 0.3),
     }));
@@ -345,6 +356,7 @@
   // For slide 2: each card's quad on screen right now (a function from its own u, v to client px), how lit it is, and
   // how far round the ring it stands (0 the front, 1 the back).
   root.faces = () => {
+    if (stale) { stale = false; if (layout()) pose(); laid = sizes(); }
     if (!posed.length) return [];
     const r = root.getBoundingClientRect(), s = root.offsetWidth ? r.width / root.offsetWidth : 1;
     return posed.map((p) => ({
@@ -669,6 +681,7 @@
   const syncMotion = () => {
     // Coming on (not on the way back from slide 2, where its motes gather into the ring as it was): arrive.
     const on = slide.classList.contains('on');
+    if (on && stale) relayout(); // a change made while it was away
     if (on && !wasOn && !slide.classList.contains('vc-dissolve') && !opening()) { clearTimeout(parked); land(); wasOn = on; arrive(); sync(); return; }
     wasOn = on;
     if (active() && !slide.classList.contains('vc-dissolve')) {
@@ -893,7 +906,17 @@
   }, true);
   addEventListener('touchend', (e) => { if (open) e.stopPropagation(); }, true);
 
-  const relayout = () => { if (layout()) pose(); };
+  // Laid out only while slide 1 is on (or about to be taken apart or put back by slide 2, which asks for faces());
+  // a change while it is away waits for its return. The sizes it leaves behind are kept, so the observer below never
+  // answers a change the layout made itself.
+  let stale = false, laid = '';
+  const sizes = () => [vis.clientWidth, vis.clientHeight, text.offsetWidth, text.offsetHeight].map(Math.round);
+  const relayout = () => {
+    if (!slide.classList.contains('on') && laid) { stale = true; return; }
+    stale = false;
+    if (layout()) pose();
+    laid = sizes();
+  };
   window.deckOnResize(() => {
     relayout();
     if (!open) return;
@@ -905,8 +928,13 @@
   });
   // Fonts landing change the caption's height; the first layout may come before .vis has a size.
   if (document.fonts) document.fonts.ready.then(relayout);
-  // The words change size as their fonts land and as the deck moves the slide's label into them.
-  const watch = new ResizeObserver(relayout);
+  // The words change size as their fonts land and as the deck moves the slide's label into them; a change of a
+  // pixel or two (a rounding) is left alone.
+  const watch = new ResizeObserver(() => {
+    const now = sizes();
+    if (laid && now.every((n, i) => Math.abs(n - laid[i]) <= 2)) return;
+    relayout();
+  });
   watch.observe(vis);
   watch.observe(text);
   relayout();
