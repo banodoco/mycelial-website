@@ -427,7 +427,8 @@
       if (featured) fill(tags[0].el, featured, false);
       tags[0].item = featured;
     }
-    const quiet = !hot && !front && !motes.length; // no names while the films come apart
+    // Let the first name surface just after the initial dissolve, while its remaining motes drift away.
+    const quiet = !hot && !front && (!motes.length || since >= 1.1);
     const liveTarget = quiet && featured ? 1 : 0;
     live = motionOff() ? liveTarget : live + (liveTarget - live) * ease(3);
     tags.forEach((tag, i) => {

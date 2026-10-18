@@ -1892,9 +1892,11 @@
     count.textContent = `${i + 1} / ${slides.length}`;
     prevBtn.disabled = i === 0; nextBtn.disabled = i === slides.length - 1;
     fill.style.width = `${((i + 1) / slides.length) * 100}%`;
-    const url = `${location.pathname}${location.search}#${i + 1}`;
-    if (historyMode === 'replace') history.replaceState({ deckSlide: i + 1 }, '', url);
-    else if (historyMode === 'push') history.pushState({ deckSlide: i + 1 }, '', url);
+    // Keep slide position in the current history entry, without changing the share URL or adding Back-button stops.
+    const url = `${location.pathname}${location.search}`;
+    if (historyMode !== 'none' || location.hash || history.state?.deckSlide !== i + 1) {
+      history.replaceState({ ...history.state, deckSlide: i + 1 }, '', url);
+    }
     if (!reduced) turn.ceiling = window.deckLater(() => {
       if (turn?.to === to) { turn.network = true; turn.entry = true; finishTurn(); }
     }, ceilingMs);
@@ -1971,7 +1973,11 @@
     if (!interactive && Math.abs(dx) > 40 && Math.abs(dx) > 1.5 * Math.abs(dy)) step(dx < 0 ? 1 : -1);
   });
 
-  const fromHash = (mode = 'none') => go((parseInt(location.hash.slice(1), 10) || 1) - 1, mode);
+  const fromHash = () => {
+    go((parseInt(location.hash.slice(1), 10) || history.state?.deckSlide || 1) - 1, 'replace');
+    // Consume old deep links even if they already point at the selected slide.
+    if (location.hash) history.replaceState(history.state, '', `${location.pathname}${location.search}`);
+  };
   addEventListener('popstate', () => { if (ov.classList.contains('on')) toggleOv(false); fromHash(); });
   addEventListener('hashchange', fromHash);
   // One fetch and one object URL serve every video element that reuses a file.
