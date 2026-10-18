@@ -917,28 +917,44 @@
   /* Slide 11: three questions under the words (who, the money, the goal). Each opens a small card of its detail above
      it while hovered or focused (tapped, on a touch screen), one at a time; the card stays open while the pointer is on
      it. They share the final slide's text reveal; with animations off they are simply there. On desktop the questions
-     belong to the centred text group; the compact phone list keeps its position beneath the words. */
+     belong to the centred text group; the compact phone list keeps its position beneath the words.
+     They are tabs, not more prose: one hairline pill in the deck's UI face (the footer's), each with a plus, and the
+     open one lit and hung from its card by a thread, so they read as the way into more. */
   html[data-ver="f"] .fw-raise > .split { position: relative; }
-  .fw-asks { position: absolute; left: 50%; top: 100%; z-index: 2; display: flex; justify-content: center; gap: clamp(1.5rem, 2.6vw, 2.6rem);
+  .fw-asks { position: absolute; left: 50%; top: 100%; z-index: 2; display: flex; justify-content: center;
     margin-top: clamp(1.4rem, 3.4vh, 2.2rem); translate: -50% 0; white-space: nowrap;
+    border: 1px solid #f0c87740; border-radius: 999px; background: #120e0ac2; box-shadow: 0 0 28px #e0ab5e12;
     opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s linear .3s; }
   .slide.on[data-settled] .fw-asks, html.deck-motion-off .slide.on .fw-asks { opacity: 1; visibility: visible; transition: opacity 1.1s ease .45s, visibility 0s linear .45s; }
   .slide.fw-raise.on .fw-asks { opacity: 1; visibility: visible; transition: none; } /* revealed with the complete text block */
   .slide.fw-raise.dt-entering .fw-asks { opacity: 0; visibility: hidden; } /* wait for that shared reveal to begin */
   .fw-ask { position: relative; }
-  .fw-ask-q { all: unset; position: relative; display: inline-flex; align-items: center; gap: .55em; padding: .3em 0; cursor: pointer;
-    font: italic 400 clamp(1rem, 1.2vw, 1.18rem)/1.2 "Cormorant Garamond", serif; letter-spacing: .02em; color: var(--soft); transition: color .3s ease; }
-  .fw-ask-q::before { content: ""; flex: none; width: 5px; height: 5px; border-radius: 50%; background: #e0ab5e; opacity: .7;
-    transition: opacity .3s ease, background-color .3s ease, box-shadow .3s ease; }
-  .fw-ask-q::after { content: ""; position: absolute; inset: -8px -10px; } /* a comfortable target */
-  .fw-ask-q:focus-visible, .fw-ask.is-open .fw-ask-q { color: #f0c67e; }
-  .fw-ask-q:focus-visible::before, .fw-ask.is-open .fw-ask-q::before { opacity: 1; background: #ffd991; box-shadow: 0 0 9px 1px #ffd99166; }
-  @media (hover: hover) { .fw-ask-q:hover { color: #f0c67e; } .fw-ask-q:hover::before { opacity: 1; background: #ffd991; box-shadow: 0 0 9px 1px #ffd99166; } }
-  .fw-ask-q:focus-visible { outline: 1px solid #f0c67e80; outline-offset: 6px; border-radius: 3px; }
+  .fw-ask + .fw-ask { border-left: 1px solid #f0c87726; }
+  .fw-ask-q { all: unset; position: relative; display: flex; align-items: center; gap: .9em; padding: 1.15em 1.35em 1.1em 1.45em; cursor: pointer;
+    font: 500 clamp(.66rem, .76vw, .72rem)/1 "DM Sans", system-ui, sans-serif; letter-spacing: .2em; text-transform: uppercase; color: #c8b591;
+    transition: color .3s ease, background-color .3s ease, box-shadow .3s ease; }
+  .fw-ask:first-child .fw-ask-q { padding-left: 1.75em; border-radius: 999px 0 0 999px; }
+  .fw-ask:last-child .fw-ask-q { padding-right: 1.6em; border-radius: 0 999px 999px 0; }
+  /* The plus, drawn in hairlines; open, it closes to a minus. */
+  .fw-ask-q::before { content: ""; order: 1; flex: none; width: 7px; height: 7px; opacity: .6;
+    background: linear-gradient(currentColor, currentColor) 50% 50% / 100% 1px no-repeat, linear-gradient(currentColor, currentColor) 50% 50% / 1px 100% no-repeat;
+    transition: opacity .3s ease, background-size .3s ease; }
+  .fw-ask-q::after { content: ""; position: absolute; inset: -6px 0; } /* a comfortable target, without reaching into the next tab */
+  .fw-ask-q:focus-visible, .fw-ask.is-open .fw-ask-q { color: #f6d79d; }
+  .fw-ask-q:focus-visible::before, .fw-ask.is-open .fw-ask-q::before { opacity: 1; }
+  .fw-ask.is-open .fw-ask-q { background: #f0c67e14; box-shadow: inset 0 1px 0 #f0c67e99; }
+  .fw-ask.is-down.is-open .fw-ask-q { box-shadow: inset 0 -1px 0 #f0c67e99; }
+  .fw-ask.is-open .fw-ask-q::before { background-size: 100% 1px, 1px 0; }
+  @media (hover: hover) { .fw-ask-q:hover { color: #f6d79d; background-color: #f0c67e0d; } .fw-ask-q:hover::before { opacity: 1; } }
+  .fw-ask-q:focus-visible { outline: 1px solid #f0c67e99; outline-offset: -4px; }
   /* While a card is open the words step back, so its detail reads cleanly over them (only at rest on the slide, so the
      turns' own reveal and gather are untouched). */
   html[data-ver="f"] .fw-raise.on[data-settled] > .split > :first-child { transition: opacity .35s ease; }
   html[data-ver="f"] .fw-raise.on:has(.fw-ask.is-open) > .split > :first-child { opacity: .2; }
+  /* The halo's icons pass under an open card too, where a flattened halo (a phone on its side) puts them in its way;
+     they need no clicks meanwhile (a tap outside only closes the card), and come back up once it has faded. */
+  html[data-ver="f"] .fw-cards { transition: opacity .5s ease, z-index 0s linear .2s; }
+  html[data-ver="f"]:has(.fw-raise.on .fw-ask.is-open) .fw-cards { z-index: -1; transition: opacity .5s ease, z-index 0s; }
   .fw-ask-card { position: absolute; left: 50%; bottom: calc(100% + 14px); box-sizing: border-box; width: 22rem; padding: 1rem 1.1rem 1.05rem;
     translate: calc(-50% + var(--shift, 0px)) 0; text-align: left; white-space: normal;
     background: #14100c; border: 1px solid #f0c8772e; border-radius: 7px; box-shadow: 0 0 34px #e0ab5e14, 0 14px 40px #000c;
@@ -953,6 +969,10 @@
   /* The pointer's way between the question and its card: nothing to fall through on the way. */
   .fw-ask-card::before { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 16px; }
   .fw-ask.is-down .fw-ask-card::before { top: auto; bottom: 100%; }
+  /* The thread the card hangs from, down to its tab's middle (--shift undoes the card's own nudge on screen). */
+  .fw-ask-card::after { content: ""; position: absolute; left: calc(50% - var(--shift, 0px)); top: 100%; width: 1px; height: 15px; translate: -50% 0;
+    background: linear-gradient(#f0c87759, #f0c67e); pointer-events: none; }
+  .fw-ask.is-down .fw-ask-card::after { top: auto; bottom: 100%; background: linear-gradient(#f0c67e, #f0c87759); }
   .fw-ask-card p { margin: 0; text-wrap: pretty; }
   .fw-ask-card a { position: relative; color: #f0c67e; text-decoration: none; }
   .fw-ask-card a:focus-visible { color: #ffe3a8; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; outline: none; }
@@ -996,9 +1016,16 @@
     html[data-ver="f"] .fw-raise > .split { row-gap: .65rem; }
     html[data-ver="f"] .fw-raise > .split > :first-child > .num { margin-bottom: 2.1rem; } /* air between the mark and headline */
     .fw-raise .fw-asks { position: relative; left: auto; top: auto; translate: none; margin-top: 0; }
-    .fw-asks { flex-direction: column; align-items: stretch; gap: 0; } /* a short list: its dots in one column */
-    .fw-ask { text-align: center; } /* centred labels; full-width items keep their cards centred too */
-    .fw-ask-q { font-size: 1.02rem; padding: .26em 0; }
+    /* Upright, the pill is too wide: the same tabs stand as one short list, each a full-width row with its plus at the
+       end (full-width rows keep their cards centred too). */
+    .fw-asks { flex-direction: column; align-items: stretch; width: min(15.5rem, 100%); border-radius: 10px; }
+    .fw-ask + .fw-ask { border-left: 0; border-top: 1px solid #f0c87726; }
+    .fw-ask-q, .fw-ask:first-child .fw-ask-q, .fw-ask:last-child .fw-ask-q { box-sizing: border-box; width: 100%; justify-content: space-between;
+      padding: 1.25em 1.3em 1.2em 1.45em; font-size: .7rem; }
+    .fw-ask:first-child .fw-ask-q { border-radius: 9px 9px 0 0; }
+    .fw-ask:last-child .fw-ask-q { border-radius: 0 0 9px 9px; }
+    .fw-ask-q::after { inset: 0; }
+    .fw-ask.is-open .fw-ask-q, .fw-ask.is-down.is-open .fw-ask-q { box-shadow: none; } /* the card hangs from the list, not from its row */
     .fw-ask-card { width: min(22rem, calc(100vw - 32px)); font-size: .95rem; }
   }
 
@@ -1326,8 +1353,10 @@
     .fw-raise .fw-asks { position: relative; left: auto; top: auto; translate: none; margin-top: 0; }
     html[data-ver="f"] .fw-raise h1 { font-size: clamp(1.2rem, 5.8svh, 1.65rem); max-width: 20em; }
     .fw-sub { margin-top: .6rem; font-size: .92rem; line-height: 1.4; }
-    .fw-asks { margin-top: .7rem; gap: 1.3rem; }
-    .fw-ask-q { font-size: .92rem; padding: .15em 0; }
+    .fw-asks { margin-top: .5rem; }
+    /* The pill tightens to sit inside the flattened halo, clear of its icons. */
+    .fw-ask-q { gap: .7em; padding: .9em 1.05em .85em; font-size: .6rem; letter-spacing: .15em; }
+    .fw-ask:first-child .fw-ask-q { padding-left: 1.35em; } .fw-ask:last-child .fw-ask-q { padding-right: 1.25em; }
     .fw-ask-card { width: 21rem; padding: .75rem .9rem .8rem; font-size: .88rem; }
   }
   /* 6 on a short phone on its side: a card has only the height between the top and the footer (H - 88 px), so its
