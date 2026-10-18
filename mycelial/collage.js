@@ -295,7 +295,9 @@
       // By places from the front, so however many films there are, the next ones rest as dim as ever.
       const q = (Math.abs(a) / STEP) ** 2, near = (1 + Math.cos(a)) / 2;
       const shade = 0.17 + 0.83 * Math.exp(-1.55 * q), sat = 0.3 + 0.7 * Math.exp(-0.85 * q);
-      t.style.setProperty('--veil', (1 - shade).toFixed(3));
+      if (Math.abs(a) > STEP * 0.9 && !fades.some((d) => d.i === i)) dark[i] = 0; // a place away: its own dimming has it
+      const veil = Math.max(1 - shade, dark[i]);
+      t.style.setProperty('--veil', veil.toFixed(3));
       t.style.setProperty('--name', Math.exp(-5.5 * q).toFixed(3));
       t.style.filter = sat > 0.995 ? '' : `saturate(${sat.toFixed(3)})`;
       const [nx, ny] = see(G.R * FLOOR * Math.sin(a), 0, G.R * FLOOR * Math.cos(a));
@@ -303,7 +305,7 @@
       nodes[i].setAttribute('cy', (G.py + G.sigma * (G.cy + G.k * ny - G.py)).toFixed(1));
       nodes[i].setAttribute('r', (1.6 + 1.2 * near).toFixed(2));
       nodes[i].style.opacity = (0.18 + 0.82 * Math.exp(-2.6 * q)).toFixed(3);
-      return { t, i, a, m, depth, shade, sat };
+      return { t, i, a, m, depth, shade: 1 - veil, sat };
     });
     [...posed].sort((p, q) => p.depth - q.depth).forEach((p, z) => { p.t.style.zIndex = String(z + 1); });
     const f = frontOf(angle);
@@ -324,7 +326,14 @@
   };
 
   // ---- The front film plays --------------------------------------------------------------------------------------
-  const allowed = () => !still && !open && slide.classList.contains('on') && !document.hidden && !overviewOpen();
+  // The film at the front plays while slide 1 is on (with motion on). The relay pauses whenever the carousel is
+  // paused: frozen where it is under the player, in a hidden tab or under the overview; held, its card keeping its
+  // state, while a pointer or the keyboard is on the ring or the note is open.
+  const allowed = () => !still && slide.classList.contains('on');
+  const frozen = () => !!open || document.hidden || overviewOpen();
+  let focusIn = false;
+  const noteOpen = () => !!slide.querySelector('.vc-note.is-open');
+  const paused = () => hovering || focusIn || noteOpen() || frozen();
   const load = (tile) => {
     const v = tile.querySelector('video');
     if (v.firstElementChild) return;
@@ -333,13 +342,17 @@
     v.preload = 'auto';
     v.load(); // WebKit only starts on a <source> added later when told to
   };
-  // Playing only while it is the film at the front; back to its first frame (the still) once it has faded out.
+  // The film's poster, fetched only once a card is pointed at, pressed or focused: ahead of a click, never for
+  // every film that passes the front.
+  const prime = (tile) => { if (tile.dataset.film && !primed.has(tile)) primed.set(tile, Object.assign(new Image(), { src: posterOf(tile) })); };
+  // Each preview plays once, from its start, while its card is at the front, and stays on its last frame; back to
+  // its first frame (the still) once it has faded out.
   const preview = (tile, on) => {
     const v = tile.querySelector('video');
     if (on && allowed()) {
       load(tile);
-      v.play().catch(() => {});
-      if (tile.dataset.film && !primed.has(tile)) primed.set(tile, Object.assign(new Image(), { src: posterOf(tile) })); // ahead of a click
+      if (v.ended) v.currentTime = 0;
+      if (!frozen()) v.play().catch(() => {});
       return;
     }
     v.pause();
@@ -352,33 +365,79 @@
       setTimeout(() => { if (v.paused) v.currentTime = 0; }, 350);
     }, slide.classList.contains('on') ? 0 : 1000));
   };
-  tiles.forEach((tile) => {
+  // The relay follows the films: a preview plays through once at the front; ended, its card eases darker on the
+  // last frame while the play cue comes up over it, holds a moment, and the ring turns on (a preview that never
+  // starts gives way to the hold's own timer, so the ring never stalls). Turning away, the side's own dimming takes
+  // over from that darkness: pose keeps the deeper of the two.
+  const HOLD = 1400;
+  const left = (v) => ((v.duration || 4) - v.currentTime) * 1000 + HOLD + 1500; // until it has surely ended
+  const dark = tiles.map(() => 0);
+  let fades = [];
+  const darken = (i, to, T) => {
+    fades = fades.filter((f) => f.i !== i);
+    if (still) { dark[i] = to; pose(); return; }
+    fades.push({ i, from: dark[i], to, T, t0: performance.now() });
+    wake();
+  };
+  const stepFades = (t) => {
+    fades = fades.filter((f) => {
+      const s = clamp((t - f.t0) / f.T);
+      dark[f.i] = f.from + (f.to - f.from) * (0.5 - 0.5 * Math.cos(Math.PI * s));
+      return s < 1;
+    });
+  };
+  tiles.forEach((tile, i) => {
     const v = tile.querySelector('video');
-    v.addEventListener('playing', () => { clearTimeout(resting.get(tile)); tile.classList.add('is-live'); });
+    v.addEventListener('playing', () => {
+      clearTimeout(resting.get(tile));
+      tile.classList.add('is-live');
+      if (tile === playing && !turn && !paused()) rest(left(v));
+    });
+    v.addEventListener('ended', () => {
+      if (tile !== playing || turn) return;
+      darken(i, 0.5, 400);
+      if (!still) tile.classList.add('is-cue');
+      if (!paused()) rest(HOLD);
+    });
+    // Pointed at, pressed or focused, its poster is fetched.
+    tile.addEventListener('pointerenter', () => prime(tile));
+    tile.addEventListener('pointerdown', () => prime(tile));
+    tile.addEventListener('focus', () => prime(tile));
   });
   let playing = null;
   const opening = () => document.documentElement.classList.contains('dt-intro');
-  // The card nearest the front plays (handing over half way through a turn); its neighbours load ahead of their turn.
+  // The card nearest the front plays (handing over half way through a turn). Its preview is fetched as the turn
+  // that brings it sets off (see turnTo), one at a time, never its neighbours'.
   const sync = () => {
     const f = frontOf(angle);
     const want = allowed() && !opening() && !arrival ? tiles[f] : null;
     if (want === playing) return;
-    if (playing) preview(playing, false);
+    if (playing) { preview(playing, false); playing.classList.remove('is-cue'); }
     playing = want;
-    if (want) {
-      preview(want, true);
-      [1, -1].forEach((d) => load(tiles[(f + d + N) % N]));
-    }
+    if (want) { if (dark[f]) darken(f, 0, 300); preview(want, true); }
+  };
+  // Paused and unpaused: frozen, the front film stops where it is (and plays on after); held, the relay waits, and
+  // carries on from where it was once the pause ends.
+  let wasFrozen = false, wasHeld = false;
+  const syncPause = () => {
+    const v = playing?.querySelector('video'), f = frozen(), h = paused();
+    if (f !== wasFrozen) { wasFrozen = f; if (v) { if (f) v.pause(); else if (!v.ended && allowed()) v.play().catch(() => {}); } }
+    if (h === wasHeld) return;
+    wasHeld = h;
+    if (h) { clearTimeout(timer); timer = 0; if (turn && !turn.asked) settle(1100); return; }
+    if (!turn && !arrival && active()) rest(!v ? DWELL : v.ended ? HOLD : v.paused ? DWELL : left(v));
   };
 
   // ---- Turning ---------------------------------------------------------------------------------------------------
   // A turn eases out of rest (or out of whatever speed a hand left it with) and settles with no jolt at either end:
   // a quintic from (angle, speed) to (target, still). Times in ms, speeds in radians per ms.
   let turn = null, speed = 0, raf = 0, timer = 0, hovering = false, drag = null, press = null, pressing = false;
-  const DWELL = 6500, AUTO = 3400; // each film holds the front a good while; the ring turns on slowly
+  const DWELL = 6500, AUTO = 3400; // the hold's own timer, if a film never starts; the ring turns on slowly
   const goal = () => (turn ? turn.to : angle);
   const nearest = (a) => Math.round(a / STEP) * STEP;
   const turnTo = (to, T, v0 = 0, asked = true) => {
+    tiles.forEach((t) => t.classList.remove('is-cue'));
+    load(tiles[frontOf(to)]); // the film it brings round, fetched as it sets off
     if (still || T <= 0) { turn = null; angle = to; speed = 0; pose(); return; }
     turn = { from: angle, to, T, V: v0 * T, t0: performance.now(), asked };
     wake();
@@ -393,14 +452,15 @@
     const target = goal() + wrap(-i * STEP - goal());
     if (Math.abs(target - angle) < 1e-4) return;
     turnTo(target, 1100 + 650 * Math.min(2, Math.abs(target - angle) / STEP), turn ? speed : 0);
-    if (!hovering) rest(DWELL * 1.5); // asked for, it holds the front a little longer
+    if (!paused()) rest(DWELL * 1.5); // asked for: a give-up until its film starts, which then sets the pace
   };
   const active = () => slide.classList.contains('on') && !document.hidden && !overviewOpen();
-  const held = () => hovering || drag || open || arrival || slide.classList.contains('vc-dissolve') || opening();
+  const held = () => paused() || drag || arrival || slide.classList.contains('vc-dissolve') || opening();
   const wake = () => { if (!raf && active()) raf = requestAnimationFrame(frame); };
   const frame = (t) => {
     raf = 0;
     if (!active()) return;
+    if (fades.length) stepFades(t);
     if (arrival) stepArrival(t);
     else if (turn) {
       const s = clamp((t - turn.t0) / turn.T);
@@ -408,7 +468,7 @@
       if (s >= 1) { turn = null; angle = wrap(angle); if (!timer) rest(); }
     }
     pose();
-    if (turn || drag || arrival) raf = requestAnimationFrame(frame);
+    if (turn || drag || arrival || fades.length) raf = requestAnimationFrame(frame);
   };
 
   // ---- Arriving --------------------------------------------------------------------------------------------------
@@ -423,6 +483,7 @@
     if (still || !box || !active()) return;
     const to = nearest(goal());
     arrival = { t0: performance.now(), from: to + SWEEP, to };
+    load(tiles[frontOf(to)]);
     turn = null; speed = 0; angle = arrival.from;
     clearTimeout(timer); timer = 0;
     root.style.transition = 'none'; // the slide's own recede
@@ -476,13 +537,13 @@
   root.addEventListener('pointerenter', (e) => {
     if (e.pointerType !== 'mouse') return;
     hovering = true;
-    if (turn && !turn.asked) settle(1100);
+    syncPause();
   });
   root.addEventListener('pointerleave', (e) => {
     if (e.pointerType !== 'mouse') return;
     hovering = false;
     clearTimeout(intent);
-    if (!turn) rest();
+    syncPause();
   });
   root.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || open || arrival) return;
@@ -532,7 +593,7 @@
     const moved = angle + clamp(v * 320, -2.2 * STEP, 2.2 * STEP) - nearest(from);
     const to = nearest(from) + Math.sign(moved) * Math.min(2, Math.floor(Math.abs(moved) / STEP + 0.7)) * STEP;
     turnTo(to, 900 + 500 * Math.min(1.5, Math.abs(to - angle) / STEP), v);
-    if (!hovering) rest(DWELL * 1.5);
+    if (!paused()) rest(DWELL * 1.5);
   };
   root.addEventListener('pointerup', (e) => release(e, true));
   root.addEventListener('pointercancel', (e) => release(e, false));
@@ -564,6 +625,8 @@
     if (tile.dataset.film) show(tile);
     else window.open(tile.dataset.page, '_blank', 'noopener');
   });
+  root.addEventListener('focusin', () => { focusIn = true; syncPause(); });
+  root.addEventListener('focusout', (e) => { focusIn = root.contains(e.relatedTarget); syncPause(); });
   // Focus from the keyboard brings a film round (a press brings it on the click instead, so a drag can start).
   tiles.forEach((tile, i) => tile.addEventListener('focus', () => { if (!pressing && !open && !arrival) bring(i); }));
 
@@ -593,6 +656,7 @@
       if (arrival) { clearTimeout(parked); parked = setTimeout(() => { if (!active()) land(); }, 900); }
     }
     sync();
+    syncPause();
   };
   new MutationObserver(syncMotion).observe(slide, { attributes: true, attributeFilter: ['class'] });
   // The opening keeps the ring still; the first turn waits a full hold after the films appear.
@@ -637,6 +701,7 @@
       if (on) place(); else pinned = keyed = false;
       note.classList.toggle('is-open', on);
       mark.setAttribute('aria-expanded', String(on));
+      syncPause();
     };
     const later = () => { clearTimeout(shut); if (!pinned) shut = setTimeout(() => show(false), 260); };
     // A mouse resting on the mark opens it, and crossing to the card keeps it open; a click pins it open.
@@ -735,8 +800,7 @@
 
   const show = (tile) => {
     open = tile;
-    sync();
-    tiles.forEach((t) => preview(t, false));
+    syncPause();
     title.textContent = `${tile.dataset.title} — ${tile.dataset.artist}`;
     page.href = tile.dataset.page;
     at2 = fit();
@@ -775,8 +839,7 @@
     player = null;
     setTimeout(() => { gone?.remove(); if (!open) poster.removeAttribute('src'); }, 550);
     tile.focus({ preventScroll: true });
-    sync();
-    if (!hovering) rest();
+    syncPause();
   };
 
   // The prize's name under the ring links to its site; following it leaves the slide where it is.
