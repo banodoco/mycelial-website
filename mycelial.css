@@ -115,7 +115,8 @@ body, button, input, select, textarea { font-family: var(--mycelial-body); }
    of the supplied identity boards. The 3D organism remains the hero art. */
 .ui .hero {
   max-width: 57vw;
-  padding: 0 0 9vh 5.2vw;
+  /* Counterbalance the header above this flex region so the copy centres in the viewport. */
+  padding: 0 0 7rem 5.2vw;
 }
 .ui .hero h1 {
   font-family: var(--mycelial-display);
@@ -125,24 +126,6 @@ body, button, input, select, textarea { font-family: var(--mycelial-body); }
   letter-spacing: -.035em;
   margin-bottom: 1.7rem;
   text-shadow: none;
-}
-.ui .hero h1::after {
-  content: '';
-  display: block;
-  width: 32px;
-  height: 1px;
-  margin-top: 1.6rem;
-  background: #eeb665;
-  animation: fade-on var(--hero-entry-duration) ease 0.15s both;
-}
-@media (prefers-reduced-motion: no-preference) {
-  body.hero-entry-pending .ui .hero h1::after {
-    opacity: 0;
-    animation: none;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ui .hero h1::after { animation: none; }
 }
 .ui .hero h1 em {
   color: #f3bd7c;
@@ -234,7 +217,6 @@ body:has(.manifesto-static) .manifesto-static .sub { font-size: 17px; line-heigh
   .ui .hero { padding: 3.5vh 6vw 0; text-align: center; }
   .ui .hero h1 { font-size: clamp(2.65rem, 10.8vw, 4rem); line-height: .97; width: calc(100% + 6vw); margin: 0 -3vw 1.3rem; text-wrap: balance; }
   .ui .hero h1 .hl { display: inline; white-space: normal; }
-  .ui .hero h1::after { width: 32px; margin: 1.2rem auto 0; }
   .ui .hero .sub { max-width: 100%; font-size: 11px; line-height: 2; letter-spacing: .18em; margin: 0; }
   .j-h { font-size: clamp(2rem, 8vw, 2.8rem); }
   .j-sub { font-size: 11px; line-height: 1.9; letter-spacing: .16em; }
@@ -243,7 +225,6 @@ body:has(.manifesto-static) .manifesto-static .sub { font-size: 17px; line-heigh
 }
 @media (max-height: 700px) and (min-width: 1025px) {
   .ui .hero h1 { font-size: clamp(3rem, 5vw, 4.5rem); }
-  .ui .hero { padding-bottom: 5vh; }
 }
 @media (max-height: 740px) and (max-width: 600px) {
   .ui .hero { padding-top: 1vh; }
