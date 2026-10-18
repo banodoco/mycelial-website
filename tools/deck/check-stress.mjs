@@ -28,7 +28,9 @@ async function deadline(promise, label, ms = 30000) {
     })]);
   } finally { clearTimeout(timer); }
 }
+// An old-style #N deep link. The deck reads it, lands on slide N and removes it from the URL.
 const hash = (page, n) => page.evaluate(k => { location.hash = `#${k}`; }, n);
+const historyInfo = page => page.evaluate(() => ({ length: history.length, deckSlide: history.state?.deckSlide ?? null, hash: location.hash }));
 const burst = async (page, key, count = 10, interval = 150) => {
   for (let k = 0; k < count; k++) { await page.keyboard.press(key); await sleep(interval); }
 };
@@ -50,7 +52,7 @@ async function snapshot(page) {
         // Version F deliberately replaces these legacy body paragraphs with
         // its pictures. Explicit exemptions, never a blanket skip-hidden rule:
         // a hidden headline or gathered column must still fail the check.
-        if (node.parentElement.closest('.as-host .body, .st-host .body, .pa-host .body, .fl-host .body, .fw-host .body, .pa-host .e-note, .fw-host .e-note, .fw-host .cap')) continue;
+        if (node.parentElement.closest('.as-host .body, .st-host .body, .pa-host .body, .fl-host .body, .fw-host .body, .pa-host .e-note, .fw-host .e-note, .fw-host .cap, .fw-raise .num')) continue; // slide 11's .num is deliberately visibility:hidden (reserves the closing mark's place, cc73928)
         textNodes++;
         const label = node.textContent.trim().slice(0, 70);
         let opacity = 1;
@@ -102,7 +104,7 @@ async function snapshot(page) {
       }
     }
     const rect = active?.getBoundingClientRect();
-    return { hash: location.hash, slideCount: slides.length, onCount: ons.length,
+    return { hash: location.hash, deckSlide: history.state?.deckSlide ?? null, slideCount: slides.length, onCount: ons.length,
       onIndex: ons.length === 1 ? slides.indexOf(active) + 1 : null,
       visible: !!rect && rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0 &&
         rect.left < innerWidth && rect.top < innerHeight && !active.inert,
@@ -116,7 +118,9 @@ function problems(s, expected) {
   const failures = [];
   if (s.slideCount !== 11) failures.push(`expected 11 slides, found ${s.slideCount}`);
   if (s.onCount !== 1) failures.push(`expected one .slide.on, found ${s.onCount}`);
-  if (s.onIndex !== expected || s.hash !== `#${expected}`) failures.push(`expected #${expected}, got ${s.hash} / active ${s.onIndex}`);
+  if (s.onIndex !== expected) failures.push(`expected slide ${expected}, active ${s.onIndex}`);
+  if (s.deckSlide !== expected) failures.push(`expected history.state.deckSlide ${expected}, got ${s.deckSlide}`);
+  if (s.hash !== '') failures.push(`expected a clean URL, got hash ${s.hash}`);
   if (!s.visible || !s.textNodes || !s.heading) failures.push('blank or hidden narrative');
   if (s.introActive || s.overviewOpen) failures.push('intro or overview still covering the deck');
   return [...failures, ...s.textProblems, ...s.flightProblems];
@@ -192,7 +196,9 @@ async function desktop(browser) {
   });
   await run(browser, 'C', 'Reverse 300 ms into every adjacent forward transition', async ({ page, check }) => {
     for (let n = 1; n <= 10; n++) {
-      await hash(page, n); await check(`start ${n}`, n);
+      // Slide 1 is already showing: a same-slide #N link leaves its new entry without deckSlide (reported, not asserted here).
+      if (n > 1) await hash(page, n);
+      await check(`start ${n}`, n);
       await page.keyboard.press('ArrowRight'); await sleep(300);
       await page.keyboard.press('ArrowLeft'); await check(`${n}→${n + 1}→${n}`, n);
     }
@@ -224,15 +230,30 @@ async function desktop(browser) {
     });
     await check('final', 11);
   });
-  await run(browser, 'H', 'Browser Back and Forward restore the last landing', async ({ page, check, rec }) => {
+  await run(browser, 'H', 'Slide position lives in history.state: arrows add no Back stops; #N links are consumed', async ({ page, check, rec }) => {
+    const before = await historyInfo(page);
     await burst(page, 'ArrowRight', 3, 1500); await check('before Back', 4);
-    // Seed an explicit hash entry so Back has a deterministic in-deck target
-    // on both the baseline's replaceState and the newer pushState navigation.
-    await hash(page, 7); await sleep(600);
+    const afterArrows = await historyInfo(page);
+    rec.historyLength = { before: before.length, afterArrows: afterArrows.length };
+    if (afterArrows.length !== before.length) rec.failures.push(`arrow navigation added history entries: ${before.length} -> ${afterArrows.length}`);
+    // An old #N link adds one entry; the deck consumes the hash in place.
+    await hash(page, 7); await check('after #7 link', 7);
+    const afterLink = await historyInfo(page);
+    if (afterLink.length !== afterArrows.length + 1) rec.failures.push(`#7 link should add exactly one entry: ${afterArrows.length} -> ${afterLink.length}`);
+    // Back returns to the entry that was holding slide 4; Forward to the link's entry (7).
     await page.goBack({ timeout: 15000 }); rec.backURL = page.url();
     await check('after Back', 4);
-    await page.goForward({ waitUntil: 'load', timeout: 60000 });
+    await page.goForward({ timeout: 15000 }); rec.forwardURL = page.url();
     await check('after Forward', 7);
+  });
+  await run(browser, 'M', 'Old #N deep links on load land on slide N and are cleaned', async ({ page, check, rec }) => {
+    rec.loads = [];
+    for (const n of [7, 11, 1]) {
+      await page.goto(`${url.origin}${url.pathname}${url.search}#${n}`, { waitUntil: 'load', timeout: 60000 });
+      await page.waitForFunction(() => !document.documentElement.classList.contains('dt-intro'), null, { timeout: 60000 });
+      await check(`load #${n}`, n);
+      rec.loads.push({ n, url: page.url() });
+    }
   });
   await run(browser, 'I', 'Click narrative headings on slides 2, 5 and 9', async ({ page, check, rec }) => {
     rec.clicks = [];
