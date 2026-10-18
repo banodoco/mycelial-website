@@ -163,11 +163,11 @@
     let extra = span - text.offsetHeight;
     if (extra > 2 && sub) {
       const fs = parseFloat(getComputedStyle(sub).fontSize), lines = Math.max(1, Math.round(sub.offsetHeight / (fs * 1.55)));
-      const gap = Math.min(extra * 0.3, fs * 2);
+      const gap = Math.min(extra * 0.35, fs * 1.8);
       extra -= gap;
-      const lh = Math.min(extra / (lines * fs), 0.25);
-      extra -= lh * lines * fs;
-      const grow = clamp(1 + extra / (lines * fs * (1.55 + lh)), 1, 1.2);
+      const grow = clamp(1 + extra / (lines * fs * 1.55), 1, 1.2);
+      extra -= (grow - 1) * lines * fs * 1.55;
+      const lh = clamp(extra / (lines * fs * grow), 0, 0.12);
       st.setProperty('--sub-gap', `${gap.toFixed(1)}px`);
       st.setProperty('--sub-lh', (1.55 + lh).toFixed(3));
       st.setProperty('--sub-size', grow.toFixed(3));
@@ -268,24 +268,28 @@
     slide.style.setProperty('--text-shift', `${drop.toFixed(1)}px`);
     // Beside the ring the words span its height, the label level with the cards at the back and the subtitle's last
     // line with the front card's foot: the subtitle takes the room, in a little more space after the headline, a
-    // looser leading and, last, a slightly larger size (its measure is in ems, so its lines break as before). Fitted,
-    // the ring is laid out again for the words' new edge.
+    // slightly larger size (its measure is in ems, so its lines break as before) and, last, a little looser leading.
+    // Fitted, the ring is laid out again for the words' new edge.
     if (!under2 && !refit) {
       const span = G.k * (G.H * G.front - crown);
       if (fitWords(span)) { refit = true; layout(); refit = false; return true; }
     }
     box = { left, top, width: G.k * rw, height: G.k * rh };
+    // The ring's box reaches a little past the ring, so the mask on it (below) never clips the cards' shadows or the
+    // front node under the front card's foot.
+    const M = 48;
+    G.cx += M; G.cy += M;
     // Beside the words, whatever of a card stands behind a line of them goes into shade: the ring's mask is cut
     // from the words' own lines, feathered, so the words stay crisp over the cards and the rest of each card keeps
     // its light (and the network behind the words, which the mask never touches, shows as before).
     holes = under2 ? [] : lineBoxes(drop - shift).map((b) => ({
-      x0: b.left - vb.left - left - b.h * 0.35, x1: b.right - vb.left - left + b.h * 0.35,
-      y0: b.top - vb.top - top - b.h * 0.12, y1: b.bottom - vb.top - top + b.h * 0.12, f: Math.max(6, b.h * 0.3),
+      x0: b.left - vb.left - left + M - b.h * 0.35, x1: b.right - vb.left - left + M + b.h * 0.35,
+      y0: b.top - vb.top - top + M - b.h * 0.12, y1: b.bottom - vb.top - top + M + b.h * 0.12, f: Math.max(6, b.h * 0.3),
     }));
-    const m = holes.length ? `url("data:image/svg+xml,${encodeURIComponent(shadeOf(G.k * rw, G.k * rh))}")` : '';
+    const m = holes.length ? `url("data:image/svg+xml,${encodeURIComponent(shadeOf(G.k * rw + 2 * M, G.k * rh + 2 * M))}")` : '';
     root.style.webkitMaskImage = root.style.maskImage = m;
     root.style.webkitMaskSize = root.style.maskSize = '100% 100%';
-    Object.assign(root.style, { left: `${left.toFixed(1)}px`, top: `${top.toFixed(1)}px`, width: `${box.width.toFixed(1)}px`, height: `${box.height.toFixed(1)}px` });
+    Object.assign(root.style, { left: `${(left - M).toFixed(1)}px`, top: `${(top - M).toFixed(1)}px`, width: `${(box.width + 2 * M).toFixed(1)}px`, height: `${(box.height + 2 * M).toFixed(1)}px` });
     const cw = W1 * G.k * G.front;
     tiles.forEach((t) => { t.style.width = `${cw.toFixed(1)}px`; t.style.height = `${(cw / CARD).toFixed(1)}px`; });
     root.style.setProperty('--card', `${cw.toFixed(1)}px`); // the names are set to the cards' size
@@ -297,7 +301,7 @@
     vis.style.setProperty('--ring-foot', `${capTop.toFixed(1)}px`);
     G.px = G.cx; G.py = G.cy + G.k * heart;
     floor.style.transformOrigin = `${G.px.toFixed(1)}px ${G.py.toFixed(1)}px`;
-    floor.setAttribute('viewBox', `0 0 ${box.width.toFixed(1)} ${box.height.toFixed(1)}`);
+    floor.setAttribute('viewBox', `0 0 ${(box.width + 2 * M).toFixed(1)} ${(box.height + 2 * M).toFixed(1)}`);
     let d = '';
     for (let j = 0; j <= 96; j++) {
       const a = (j / 96) * 2 * Math.PI, [x, y] = see(G.R * FLOOR * Math.sin(a), 0, G.R * FLOOR * Math.cos(a));

@@ -178,6 +178,7 @@
   .vc-host { justify-content: flex-start; padding-top: calc(max(60px, 11vh) + var(--text-shift, 0px)); }
   .vc-host > .split { display: block; }
   .vc-host > .split > :first-child { position: relative; z-index: 2; width: fit-content; }
+  .vc-host .nb { white-space: nowrap; } /* "Open-source" never splits at its hyphen */
   /* The subtitle: quieter and smaller than the headline, set in even lines. */
   .vc-host .split .body { max-width: 23em; text-wrap: balance; }
   /* A short window (a laptop's, under its browser's bars and the dock) draws the words smaller rather than pushing
@@ -202,7 +203,8 @@
   .vc-floor circle { fill: #f0c877; }
   /* Each film is laid out at its size at the front and placed by a matrix3d (perspective included). The veil dims the
      ones round the ring; only the front film is fully lit. */
-  .vc-tile { all: unset; position: absolute; left: 0; top: 0; transform-origin: 0 0; border-radius: 4px; cursor: pointer; background: #15110d;
+  .vc-tile { all: unset; position: absolute; left: 0; top: 0; transform-origin: 0 0; border-radius: 4px; cursor: pointer;
+    background: linear-gradient(#15110d, #15110d) 1px 1px / calc(100% - 2px) calc(100% - 2px) no-repeat; /* its ground, inside the picture's edge */
     box-shadow: 0 14px 34px #0009; -webkit-tap-highlight-color: transparent; }
   .vc-tile.is-front { cursor: zoom-in; }
   .vc-tile::before { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: 4px; background: #0d0a07; opacity: var(--veil, 0); pointer-events: none;
@@ -212,7 +214,7 @@
   .vc-tile img, .vc-tile video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 4px; -webkit-user-drag: none; }
   .vc-tile video { opacity: 0; transition: opacity .6s ease; }
   .vc-tile.is-live video { opacity: 1; }
-  .vc-tile:focus-visible { outline: 1px solid var(--gold); outline-offset: 3px; }
+  .vc-tile:focus-visible { outline: 1px solid var(--gold); outline-offset: -1px; }
   /* A quiet play cue on the front film, in the footer arrows' gold ring: it fades in with the hover. A touch screen has
      no hover, so there it rests faintly on the front film. */
   .vc-tile::after { content: ""; position: absolute; z-index: 2; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; box-sizing: border-box;
@@ -1468,8 +1470,8 @@
     <div class="num">01<span class="act">The opportunity</span></div>
     <div class="split">
       <div>
-        <h1>Open-source AI has unimaginable creative potential <em>waiting to be unlocked.</em></h1>
-        <div class="body">The centuries-long shift from practical work towards human expression is accelerating. Open-source AI lets everyone take part&nbsp;— as artists, as builders, and in the economy<sup class="vc-fn"><button type="button" aria-expanded="false" aria-controls="vc-note" aria-label="Note: the creator economy">1</button></sup> growing around them.</div>
+        <h1><span class="nb">Open-source</span> AI has unimaginable creative potential <em>waiting to be unlocked.</em></h1>
+        <div class="body">The centuries-long shift from practical work towards human expression is accelerating. <span class="nb">Open-source</span> AI lets everyone take part&nbsp;— as artists, as builders, and in the economy<sup class="vc-fn"><button type="button" aria-expanded="false" aria-controls="vc-note" aria-label="Note: the creator economy">1</button></sup> growing around them.</div>
       </div>
       <div class="vis">
         <div class="vc" data-collage>
