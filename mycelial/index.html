@@ -218,11 +218,13 @@
     background: rgb(13 10 7 / .55) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 12'%3E%3Cpath d='M0 0L10 6L0 12z' fill='%23f0c67e'/%3E%3C/svg%3E") 56% 50% / 9px 11px no-repeat; }
   .vc-tile.is-front:hover::after, .vc-tile.is-front:focus-visible::after { opacity: 1; transform: none; }
   @media (hover: none) { .vc-tile.is-front::after { opacity: .6; transform: scale(.76); } }
-  /* Each card's title and artist stand at its top, quiet, and fade with it round the ring (collage.js sets --name). */
-  .vc-name { position: absolute; left: 50%; bottom: calc(100% + .5rem); translate: -50% 0; white-space: nowrap; pointer-events: none;
-    font: italic 400 .98rem/1.22 "Cormorant Garamond", serif; color: #b8a98fcc; opacity: calc(var(--name, 1) * .9); }
+  /* Each card's title and artist sit inside its top edge on a soft shade, quiet; only the front card's can be read
+     (collage.js fades the rest with --name). */
+  .vc-name { position: absolute; z-index: 3; left: 0; right: 0; top: 0; padding: .55em .7em 1.6em; border-radius: 4px 4px 0 0; pointer-events: none;
+    background: linear-gradient(rgb(13 10 7 / .72), rgb(13 10 7 / .38) 55%, rgb(13 10 7 / 0));
+    text-align: center; text-wrap: balance; font: italic 400 clamp(.66rem, calc(var(--card, 300px) * .05), .86rem)/1.22 "Cormorant Garamond", serif;
+    color: #b8a98fdd; opacity: var(--name, 1); }
   .vc-name b { font-weight: 400; color: var(--ink); }
-  .vc-tile:not(.is-front):hover .vc-name { opacity: max(.55, var(--name, 1)); }
   /* Under the ring: what these films are. */
   .vc-host .vc-label { position: absolute; top: var(--ring-foot, 80%); left: calc(var(--ring-x, 50%) - var(--ring-half, 40%)); width: calc(2 * var(--ring-half, 40%));
     margin: 0; pointer-events: auto; }
@@ -555,7 +557,8 @@
     /* 1 and 3: slightly smaller words, so the collage and the chart (fitted to what is left) stay a good size. */
     .slide.vc-host, .slide.gap-host { padding-top: 56px; }
     .vc-host .split h1, .gap-host .split h1 { font-size: 1.6rem; }
-    .vc-host .body, .gap-host .body { font-size: .98rem; line-height: 1.45; }
+    .gap-host .body { font-size: .98rem; line-height: 1.45; }
+    .vc-host .split .body { font-size: .86rem; line-height: 1.4; }
     /* 2: a little smaller, so the field above the words keeps its room. */
     html[data-ver="f"] .sf-host h1 { font-size: 1.75rem; }
     /* 6: smaller words and a shorter card slot, so the stack under them keeps some size. */
@@ -1329,6 +1332,7 @@
     .gap-host .vis { flex: 1 1 0; min-height: 0; container-type: size; justify-content: center; }
     /* The ring runs edge to edge, its side films off the screen's edges. */
     .vc-host .vis { --ring-under: 1; position: relative; inset: auto; flex: 1 1 0; min-height: 0; margin: 0 -24px; padding: 4px 0 0; }
+    .vc-host .split .body { margin-top: .8rem; font-size: .92rem; line-height: 1.45; } /* quieter, so the ring keeps its room */
     .gp { width: min(100cqw, 100cqh); }
   }
   /* A phone on its side (or any short, wide window) keeps the wide compositions, drawn smaller: everything sits
@@ -1349,7 +1353,6 @@
     .vc-host { padding-top: 34px; } /* the node over the label stays on screen */
     .vc-host .split .body { margin-top: .7rem; font-size: .86rem; line-height: 1.42; }
     .vc-host .vis { padding: 10px 12px 58px 34vw; }
-    .vc-name { font-size: .86rem; }
     .vc-label { font-size: .88rem; line-height: 1.12; } /* its two lines, clear of the footer */
     html[data-ver="f"] .ac-host { padding-bottom: 80px; }
     html[data-ver="f"] .ac-host h1 { font-size: clamp(1.3rem, 6.4svh, 1.8rem); max-width: 26em; }

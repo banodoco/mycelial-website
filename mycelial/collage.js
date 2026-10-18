@@ -30,7 +30,7 @@
   const wrap = (a) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI)); // to (-π, π]
 
   // Each card crops its still and preview to 4:5 round its subject (data-crop, an object-position), and carries its
-  // title and artist at its top.
+  // title and artist inside its top edge.
   tiles.forEach((t) => {
     t.querySelectorAll('img, video').forEach((m) => { m.style.objectPosition = t.dataset.crop || '50% 50%'; });
     const name = document.createElement('span');
@@ -39,13 +39,12 @@
     name.append(Object.assign(document.createElement('b'), { textContent: t.dataset.title }), ` · ${t.dataset.artist}`);
     t.appendChild(name);
   });
-  const names = tiles.map((t) => t.querySelector('.vc-name'));
 
   // ---- The ring --------------------------------------------------------------------------------------------------
   // Lengths are in card heights; the ring is fitted to .vis and scaled to pixels by k.
   const DEG = Math.PI / 180;
   const W1 = CARD; // a card's width
-  const G = { R: 1.4, cam: 2.5, P: 3.5, H: 1.2, lift: 19 * DEG, yaw: 26 * DEG, k: 100, cx: 0, cy: 0, front: 1, tag: 0 };
+  const G = { R: 1.55, cam: 2.5, P: 3.9, H: 1.7, lift: 24 * DEG, yaw: 26 * DEG, k: 100, cx: 0, cy: 0, front: 1 };
   // A point (y down from the floor, z toward us) as the camera sees it, before scaling: x, y and depth. The camera
   // stands above the ring and looks level, its lens shifted down (as an architect's camera does), so the floor opens
   // into an ellipse and the cards at the back show over the front one, while every card stays upright and the front
@@ -57,7 +56,7 @@
   // Where card i stands at ring angle a (0 is the front): turned partly with the ring, so the ones at the sides show
   // the curve, while those at the back still face us across it.
   const stand = (a) => ({ x: G.R * Math.sin(a), z: G.R * Math.cos(a), yaw: G.yaw * Math.sin(a) });
-  // A point on a card (u across, v down from its top; v < 0 is above it, where its name is) in the world.
+  // A point on a card (u across, v down from its top) in the world.
   const corner = (f, u, v) => {
     const dx = (u - 0.5) * W1;
     return [f.x + dx * Math.cos(f.yaw), v - 1, f.z - dx * Math.sin(f.yaw)];
@@ -83,14 +82,14 @@
   };
   const apply = (m, u, v) => { const w = m[3] * u + m[7] * v + m[15]; return [(m[0] * u + m[4] * v + m[12]) / w, (m[1] * u + m[5] * v + m[13]) / w]; };
 
-  // The whole ring's reach on screen over a turn, names included (unscaled), so it is fitted once and never spills.
+  // The whole ring's reach on screen over a turn (unscaled), so it is fitted once and never spills.
   const FLOOR = 1.1; // the floor's line runs just outside the cards' feet
   const reach = () => {
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     const take = ([x, y]) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
     for (let a = 0; a < 2 * Math.PI; a += STEP / 6) {
       const f = stand(a);
-      for (const [u, v] of [[0, -G.tag], [1, -G.tag], [0, 1], [1, 1]]) take(see(...corner(f, u, v)));
+      for (const [u, v] of [[0, 0], [1, 0], [0, 1], [1, 1]]) take(see(...corner(f, u, v)));
     }
     for (let a = 0; a < 2 * Math.PI; a += Math.PI / 24) take(see(G.R * FLOOR * Math.sin(a), 0, G.R * FLOOR * Math.cos(a)));
     return { x0, x1, y0, y1 };
@@ -121,48 +120,49 @@
     const pad = ['Top', 'Right', 'Bottom', 'Left'].map((s) => parseFloat(cs[`padding${s}`]) || 0);
     const W = vis.clientWidth - pad[1] - pad[3], H = vis.clientHeight - pad[0] - pad[2];
     if (W <= 0 || H <= 0) return false;
+    // Seen well enough from above that the cards at the back show over the front one; the ring widens with the
+    // number of films, so each keeps a face to show.
     Object.assign(G, W < H * 0.9
-      ? { R: 1.3, cam: 2.5, lift: 18 * DEG, yaw: 28 * DEG }
-      : { R: 1.4, cam: 2.5, lift: 19 * DEG, yaw: 26 * DEG }, root.tune || {});
+      ? { R: 1.0 + 0.07 * N, cam: 2.5, lift: 19 * DEG, yaw: 28 * DEG }
+      : { R: 1.2 + 0.07 * N, cam: 2.5, lift: 24 * DEG, yaw: 26 * DEG });
     G.P = G.cam * G.R; // the camera's distance, in ring radii
     G.H = G.P * Math.tan(G.lift); // and its height, as the angle it looks down at the ring's middle
     G.front = G.P / (G.P - G.R);
     const under = label.offsetHeight + 16;
     // How much of the ring's width must be on screen: on a phone held upright the side cards run off its edges.
-    const cover = root.tune?.cover ?? (W < H * 0.9 ? 0.72 : W < H * 1.25 ? 0.88 : 1);
-    // The names are type of a set size, so their share of a card depends on the scale: fit, then fit again.
-    const tagPx = Math.max(...names.map((n) => n.offsetHeight)) + 8;
-    let r = null, rw = 0, rh = 0;
-    for (let pass = 0; pass < 3; pass++) {
-      G.tag = pass ? tagPx / (G.k * G.front) : 0.12;
-      r = reach(); rw = r.x1 - r.x0; rh = r.y1 - r.y0;
-      G.k = Math.max(1, Math.min((W / cover) / rw, (H - under) / rh));
-    }
-    const vb = vis.getBoundingClientRect(), tb = text.getBoundingClientRect(), sb = sub?.getBoundingClientRect();
-    // Beside the words (a wide screen), the front card's top edge stands level with the subtitle's first line, the
-    // ring drawn small enough to fit below it; a short screen (a phone on its side) has no room to spare for that.
-    // Under them (a tall screen, where the CSS sets --ring-under), the ring and its label take the space below the
-    // words, a little below its middle.
+    const cover = W < H * 0.9 ? 0.72 : W < H * 1.25 ? 0.88 : 1;
+    const r = reach(), rw = r.x1 - r.x0, rh = r.y1 - r.y0;
+    // The ring's middle as the eye sees it at rest: half way from the tops of the cards at the back to the foot of
+    // the front one (unscaled, down from the horizon).
+    const crown = Math.min(...tiles.map((_, i) => see(...corner(stand(wrap(i * STEP)), 0.5, 0))[1]));
+    const heart = (crown + G.H * G.front) / 2;
+    const vb = vis.getBoundingClientRect(), tb = text.getBoundingClientRect();
+    // Beside the words (a wide screen), the ring's middle stands level with the middle of the words, as large as the
+    // space either side of that line allows. Under them (a tall screen, where the CSS sets --ring-under), the ring
+    // and its label take the space below the words, a little below its middle.
     const under2 = cs.getPropertyValue('--ring-under').trim() === '1';
-    const level = !under2 && sb?.height && vis.clientHeight > 500 ? sb.top - vb.top + 5 : 0;
-    const floorY = under2 ? Math.max(pad[0], tb.bottom - vb.top + 20) : pad[0];
-    const room = pad[0] + H - under - floorY;
-    G.k = Math.max(1, Math.min(G.k, room / rh));
-    if (level) G.k = Math.max(1, Math.min(G.k, (pad[0] + H - under - level) / (r.y1 - (G.H - 1) * G.front)));
+    const floorY = under2 ? Math.max(pad[0], tb.bottom - vb.top + 20) : pad[0], foot = pad[0] + H - under;
+    const level = under2 ? 0 : clamp((tb.top + tb.bottom) / 2 - vb.top, floorY + 40, foot - 40);
+    G.k = Math.max(1, Math.min((W / cover) / rw, (foot - floorY) / rh));
+    if (level) G.k = Math.max(1, Math.min(G.k, (level - floorY) / (heart - r.y0), (foot - level) / (r.y1 - heart)));
     const frontTop = () => G.cy + G.k * (G.H - 1) * G.front; // in the ring's box
+    // Across, the ring is centred in the room right of the words; only where it is wider than that room does it run
+    // left, under the words' end.
+    const words = { right: tb.right - vb.left + 14, bottom: tb.bottom - vb.top + 10 };
+    const right = pad[3] + W, room = right - (under2 ? pad[3] : Math.max(pad[3], words.right + 18));
     let left, top;
     const place = () => {
       G.cx = -G.k * r.x0; G.cy = -G.k * r.y0;
-      left = pad[3] + W / 2 - (G.k * (r.x0 + r.x1)) / 2 + G.k * r.x0;
-      const lo = floorY, hi = floorY + Math.max(0, room - G.k * rh);
-      top = level ? clamp(level - frontTop(), lo, hi) : lo + (hi - lo) * 0.55;
+      const wide = G.k * rw;
+      left = wide <= room ? right - room / 2 - wide / 2 : Math.max(pad[3] + W / 2 - wide / 2, right - wide);
+      if (under2) left = pad[3] + W / 2 - wide / 2;
+      top = level ? level - G.cy - G.k * heart : floorY + Math.max(0, foot - floorY - G.k * rh) * 0.55;
     };
     place();
-    // The cards pass under the words only as they recede: the front card and its name stay clear of them, so where
-    // they would meet, the ring is drawn a little smaller.
-    const words = { right: tb.right - vb.left + 14, bottom: tb.bottom - vb.top + 10 };
+    // The cards pass under the words only as they recede: the front card stays clear of them, so where they would
+    // meet, the ring is drawn a little smaller.
     for (let n = 0; n < 24 && G.k > 1 && !under2; n++) {
-      const x = left + G.cx - G.k * (W1 / 2) * G.front, y = top + frontTop() - tagPx;
+      const x = left + G.cx - G.k * (W1 / 2) * G.front, y = top + frontTop();
       if (!(x < words.right && y < words.bottom)) break;
       G.k *= 0.97;
       place();
@@ -179,6 +179,7 @@
     Object.assign(root.style, { left: `${left.toFixed(1)}px`, top: `${top.toFixed(1)}px`, width: `${box.width.toFixed(1)}px`, height: `${box.height.toFixed(1)}px` });
     const cw = W1 * G.k * G.front;
     tiles.forEach((t) => { t.style.width = `${cw.toFixed(1)}px`; t.style.height = `${(cw / CARD).toFixed(1)}px`; });
+    root.style.setProperty('--card', `${cw.toFixed(1)}px`); // the names are set to the cards' size
     // The label: centred under the ring, as wide as the room either side of its middle allows.
     const mid = left + box.width / 2, half = Math.min(mid - pad[3] + 16, vis.clientWidth - mid - 8, 300);
     vis.style.setProperty('--ring-x', `${mid.toFixed(1)}px`);
@@ -204,11 +205,10 @@
       const a = wrap(angle + i * STEP), { m, depth } = matrixOf(a);
       t.style.transform = `matrix3d(${m.map((n) => +n.toFixed(6)).join(',')})`;
       // Only the front card is fully alive; the rest darken and pale with distance round the ring, as if in haze, and
-      // their names fade sooner still.
-      const near = (1 + Math.cos(a)) / 2, lo = root.tune?.lo ?? 0.17;
-      const shade = lo + (1 - lo) * near ** (root.tune?.ex ?? 3.6), sat = 0.3 + 0.7 * near ** 2;
+      // only the front one's name can be read.
+      const near = (1 + Math.cos(a)) / 2, shade = 0.17 + 0.83 * near ** 3.6, sat = 0.3 + 0.7 * near ** 2;
       t.style.setProperty('--veil', (1 - shade).toFixed(3));
-      t.style.setProperty('--name', (near ** 8).toFixed(3));
+      t.style.setProperty('--name', (near ** 14).toFixed(3));
       t.style.filter = sat > 0.995 ? '' : `saturate(${sat.toFixed(3)})`;
       const [nx, ny] = see(G.R * FLOOR * Math.sin(a), 0, G.R * FLOOR * Math.cos(a));
       nodes[i].setAttribute('cx', (G.cx + G.k * nx).toFixed(1));
@@ -590,7 +590,6 @@
   addEventListener('touchend', (e) => { if (open) e.stopPropagation(); }, true);
 
   const relayout = () => { if (layout()) pose(); };
-  root.relayout = relayout; // TEMP tuning
   window.deckOnResize(() => {
     relayout();
     if (!open) return;
