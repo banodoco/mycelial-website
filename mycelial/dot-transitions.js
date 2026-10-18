@@ -923,6 +923,7 @@
   let opening = null;
   const endOpening = () => {
     window.__deckIntro?.clearGate();
+    window.__deckIntro?.showChrome();
     if (!opening) return;
     opening.timers.forEach(window.deckCancelLater);
     if (opening.trail) opening.trail.onDone = null;
@@ -981,6 +982,10 @@
         intro.gateFade = document.querySelector('.chrome').animate([{ opacity: 0 }, { opacity: 1 }],
           { duration: 1400, easing: 'ease', fill: 'forwards' });
         intro.gateFade.finished.then(() => intro.clearGate()).catch(() => {});
+      } else if (html.classList.contains('dt-chrome-wait')) {
+        intro.chromeFade = document.querySelector('.chrome').animate([{ opacity: 0 }, { opacity: 1 }],
+          { duration: 1400, easing: 'ease', fill: 'forwards' });
+        intro.chromeFade.finished.then(() => intro.showChrome()).catch(() => {});
       }
       name.style.transitionDelay = '';
       name.classList.add('is-resting');
@@ -1201,6 +1206,7 @@
     if (current !== first) { if (turning) turning.cancel(); settle(true, true); }
     if (!open()) {
       window.__deckIntro?.clearGate();
+      window.__deckIntro?.showChrome();
       html.classList.remove('dt-intro'); // hidden before first paint, but there is no opening to play
       if (active() && current && anchor && !still) { reveal(current, anchor, 350); sprawl(levelOf(current), anchor, 0.3); }
     }
