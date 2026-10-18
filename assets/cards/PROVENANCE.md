@@ -140,3 +140,34 @@ only client-side redirects to `/submissions/entry/<id>`, so the latter is canoni
   (https://pom.voyage/assets/how-i-see-me.jpg, 400×400, the same picture as
   github.com/peteromallet's avatar), fetched 2026-10-18 and downscaled with
   sips to 120×120, JPEG quality 84 (~7 KB), for slide 11's "Who's behind it?" card.
+
+## Re-cut 2026-10-19 (slide 1 carousel): longer previews
+All seven `arca/*-preview.mp4` were re-cut longer, from the same `data-at` frame
+and the same crop as the stills, so each still starts on the card's still (first
+frame PSNR vs the still 29-40 dB). Source: the 1080p rendition (852x480 for Sliver
+of Light, 720p for To be continued, the best Cloudflare Stream offers) of each film's
+Stream HLS, decoded with ffmpeg; encodes as above: crop to the still's shape round
+its focus, Lanczos scale to the old preview size, the shared grade, libx264
+Constrained Baseline level 3.0, yuv420p, preset veryslow, no audio, source frame
+rate, faststart. Sizes are the old previews' (not all 4:5).
+Ends were chosen by eye, on a beat and ahead of the next cut or fade.
+
+| name | length (end, from start) | crf | size · rate |
+|---|---|---|---|
+| everyone-all-at-once | 7.42 s (13.4 s) | 31 | 354 KB · 382 kb/s |
+| the-cellist | 7.50 s (120.0 s) | 28 | 334 KB · 356 kb/s |
+| sliver-of-light | 6.44 s (69.7 s) | 33 | 317 KB · 394 kb/s |
+| temporal-drift | 6.06 s (86.56 s) | 35 | 298 KB · 394 kb/s |
+| cherrybomb | 7.44 s (76.4 s) | 21 | 377 KB · 405 kb/s |
+| iterum | 6.47 s (58.47 s) | 27 | 296 KB · 366 kb/s |
+| to-be-continued | 8.50 s (17.75 s) | 29 | 424 KB · 399 kb/s |
+
+Ends: Everyone: the hooded woman, before her fade to black; Cellist: the soldier
+mid-stride, before the cellist ghosts in; Sliver: the dog's grin, before the whip
+pan; Temporal Drift: the rabbit and girl, the frame before the next cut; Cherrybomb:
+the cherry about to hit the glass, before the cut to the red tunnel; Iterum: the
+angel's boots, the frame before the cut; To be continued: the two figures in the
+forest, after the morph. Temporal Drift keeps crf 35 (busy 16 fps animation).
+The Stream rendition of the Cellist and Everyone files seeks wrongly with ffmpeg's
+input `-ss` on HLS (lands seconds early); those two were cut by decoding from the
+start with an output-side `-ss`, and their first frames checked against the stills.
