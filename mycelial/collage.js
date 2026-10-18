@@ -45,7 +45,7 @@
   // Lengths are in card heights; the ring is fitted to .vis and scaled to pixels by k.
   const DEG = Math.PI / 180;
   const W1 = CARD; // a card's width
-  const G = { R: 1.55, cam: 2.5, P: 3.9, H: 1.7, lift: 24 * DEG, yaw: 26 * DEG, k: 100, cx: 0, cy: 0, front: 1 };
+  const G = { R: 1.55, cam: 2.5, P: 3.9, H: 1.7, lift: 24 * DEG, yaw: 26 * DEG, k: 100, cx: 0, cy: 0, front: 1, sigma: 1, px: 0, py: 0 };
   // A point (y down from the floor, z toward us) as the camera sees it, before scaling: x, y and depth. The camera
   // stands above the ring and looks level, its lens shifted down (as an architect's camera does), so the floor opens
   // into an ellipse and the cards at the back show over the front one, while every card stays upright and the front
@@ -79,6 +79,14 @@
       0, 0, 1, 0,
       G.k * x0 + G.cx * W0, G.k * y0 + G.cy * W0, 0, W0,
     ];
+    // Arriving, the ring is drawn smaller about its middle (sigma, see below): in the projection, so the shade cut
+    // for the words in the ring's mask stays where they are.
+    if (G.sigma !== 1) {
+      for (const c of [0, 4, 12]) {
+        m[c] = G.sigma * m[c] + (1 - G.sigma) * G.px * m[c + 3];
+        m[c + 1] = G.sigma * m[c + 1] + (1 - G.sigma) * G.py * m[c + 3];
+      }
+    }
     return { m, depth: f.z };
   };
   const apply = (m, u, v) => { const w = m[3] * u + m[7] * v + m[15]; return [(m[0] * u + m[4] * v + m[12]) / w, (m[1] * u + m[5] * v + m[13]) / w]; };
@@ -259,6 +267,8 @@
     vis.style.setProperty('--ring-x', `${mid.toFixed(1)}px`);
     vis.style.setProperty('--ring-half', `${Math.max(120, half).toFixed(1)}px`);
     vis.style.setProperty('--ring-foot', `${capTop.toFixed(1)}px`);
+    G.px = G.cx; G.py = G.cy + G.k * heart;
+    floor.style.transformOrigin = `${G.px.toFixed(1)}px ${G.py.toFixed(1)}px`;
     floor.setAttribute('viewBox', `0 0 ${box.width.toFixed(1)} ${box.height.toFixed(1)}`);
     let d = '';
     for (let j = 0; j <= 96; j++) {
@@ -287,8 +297,8 @@
       t.style.setProperty('--name', Math.exp(-5.5 * q).toFixed(3));
       t.style.filter = sat > 0.995 ? '' : `saturate(${sat.toFixed(3)})`;
       const [nx, ny] = see(G.R * FLOOR * Math.sin(a), 0, G.R * FLOOR * Math.cos(a));
-      nodes[i].setAttribute('cx', (G.cx + G.k * nx).toFixed(1));
-      nodes[i].setAttribute('cy', (G.cy + G.k * ny).toFixed(1));
+      nodes[i].setAttribute('cx', (G.px + G.sigma * (G.cx + G.k * nx - G.px)).toFixed(1));
+      nodes[i].setAttribute('cy', (G.py + G.sigma * (G.cy + G.k * ny - G.py)).toFixed(1));
       nodes[i].setAttribute('r', (1.6 + 1.2 * near).toFixed(2));
       nodes[i].style.opacity = (0.18 + 0.82 * Math.exp(-2.6 * q)).toFixed(3);
       return { t, i, a, m, depth, shade, sat };
@@ -305,7 +315,7 @@
     if (!posed.length) return [];
     const r = root.getBoundingClientRect(), s = root.offsetWidth ? r.width / root.offsetWidth : 1;
     return posed.map((p) => ({
-      tile: p.t, shade: p.shade, sat: p.sat, far: (1 - Math.cos(p.a)) / 2, depth: p.depth, aspect: CARD,
+      tile: p.t, shade: p.shade * (arrival ? +root.style.opacity || 0 : 1), sat: p.sat, far: (1 - Math.cos(p.a)) / 2, depth: p.depth, aspect: CARD,
       at: (u, v) => { const [x, y] = apply(p.m, u * p.t.offsetWidth, v * p.t.offsetHeight); return [r.left + x * s, r.top + y * s]; },
       through: (x, y) => through((x - r.left) / s, (y - r.top) / s),
     }));
@@ -349,7 +359,7 @@
   // The card nearest the front plays (handing over half way through a turn); its neighbours load ahead of their turn.
   const sync = () => {
     const f = frontOf(angle);
-    const want = allowed() && !opening() ? tiles[f] : null;
+    const want = allowed() && !opening() && !arrival ? tiles[f] : null;
     if (want === playing) return;
     if (playing) preview(playing, false);
     playing = want;
@@ -384,18 +394,57 @@
     if (!hovering) rest(DWELL * 1.5); // asked for, it holds the front a little longer
   };
   const active = () => slide.classList.contains('on') && !document.hidden && !overviewOpen();
-  const held = () => hovering || drag || open || slide.classList.contains('vc-dissolve') || opening();
+  const held = () => hovering || drag || open || arrival || slide.classList.contains('vc-dissolve') || opening();
   const wake = () => { if (!raf && active()) raf = requestAnimationFrame(frame); };
   const frame = (t) => {
     raf = 0;
     if (!active()) return;
-    if (turn) {
+    if (arrival) stepArrival(t);
+    else if (turn) {
       const s = clamp((t - turn.t0) / turn.T);
       [angle, speed] = s < 1 ? along(turn, s) : [turn.to, 0];
       if (s >= 1) { turn = null; angle = wrap(angle); if (!timer) rest(); }
     }
     pose();
-    if (turn || drag) raf = requestAnimationFrame(frame);
+    if (turn || drag || arrival) raf = requestAnimationFrame(frame);
+  };
+
+  // ---- Arriving --------------------------------------------------------------------------------------------------
+  // When slide 1 comes on (once the opening has drawn its words in, or on a jump to it), the ring arrives in one
+  // motion: from further back, faint and already turning, it sweeps round half a turn and more and slows on a long
+  // ease to rest on its front film, like something heavy coming to rest; its depth and light come in with it. Not
+  // on the way back from slide 2, whose motes gather into the ring at rest; and with motion off it is simply there.
+  // Its hold, and the front film's preview, begin once it has landed.
+  const ARRIVE = 2600, SWEEP = 0.55 * 2 * Math.PI;
+  let arrival = null, wasOn = slide.classList.contains('on'), parked = 0;
+  const arrive = () => {
+    if (still || !box || !active()) return;
+    const to = nearest(goal());
+    arrival = { t0: performance.now(), from: to + SWEEP, to };
+    turn = null; speed = 0; angle = arrival.from;
+    clearTimeout(timer); timer = 0;
+    root.style.transition = 'none'; // the slide's own recede
+    stepArrival(arrival.t0);
+    pose();
+    wake();
+  };
+  const stepArrival = (t) => {
+    const s = clamp((t - arrival.t0) / ARRIVE), e = 1 - (1 - s) ** 4;
+    angle = arrival.from + (arrival.to - arrival.from) * e;
+    G.sigma = 0.84 + 0.16 * e;
+    root.style.opacity = (0.5 - 0.5 * Math.cos(Math.PI * clamp(s / 0.55))).toFixed(3);
+    floor.style.transform = `scale(${G.sigma.toFixed(4)})`;
+    if (s >= 1) land();
+  };
+  // Landed (or cut short): at rest on the front film, the ring's own style handed back.
+  const land = () => {
+    if (!arrival) return;
+    angle = wrap(arrival.to);
+    arrival = null;
+    G.sigma = 1;
+    root.style.opacity = root.style.transition = floor.style.transform = '';
+    pose();
+    if (active()) rest();
   };
   // Settled: hold the front, then turn on by one, unless something holds it.
   const rest = (ms = DWELL) => {
@@ -434,7 +483,7 @@
     if (!turn) rest();
   });
   root.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || open) return;
+    if (e.button !== 0 || open || arrival) return;
     const tile = tileAt(e);
     pressing = true;
     press = { id: e.pointerId, x: e.clientX, y: e.clientY, tile, front: !!tile && tile === tiles[frontOf(goal())] && !turn };
@@ -464,7 +513,7 @@
     clearTimeout(intent);
     const tile = tileAt(e);
     if (!tile || tile === tiles[frontOf(goal())]) return;
-    intent = setTimeout(() => { if (hovering && !drag && tile.matches(':hover')) bring(tiles.indexOf(tile)); }, 420);
+    intent = setTimeout(() => { if (hovering && !drag && !arrival && tile.matches(':hover')) bring(tiles.indexOf(tile)); }, 420);
   });
   // Let go, the ring coasts on with the hand's speed and settles on the film nearest where it would come to rest.
   let dragged = 0;
@@ -489,7 +538,7 @@
   // A trackpad's sideways swipe turns it too, settling on a film once the fingers lift.
   let wheelEnd = 0;
   root.addEventListener('wheel', (e) => {
-    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || open) return;
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || open || arrival) return;
     e.preventDefault(); // and keeps the browser's own swipe back through history out of it
     turn = null;
     angle -= (e.deltaX * (e.deltaMode === 1 ? 16 : 1)) / perRadian();
@@ -505,7 +554,7 @@
     e.stopPropagation();
     const was = press;
     press = null;
-    if (performance.now() - dragged < 250) return;
+    if (performance.now() - dragged < 250 || arrival) return;
     const tile = tileAt(e);
     if (!tile) return;
     const front = e.detail === 0 ? tile === tiles[frontOf(goal())] : was?.tile === tile ? was.front : tile === tiles[frontOf(goal())] && !turn;
@@ -514,12 +563,19 @@
     else window.open(tile.dataset.page, '_blank', 'noopener');
   });
   // Focus from the keyboard brings a film round (a press brings it on the click instead, so a drag can start).
-  tiles.forEach((tile, i) => tile.addEventListener('focus', () => { if (!pressing && !open) bring(i); }));
+  tiles.forEach((tile, i) => tile.addEventListener('focus', () => { if (!pressing && !open && !arrival) bring(i); }));
 
   // On, off, hidden, overview: the ring only moves (and the front film only plays) while slide 1 is on screen.
   // Left part way through a turn, it holds where it is, so slide 2 takes it apart (and puts it back) exactly there.
   const syncMotion = () => {
+    // Coming on (not on the way back from slide 2, where its motes gather into the ring as it was): arrive.
+    const on = slide.classList.contains('on');
+    if (on && !wasOn && !slide.classList.contains('vc-dissolve') && !opening()) { clearTimeout(parked); land(); wasOn = on; arrive(); sync(); return; }
+    wasOn = on;
     if (active() && !slide.classList.contains('vc-dissolve')) {
+      clearTimeout(parked);
+      if (arrival && !raf) land(); // back to it while cut short (a hidden tab, the overview): simply there
+      if (arrival) { wake(); sync(); return; } // arriving: it lands where it was going
       if (Math.abs(angle - nearest(angle)) > 1e-4 && !turn && !drag) settle(1200);
       else if (!turn && !timer) rest();
       wake();
@@ -530,6 +586,9 @@
       raf = 0;
       turn = null; speed = 0;
       if (drag) { drag = null; press = null; pressing = false; root.classList.remove('is-turning'); }
+      // Left in the middle of arriving: it holds where it is while slide 2 takes it apart (or the overview covers
+      // it), then settles out of sight.
+      if (arrival) { clearTimeout(parked); parked = setTimeout(() => { if (!active()) land(); }, 900); }
     }
     sync();
   };
@@ -539,14 +598,15 @@
   new MutationObserver(() => {
     if (opened || opening()) return;
     opened = true;
+    if (slide.classList.contains('on')) arrive();
     sync();
-    rest();
+    if (!arrival) rest();
   }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
   document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', () => {
     still = window.deckStill();
-    if (still) { turn = null; speed = 0; angle = nearest(angle); pose(); }
+    if (still) { land(); turn = null; speed = 0; angle = nearest(angle); pose(); }
     syncMotion();
   });
 
