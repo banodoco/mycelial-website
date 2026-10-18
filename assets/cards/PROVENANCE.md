@@ -110,8 +110,64 @@ own hero videos), which nothing used any more.
   the cello being played, the bow and both hands (112.5 s), so the five tiles are
   not all faces.
 
+## Added 2026-10-18 (deck slide 1 ring): two more Arca Gidan Prize recipients
+Iterum (schmede, Ridge) and Temporal Drift (EmmaCatnip, Crest), both Edition 2
+recipients (the same competition, `edition-2`, as the five above; `winner` true
+in `submission_details`, read 2026-10-18 from the Supabase backend arcagidan.com
+reads). Titles and artists as that data shows them (the site's display names).
+Cut from each entry's original upload (`fallback_video_url`, 1920×1080), with the
+same grade as above, but cropped to **4:5** (the carousel's card shape: 864×1080
+of the frame, scaled to 400×500 stills and 352×440 previews):
+- `<name>.avif` (q84) + `<name>.jpg` (progressive q78) — 400×500.
+- `<name>-preview.mp4` — 3.5 s from the same frame and crop, silent, H.264
+  Constrained Baseline level 3.0, faststart, source frame rate. Iterum crf 29
+  (~300 kb/s); Temporal Drift crf 35 (~460 kb/s, matching the existing
+  previews; its busy 16 fps animation needs the higher crf to reach that rate).
+
+| name | title — artist (prize) | entry page | frame · preview | original |
+|---|---|---|---|---|
+| iterum | Iterum — schmede (Ridge) | /submissions/entry/c1cff3c7-9803-41a1-8195-7cb23e777f98 | 52.0 s (focus 50%) · 52.0–55.5 s, 352×440 | 1920×1080, 29.97 fps |
+| temporal-drift | Temporal Drift — EmmaCatnip (Crest) | /submissions/entry/98873f06-e1a5-45bc-9698-cba8be8cf5e9 | 80.5 s (focus 68%) · 80.5–84.0 s, 352×440 | 1920×1080, 16 fps |
+
+Frames chosen by contact sheet for variety (no face close-ups): the angel walking
+away down the trench, wings spread; the rabbit with the pocket watch, the girl's
+hand reaching in from the left. Stream ids: Iterum 7f425a012f58cde8a38b60dc2b34e96a,
+Temporal Drift bbde24517b072c44633ea9aa1fcae093. `/entry/<id>` on arcagidan.com
+only client-side redirects to `/submissions/entry/<id>`, so the latter is canonical.
+
 ## pom/ — pom.voyage (POM's own site)
 - pom.jpg — POM's profile picture, the site's "How I see me" square
   (https://pom.voyage/assets/how-i-see-me.jpg, 400×400, the same picture as
   github.com/peteromallet's avatar), fetched 2026-10-18 and downscaled with
   sips to 120×120, JPEG quality 84 (~7 KB), for slide 11's "Who's behind it?" card.
+
+## Re-cut 2026-10-19 (slide 1 carousel): longer previews
+All seven `arca/*-preview.mp4` were re-cut longer, from the same `data-at` frame
+and the same crop as the stills, so each still starts on the card's still (first
+frame PSNR vs the still 29-40 dB). Source: the 1080p rendition (852x480 for Sliver
+of Light, 720p for To be continued, the best Cloudflare Stream offers) of each film's
+Stream HLS, decoded with ffmpeg; encodes as above: crop to the still's shape round
+its focus, Lanczos scale to the old preview size, the shared grade, libx264
+Constrained Baseline level 3.0, yuv420p, preset veryslow, no audio, source frame
+rate, faststart. Sizes are the old previews' (not all 4:5).
+Ends were chosen by eye, on a beat and ahead of the next cut or fade.
+
+| name | length (end, from start) | crf | size · rate |
+|---|---|---|---|
+| everyone-all-at-once | 7.42 s (13.4 s) | 31 | 354 KB · 382 kb/s |
+| the-cellist | 7.50 s (120.0 s) | 28 | 334 KB · 356 kb/s |
+| sliver-of-light | 6.44 s (69.7 s) | 33 | 317 KB · 394 kb/s |
+| temporal-drift | 6.06 s (86.56 s) | 35 | 298 KB · 394 kb/s |
+| cherrybomb | 7.44 s (76.4 s) | 21 | 377 KB · 405 kb/s |
+| iterum | 6.47 s (58.47 s) | 27 | 296 KB · 366 kb/s |
+| to-be-continued | 8.50 s (17.75 s) | 29 | 424 KB · 399 kb/s |
+
+Ends: Everyone: the hooded woman, before her fade to black; Cellist: the soldier
+mid-stride, before the cellist ghosts in; Sliver: the dog's grin, before the whip
+pan; Temporal Drift: the rabbit and girl, the frame before the next cut; Cherrybomb:
+the cherry about to hit the glass, before the cut to the red tunnel; Iterum: the
+angel's boots, the frame before the cut; To be continued: the two figures in the
+forest, after the morph. Temporal Drift keeps crf 35 (busy 16 fps animation).
+The Stream rendition of the Cellist and Everyone files seeks wrongly with ffmpeg's
+input `-ss` on HLS (lands seconds early); those two were cut by decoding from the
+start with an output-side `-ss`, and their first frames checked against the stills.

@@ -479,7 +479,7 @@
   const sampler = document.createElement('canvas');
   const sctx = sampler.getContext('2d', { willReadFrequently: true });
   let motes = [];
-  // The collage's centre, in the stage's px.
+  // The ring's centre, in the stage's px.
   const middle = (base) => {
     const boxes = [...collage.querySelectorAll('.vc-tile')].map((t) => t.getBoundingClientRect()).filter((r) => r.width);
     return boxes.length ? {
@@ -523,13 +523,35 @@
     inkCache.set(key, inks);
     return inks;
   };
-  // Each tile, sampled into a grid of motes in its own colours, placed in the world where the camera sees it now.
+  // Each film, sampled into a grid of motes in its own colours, placed in the world where the camera sees it now. On
+  // slide 1's ring (collage.js faces()) each film is a quad in perspective, dimmed and paled with its distance round
+  // the ring and partly hidden by the films nearer the front: its motes start exactly as it looks there, and the
+  // further round it stood, the deeper they sit, so the back of the ring stays on longest as stars.
+  const BG = [13, 10, 7]; // the deck's ground, which the ring's veil dims toward
+  const inside = (pts, x, y) => {
+    let sign = 0;
+    for (let k = 0; k < pts.length; k++) {
+      const [ax, ay] = pts[k], [bx, by] = pts[(k + 1) % pts.length];
+      const c = (bx - ax) * (y - ay) - (by - ay) * (x - ax);
+      if (c && sign && Math.sign(c) !== sign) return false;
+      sign = sign || Math.sign(c);
+    }
+    return true;
+  };
+  const facesOf = () => (collage.faces ? collage.faces() : [...collage.querySelectorAll('.vc-tile')].map((tile) => {
+    const r = tile.getBoundingClientRect();
+    return { tile, shade: 1, sat: 1, far: 0, depth: 0, aspect: r.width / r.height, at: (u, v) => [r.left + u * r.width, r.top + v * r.height] };
+  }));
   const tileMotes = (base) => {
     const motes = [];
-    for (const tile of collage.querySelectorAll('.vc-tile')) {
-      const r = tile.getBoundingClientRect(), v = tile.querySelector('video'), img = tile.querySelector('img');
-      if (!r.width || !r.height) continue;
-      const cols = Math.max(4, Math.round(r.width / 8)), rows = Math.max(4, Math.round(r.height / 8));
+    const faces = facesOf().map((f) => ({ ...f, quad: [f.at(0, 0), f.at(1, 0), f.at(1, 1), f.at(0, 1)] }));
+    for (const f of faces) {
+      const { tile, quad } = f, v = tile.querySelector('video'), img = tile.querySelector('img');
+      const across = (Math.hypot(quad[1][0] - quad[0][0], quad[1][1] - quad[0][1]) + Math.hypot(quad[2][0] - quad[3][0], quad[2][1] - quad[3][1])) / 2;
+      const down = (Math.hypot(quad[3][0] - quad[0][0], quad[3][1] - quad[0][1]) + Math.hypot(quad[2][0] - quad[1][0], quad[2][1] - quad[1][1])) / 2;
+      if (!(across > 1) || !(down > 1)) continue;
+      const cols = Math.max(4, Math.round(across / 8)), rows = Math.max(4, Math.round(down / 8));
+      const nearer = faces.filter((g) => g.depth > f.depth).map((g) => g.quad);
       let px = null;
       // What the tile shows: its preview while one plays over it, otherwise its still (both same-origin).
       const live = tile.classList.contains('is-live') && v && v.readyState >= 2 && v.videoWidth;
@@ -537,23 +559,34 @@
       if (pic) {
         const iw = live ? v.videoWidth : img.naturalWidth, ih = live ? v.videoHeight : img.naturalHeight;
         const [ox, oy] = getComputedStyle(pic).objectPosition.split(' ').map((n) => parseFloat(n) / 100);
-        const ta = r.width / r.height;
+        const ta = f.aspect;
         let sw = iw, sh = ih, sx = 0, sy = 0;
         if (sw / sh > ta) { sw = sh * ta; sx = (iw - sw) * ox; } else { sh = sw / ta; sy = (ih - sh) * oy; }
         sampler.width = cols; sampler.height = rows;
         try { sctx.drawImage(pic, sx, sy, sw, sh, 0, 0, cols, rows); px = sctx.getImageData(0, 0, cols, rows).data; } catch { px = null; }
       }
-      const cw = r.width / cols, ch = r.height / rows;
+      // The film as the ring shows it: paled toward its own grey, then dimmed toward the ground (and faded where it
+      // passes under the words).
+      const look = (r, g, b, shade) => {
+        const grey = 0.3 * r + 0.59 * g + 0.11 * b;
+        return [r, g, b].map((c, n) => (grey + (c - grey) * f.sat) * shade + BG[n] * (1 - shade));
+      };
       for (let j = 0; j < rows; j++) {
         for (let i = 0; i < cols; i++) {
           const k = (j * cols + i) * 4;
-          const sx0 = r.left - base.left + (i + 0.5) * cw, sy0 = r.top - base.top + (j + 0.5) * ch;
+          const [x, y] = f.at((i + 0.5) / cols, (j + 0.5) / rows);
+          if (nearer.some((q) => inside(q, x, y))) continue; // behind a nearer film
+          const [xa, ya] = f.at(i / cols, (j + 0.5) / rows), [xb, yb] = f.at((i + 1) / cols, (j + 0.5) / rows);
+          const [xc, yc] = f.at((i + 0.5) / cols, j / rows), [xd, yd] = f.at((i + 0.5) / cols, (j + 1) / rows);
+          const sx0 = x - base.left, sy0 = y - base.top, cw = Math.hypot(xb - xa, yb - ya), ch = Math.hypot(xd - xc, yd - yc);
           // Most motes sit close, so they stream past us; a few sit deep and stay on as stars.
-          const z = 1.2 + Math.pow(rnd(), 2) * 3;
+          const z = (1.2 + Math.pow(rnd(), 2) * 3) * (1 + 0.9 * f.far);
           const xr = ((sx0 - cx) / F) * z + camX, yr = ((sy0 - cy) / F) * z + camY;
+          const shade = f.shade * (f.through ? f.through(x, y) : 1);
+          const ink = px ? look(px[k], px[k + 1], px[k + 2], shade).map((c) => Math.round(c) | 7) : null; // a little coarse, so colours repeat
           motes.push({
             x: xr * cosR + yr * sinR, y: -xr * sinR + yr * cosR, z, sx0, sy0, cw: cw + 0.6, ch: ch + 0.6, age: 0,
-            inks: px ? inksOf(px[k] | 7, px[k + 1] | 7, px[k + 2] | 7) : unsampled, // a little coarse, so colours repeat
+            inks: ink ? inksOf(...ink) : unsampled,
             delay: 0.05 + Math.hypot(i / cols - 0.5, j / rows - 0.5) * 0.5 + rnd() * 0.3,
           });
         }
