@@ -678,19 +678,19 @@
 
   // ---- The subtitle's note -----------------------------------------------------------------------------------
   // The ¹ after "accelerating" opens a small card: on a mouse resting on it (and on the card, while the pointer
-  // crosses to it), on a click or a tap, or on keyboard focus. It stands inside the screen near the mark.
+  // crosses to it), on a click or a tap, or on keyboard focus.
   const mark = sub?.querySelector('.vc-fn button'), note = slide.querySelector('.vc-note');
   if (mark && note) {
     let shut = 0;
-    // Under the subtitle where there is room; else beside the words, over the ring; else over the words.
+    // Just over the mark, centred on it as far as the screen allows, its notch pointing down at the figure; under
+    // it instead where there is no room above (a short window, a phone).
     const place = () => {
       const m = mark.getBoundingClientRect(), s0 = slide.getBoundingClientRect(), w = note.offsetWidth, h = note.offsetHeight;
-      const foot = (chrome?.getBoundingClientRect().top ?? innerHeight) - 10, words = text.getBoundingClientRect();
-      let x = clamp(m.left - 18, 16, innerWidth - 16 - w), y = sub.getBoundingClientRect().bottom + 10;
-      if (y + h > foot) {
-        if (words.right + 18 + w <= innerWidth - 16) { x = words.right + 18; y = clamp(m.top + m.height / 2 - h / 2, 10, foot - h); }
-        else y = Math.max(10, m.top - 10 - h);
-      }
+      const mid = m.left + m.width / 2, x = clamp(mid - w / 2, 16, innerWidth - 16 - w);
+      const below = m.top - 11 - h < 10;
+      const y = below ? m.bottom + 11 : m.top - 11 - h;
+      note.classList.toggle('is-below', below);
+      note.style.setProperty('--notch', `${clamp(mid - x, 14, w - 14).toFixed(1)}px`);
       note.style.left = `${(x - s0.left).toFixed(1)}px`;
       note.style.top = `${(y - s0.top).toFixed(1)}px`;
     };

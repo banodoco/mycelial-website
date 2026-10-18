@@ -231,8 +231,8 @@
   .vc.is-small .vc-name b, .vc.is-small .vc-name span { display: block; overflow: hidden; text-overflow: ellipsis; }
   .vc.is-small .vc-name i { display: none; }
   .vc.is-small .vc-name span { font-size: .86em; }
-  /* The subtitle's note: a quiet gold ¹ that opens a small card in the raise slide's hover-card language
-     (collage.js places it beside the mark, inside the screen). */
+  /* The subtitle's note: a quiet gold ¹ that opens a small card in the raise slide's hover-card language, just over
+     the mark (collage.js places it). */
   .vc-fn { font-size: 1em; line-height: 0; vertical-align: baseline; }
   .vc-fn button { all: unset; position: relative; margin-left: .12em; vertical-align: .78em; cursor: pointer;
     font: 500 .65em/1 "EB Garamond", serif; font-variant-numeric: lining-nums; color: #f0c67e;
@@ -245,8 +245,13 @@
   .vc-note { position: absolute; left: 0; top: 0; z-index: 6; box-sizing: border-box; width: min(19.5rem, calc(100vw - 32px)); padding: .95rem 1.05rem 1rem;
     background: #14100c; border: 1px solid #f0c8772e; border-radius: 7px; box-shadow: 0 0 34px #e0ab5e14, 0 14px 40px #000c;
     font: 400 .93rem/1.42 "EB Garamond", serif; color: #cbbfa9; text-align: left;
-    opacity: 0; visibility: hidden; translate: 0 6px; transition: opacity .2s ease, translate .2s ease, visibility 0s linear .2s; }
-  .vc-note.is-open { opacity: 1; visibility: visible; translate: none; transition: opacity .3s ease, translate .4s cubic-bezier(.2, .7, .2, 1), visibility 0s; }
+    opacity: 0; visibility: hidden; translate: 0 5px; transition: opacity .18s ease, translate .18s ease, visibility 0s linear .18s; }
+  .vc-note.is-below { translate: 0 -5px; }
+  .vc-note.is-open { opacity: 1; visibility: visible; translate: none; transition: opacity .18s ease, translate .2s cubic-bezier(.2, .7, .2, 1), visibility 0s; }
+  /* Its notch, pointing at the figure (collage.js sets --notch). */
+  .vc-note::after { content: ""; position: absolute; left: var(--notch, 50%); bottom: -6px; width: 10px; height: 10px; box-sizing: border-box;
+    background: #14100c; border: solid #f0c8772e; border-width: 0 1px 1px 0; translate: -50% 0; rotate: 45deg; }
+  .vc-note.is-below::after { bottom: auto; top: -6px; border-width: 1px 0 0 1px; }
   .vc-note svg { display: block; width: 100%; height: auto; overflow: visible; margin-bottom: .7rem; }
   .vc-note svg text { font: italic 400 11.5px "EB Garamond", serif; fill: #a39684; }
   .vc-note svg .big { font: italic 500 14.5px "Cormorant Garamond", serif; fill: #f0c67e; }
