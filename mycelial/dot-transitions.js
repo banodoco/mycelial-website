@@ -1114,9 +1114,12 @@
     const finish = () => { if (!done) { done = true; turning = null; } };
     const transition = {
       cancel() {
+        // A completed text reveal can still have its outgoing-slide retirement pending.
+        // Navigation aborts those timers too, so always retire its visual classes first.
+        timers.forEach(window.deckCancelLater);
+        prev.classList.remove('dt-leaving', 'dt-release');
         if (done) return;
         done = true;
-        timers.forEach(window.deckCancelLater);
         tweens.forEach((tw) => tw.stop());
         anims.forEach((a) => a.cancel());
         hyphae.forEach((h) => { h.onDone = null; });

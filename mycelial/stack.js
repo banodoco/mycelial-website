@@ -65,7 +65,7 @@
     { name: 'Effects', short: 'Effects', line: 'Looks and graphics over the footage, made and shared by the community.',
       ex: [['<code>type-on</code> · <code>text-card</code>', 'self-writing titles'], ['<code>audio-reactive-colour</code>', 'colour on the beat'], ['Shader looks &amp; film grain', 'texture for a whole film'], ['Motion graphics', 'animated type and shapes']],
       foot: 'community-made, or make your own' },
-    { name: 'Agent tools', short: 'Agent tools', line: 'What the agent reaches for when you ask. Each new tool widens what it can do.',
+    { name: 'Agent tools', short: 'Agents', line: 'What the agent reaches for when you ask. Each new tool widens what it can do.',
       ex: [['<code>qwen_image</code> → <code>animated_video</code>', 'stills, then motion'], ['Editing tools', 'trim, retime, rearrange'], ['Timeline visualisers', 'show what it finds'], ['Effect tools', 'apply a look, then tune it']],
       foot: 'give the agent new tools' },
     { name: 'Models / runtime', short: 'Models', line: 'Where the work runs: open models, on your own GPU or in the cloud.',
@@ -240,7 +240,7 @@
 
   // ---- Layout ------------------------------------------------------------------------------------
   let dpr = 1, cell = 3, geo = null;
-  const CARDW = 300, CARDW_L = 240, FLAGW_M = 92, FLAG_PITCH = 40;
+  const CARDW = 300, CARDW_L = 240, FLAG_PITCH = 40;
   let flagY = [];
   // A polyline with its running lengths, and a point a fraction q of the way along it.
   const polyline = (pts) => { const len = [0]; for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); return { pts, len, total: len.at(-1) }; };
@@ -269,20 +269,25 @@
     const perchW = projW(S[0], perchU(S[0]), -S[0].h / 2 + 2);
     const h1 = slide.querySelector('h1').getBoundingClientRect();
     // On a desktop the cards open in a column beside the flags, right of the stack (the text top left); on a
-    // phone, in a slot between the text and the stack. On a phone on its side the column is narrower and a card
+    // phone, in a slot below the stack and above the footer. On a phone on its side the column is narrower and a card
     // opens over the flags, which keep their places.
     const low = view.low = !view.mobile && H <= 500;
     const cw0 = view.mobile ? W - 32 : low ? CARDW_L : CARDW;
     cards.forEach((c) => { c.style.width = `${cw0}px`; });
     const ch = cards.map((c) => c.offsetHeight);
-    const slotT = h1.bottom + 12, slotH = view.mobile ? Math.max(...ch) : 0;
-    const Rg = view.mobile ? { l: 10 + FLAGW_M, r: W - 8, t: slotT + slotH + 12, b: H - 70 }
+    const slotH = view.mobile ? Math.max(...ch) : 0, slotT = view.mobile ? H - 70 - slotH : h1.bottom + 12;
+    root.style.setProperty('--st-card-top', `${slotT.toFixed(1)}px`);
+    root.style.setProperty('--st-card-height', `${slotH.toFixed(1)}px`);
+    const Rg = view.mobile ? { l: 16, r: W - 16, t: h1.bottom + 12, b: slotT - 12 }
       : low ? { l: h1.right + 20, r: W - 12 - CARDW_L + 6, t: 14, b: H - 76 } : { l: h1.right + 28, r: W - 48 - CARDW + 6, t: 22, b: H - 66 };
     const box = { l: right ? Math.min(...cw.map((c) => Math.min(c.fl.x, c.nl.x))) - 12 : callXw, r: right ? callXw : Math.max(...cw.map((c) => Math.max(c.fr.x, c.nr.x))) + 12,
       t: perchW.y - MH * 3.6 - HEADROOM, b: Math.max(cw[4].nl.y, cw[4].nr.y) + ROOTS };
-    const k = Math.min((Rg.r - Rg.l) / (box.r - box.l), (Rg.b - Rg.t) / (box.b - box.t));
+    // The flags stay readable in screen pixels: include their measured width once in the mobile fit,
+    // then centre flags, leaders and planes together rather than pinning labels to the viewport edge.
+    const mobileFlagW = view.mobile ? Math.max(...flags.map((f) => f.offsetWidth)) : 0;
+    const k = Math.min((Rg.r - Rg.l - mobileFlagW) / (box.r - box.l), (Rg.b - Rg.t) / (box.b - box.t));
     view.k = k;
-    view.ox = (Rg.l + Rg.r) / 2 - ((box.l + box.r) / 2) * k;
+    view.ox = (Rg.l + Rg.r + mobileFlagW) / 2 - ((box.l + box.r) / 2) * k;
     view.oy = (Rg.t + Rg.b) / 2 - ((box.t + box.b) / 2) * k;
     if (ZOOM) {
       const kz = +k.toFixed(4);
@@ -834,6 +839,7 @@
     clearTimers();
     pendingBuild = false;
     build = null; amb = null;
+    clearGhosts(); // transient editor snapshots must not outlive an interrupted hand-off
     restMink();
     clearTimeout(leaving); Object.assign(hold, { hover: -1, focus: -1, pin: -1 }); guide.on = false; guide.a = 0; guide.last = 0;
     show(-1); lit.fill(0);

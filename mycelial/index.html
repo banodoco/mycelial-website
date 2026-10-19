@@ -799,15 +799,27 @@
     html[data-ver="f"] .st-host h1 { font-size: clamp(1.5rem, 6.4vw, 2rem); max-width: 16em; }
     html[data-ver="f"] .st-host h1 .st-nb { white-space: normal; }
     /* On a phone: short names on the flags, hanging left (the dot toward the leader), and every card opens in one
-       slot between the text and the stack. */
-    .st-flag { flex-direction: row-reverse; transform: translate(-100%, -50%); gap: 6px; padding: 4px 9px 5px 7px; font-size: 13.5px; }
+       slot below the stack. Its quiet backing stays in place while the explanations change. */
+    .st-flag { flex-direction: row-reverse; justify-content: space-between; width: 90px; text-align: left; transform: translate(-100%, -50%); gap: 6px; padding: 4px 9px 5px 7px; font-size: 13.5px; }
     .st-flag::after { display: none; }
     .st-long { display: none; } .st-short { display: inline; }
     .st.has-card .st-flag { --dim: .45; }
     .st.has-card .st-flag.is-on { --dim: 1; border-color: rgb(255 214 150 / .85); background: rgb(40 31 22 / .97); }
-    .st-card { padding: 10px 13px 10px 12px; transform: translateY(6px); }
-    .st-card p { font-size: 13.5px; margin-bottom: 7px; }
-    .st-card li b { font-size: 14.5px; } .st-card li span { font-size: 13px; }
+    .st::before { content: ""; position: absolute; left: 16px; right: 16px; top: var(--st-card-top); height: var(--st-card-height); box-sizing: border-box;
+      border-radius: 7px; border: 1px solid rgb(255 255 255 / .07); border-left-color: rgb(224 171 94 / .5);
+      background: linear-gradient(180deg, rgb(31 26 20 / .8), rgb(21 18 14 / .8));
+      box-shadow: 0 18px 46px rgb(0 0 0 / .4), 0 0 30px rgb(240 200 119 / .04); opacity: 0; transition: opacity .4s ease; }
+    .st-host.on .st::before { opacity: 1; }
+    .st-card { padding: 10px 13px 10px 12px; transform: translateY(6px); background: transparent; border-color: transparent; box-shadow: none; }
+    .st-card p { font-size: 13px; line-height: 1.25; margin-bottom: 8px; }
+    .st-card ul { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+    .st-card li { padding-left: 10px; line-height: 1.15; }
+    .st-card li b { display: block; font-size: 13.5px; }
+    .st-card li span { display: block; margin-top: 2px; font-size: 12px; line-height: 1.2; }
+    .st-card li span::before { content: none; }
+    .st-card code { font-size: 11px; overflow-wrap: anywhere; }
+    .st-card em { margin-top: 7px; padding-top: 5px; font-size: 13px; }
+    .st-more { margin-top: 6px; font-size: 10.5px; line-height: 1.25; }
   }
 
   /* Version F, slide 8: a thousand flowers, as people reached (flowers.js). It reads left to right: on the left Astrid
