@@ -542,29 +542,69 @@
     const r = tile.getBoundingClientRect();
     return { tile, shade: 1, sat: 1, far: 0, depth: 0, aspect: r.width / r.height, at: (u, v) => [r.left + u * r.width, r.top + v * r.height] };
   }));
+  // A card's picture as it shows on the card (its crop to the card's shape), drawn into a grid of cols × rows.
+  const cropOf = (pic, w, h, aspect) => {
+    const [ox, oy] = getComputedStyle(pic).objectPosition.split(' ').map((n) => parseFloat(n) / 100);
+    let sw = w, sh = h, sx = 0, sy = 0;
+    if (sw / sh > aspect) { sw = sh * aspect; sx = (w - sw) * ox; } else { sh = sw / aspect; sy = (h - sh) * oy; }
+    return [sx, sy, sw, sh];
+  };
+  const grab = (pic, w, h, aspect, cols, rows) => {
+    sampler.width = cols; sampler.height = rows;
+    try { sctx.drawImage(pic, ...cropOf(pic, w, h, aspect), 0, 0, cols, rows); return sctx.getImageData(0, 0, cols, rows).data; } catch { return null; }
+  };
+  // Reading a picture back from the GPU is slow, and slower still while the turn to slide 2 is under way, so each
+  // card's still is read once, ahead of time, in a moment of quiet while slide 1 is up (STILL px square); the
+  // dissolve then reads only a film that is playing. (Once the ring has arrived and settled, so its arrival never drops a frame.)
+  const STILL = 64, stills = new Map();
+  const readStills = () => {
+    if (!collage.faces || !collageSlide.classList.contains('on')) return;
+    const todo = collage.faces().filter((f) => {
+      const img = f.tile.querySelector('img');
+      return img.complete && img.naturalWidth && stills.get(f.tile)?.src !== img.currentSrc + getComputedStyle(img).objectPosition + f.aspect;
+    });
+    if (!todo.length) return;
+    const f = todo[0], img = f.tile.querySelector('img');
+    const data = grab(img, img.naturalWidth, img.naturalHeight, f.aspect, STILL, STILL);
+    if (data) stills.set(f.tile, { src: img.currentSrc + getComputedStyle(img).objectPosition + f.aspect, data: new Uint8ClampedArray(data) });
+    if (todo.length > 1) whenIdle(readStills);
+  };
+  const whenIdle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 400));
+  // The cached still, averaged down to cols × rows.
+  const fromStill = (still, cols, rows) => {
+    const out = new Uint8ClampedArray(cols * rows * 4), d = still.data;
+    for (let j = 0; j < rows; j++) {
+      const y0 = Math.floor((j * STILL) / rows), y1 = Math.max(y0 + 1, Math.floor(((j + 1) * STILL) / rows));
+      for (let i = 0; i < cols; i++) {
+        const x0 = Math.floor((i * STILL) / cols), x1 = Math.max(x0 + 1, Math.floor(((i + 1) * STILL) / cols));
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const k = (y * STILL + x) * 4; r += d[k]; g += d[k + 1]; b += d[k + 2]; n++; }
+        const o = (j * cols + i) * 4;
+        out[o] = r / n; out[o + 1] = g / n; out[o + 2] = b / n; out[o + 3] = 255;
+      }
+    }
+    return out;
+  };
+  const bounds = (q) => [Math.min(...q.map((p) => p[0])), Math.min(...q.map((p) => p[1])), Math.max(...q.map((p) => p[0])), Math.max(...q.map((p) => p[1]))];
   const tileMotes = (base) => {
     const motes = [];
-    const faces = facesOf().map((f) => ({ ...f, quad: [f.at(0, 0), f.at(1, 0), f.at(1, 1), f.at(0, 1)] }));
+    const faces = facesOf().map((f) => { const quad = [f.at(0, 0), f.at(1, 0), f.at(1, 1), f.at(0, 1)]; return { ...f, quad, box: bounds(quad) }; });
     for (const f of faces) {
       const { tile, quad } = f, v = tile.querySelector('video'), img = tile.querySelector('img');
       const across = (Math.hypot(quad[1][0] - quad[0][0], quad[1][1] - quad[0][1]) + Math.hypot(quad[2][0] - quad[3][0], quad[2][1] - quad[3][1])) / 2;
       const down = (Math.hypot(quad[3][0] - quad[0][0], quad[3][1] - quad[0][1]) + Math.hypot(quad[2][0] - quad[1][0], quad[2][1] - quad[1][1])) / 2;
       if (!(across > 1) || !(down > 1)) continue;
       const cols = Math.max(4, Math.round(across / 8)), rows = Math.max(4, Math.round(down / 8));
-      const nearer = faces.filter((g) => g.depth > f.depth).map((g) => g.quad);
+      // The nearer cards that overlap this one at all, each tested by its bounds before its outline.
+      const nearer = faces.filter((g) => g.depth > f.depth && g.box[0] < f.box[2] && g.box[2] > f.box[0] && g.box[1] < f.box[3] && g.box[3] > f.box[1]);
+      const hidden = (x, y) => nearer.some((g) => x >= g.box[0] && x <= g.box[2] && y >= g.box[1] && y <= g.box[3] && inside(g.quad, x, y));
       let px = null;
       // What the tile shows: its preview while one plays over it, otherwise its still (both same-origin).
       const live = tile.classList.contains('is-live') && v && v.readyState >= 2 && v.videoWidth;
-      const pic = live ? v : img && img.complete && img.naturalWidth ? img : null;
-      if (pic) {
-        const iw = live ? v.videoWidth : img.naturalWidth, ih = live ? v.videoHeight : img.naturalHeight;
-        const [ox, oy] = getComputedStyle(pic).objectPosition.split(' ').map((n) => parseFloat(n) / 100);
-        const ta = f.aspect;
-        let sw = iw, sh = ih, sx = 0, sy = 0;
-        if (sw / sh > ta) { sw = sh * ta; sx = (iw - sw) * ox; } else { sh = sw / ta; sy = (ih - sh) * oy; }
-        sampler.width = cols; sampler.height = rows;
-        try { sctx.drawImage(pic, sx, sy, sw, sh, 0, 0, cols, rows); px = sctx.getImageData(0, 0, cols, rows).data; } catch { px = null; }
-      }
+      const still = !live && stills.get(tile);
+      if (still && still.src === img.currentSrc + getComputedStyle(img).objectPosition + f.aspect) px = fromStill(still, cols, rows);
+      else if (live) px = grab(v, v.videoWidth, v.videoHeight, f.aspect, cols, rows);
+      else if (img && img.complete && img.naturalWidth) px = grab(img, img.naturalWidth, img.naturalHeight, f.aspect, cols, rows);
       // The film as the ring shows it: paled toward its own grey, then dimmed toward the ground (and faded where it
       // passes under the words).
       const look = (r, g, b, shade) => {
@@ -575,7 +615,7 @@
         for (let i = 0; i < cols; i++) {
           const k = (j * cols + i) * 4;
           const [x, y] = f.at((i + 0.5) / cols, (j + 0.5) / rows);
-          if (nearer.some((q) => inside(q, x, y))) continue; // behind a nearer film
+          if (hidden(x, y)) continue; // behind a nearer film
           const [xa, ya] = f.at(i / cols, (j + 0.5) / rows), [xb, yb] = f.at((i + 1) / cols, (j + 0.5) / rows);
           const [xc, yc] = f.at((i + 0.5) / cols, j / rows), [xd, yd] = f.at((i + 0.5) / cols, (j + 1) / rows);
           const sx0 = x - base.left, sy0 = y - base.top, cw = Math.hypot(xb - xa, yb - ya), ch = Math.hypot(xd - xc, yd - yc);
@@ -700,6 +740,11 @@
   });
   watch.observe(slide, { attributes: true, attributeFilter: ['class'] });
   if (collageSlide) watch.observe(collageSlide, { attributes: true, attributeFilter: ['class'] });
+  if (collageSlide) {
+    new MutationObserver(() => { if (collageSlide.classList.contains('on')) setTimeout(() => whenIdle(readStills), 6500); })
+      .observe(collageSlide, { attributes: true, attributeFilter: ['class'] });
+    addEventListener('load', () => setTimeout(() => whenIdle(readStills), 6500), { once: true });
+  }
   const syncMotion = () => {
     if (motionOff() && slide.classList.contains('on')) { stop(); start(false); }
     else if (document.hidden || document.getElementById('overview')?.classList.contains('on')) stop();
