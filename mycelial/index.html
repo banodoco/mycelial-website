@@ -1152,6 +1152,9 @@
   .sf-whisper { max-width: 15rem; z-index: 1; text-align: center; transform-origin: 50% 100%; font: 400 15px/1.25 "EB Garamond", serif; color: #efe6d6d9; transition-duration: .7s; text-shadow: 0 0 12px #0d0a07, 0 0 4px #0d0a07; }
   .sf-whisper .sf-where { font-size: 11px; opacity: .8; }
   .sf-whisper.is-on { opacity: 1; }
+  /* A pointer on a dot quietens the name quickly; let go, it comes back slowly (scatter-field.js). */
+  .sf-whisper.is-hush { transition-duration: .35s; }
+  .sf-whisper.is-back { transition: opacity 1.1s ease-in-out; }
   .sf-legend { position: absolute; right: max(16px, 9vw); bottom: 76px; width: min(40vw, 640px); z-index: 2; pointer-events: auto; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem 1rem;
     font: 400 0.82rem "EB Garamond", serif; color: #b8a98f88; }
   .sf-key { all: unset; position: relative; cursor: pointer; display: inline-flex; align-items: center; gap: 0.45em; transition: color .4s; }
