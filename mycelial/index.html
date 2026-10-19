@@ -1095,7 +1095,7 @@
     html[data-ver="f"] .fw-raise > .split > :first-child > .num { margin-bottom: 2.1rem; } /* air between the mark and headline */
     .fw-raise .fw-asks { position: relative; left: auto; top: auto; translate: none; margin-top: 0; }
     /* Upright, the pill is too wide: Behind it and The goal stand side by side and The round runs the full width
-       beneath them, each with its plus at the end, the set narrow enough to sit inside the halo's ring (the cards
+       beneath them, each label centred with its plus, the set narrow enough to sit inside the halo's ring (the cards
        still hang centred from the whole set). */
     .fw-asks { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); width: min(15.5rem, 62vw); border-radius: 10px; }
     .fw-ask:nth-child(1) { grid-area: 1 / 1; }
@@ -1104,8 +1104,8 @@
     .fw-ask + .fw-ask { border-left: 0; }
     .fw-ask:nth-child(3) { border-left: 1px solid #f0c87726; }
     .fw-ask:nth-child(2) { border-top: 1px solid #f0c87726; }
-    .fw-ask-q, .fw-ask:first-child .fw-ask-q, .fw-ask:last-child .fw-ask-q { box-sizing: border-box; width: 100%; justify-content: space-between;
-      padding: 1.1em 1.05em 1.05em 1.2em; font-size: .7rem; }
+    .fw-ask-q, .fw-ask:first-child .fw-ask-q, .fw-ask:last-child .fw-ask-q { box-sizing: border-box; width: 100%; justify-content: center;
+      padding: 1.1em 1.05em 1.05em 1.2em; font-size: .7rem; } /* each label centred with its plus, in its tab */
     .fw-ask:nth-child(1) .fw-ask-q { border-radius: 9px 0 0 0; }
     .fw-ask:nth-child(3) .fw-ask-q { border-radius: 0 9px 0 0; }
     .fw-ask:nth-child(2) .fw-ask-q { border-radius: 0 0 9px 9px; }
