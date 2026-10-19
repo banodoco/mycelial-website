@@ -163,6 +163,23 @@
     if (withDetail) el.querySelector('.sf-detail').textContent = item.detail;
   };
   const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
+  // Measure the same wrapping and fonts as a visible name, once per item/layout.
+  // A fixed allowance penalises short windows and short names alike.
+  const labelMeasure = document.createElement('div');
+  labelMeasure.className = 'sf-whisper';
+  labelMeasure.setAttribute('aria-hidden', 'true');
+  labelMeasure.style.visibility = 'hidden';
+  labelMeasure.innerHTML = '<span class="sf-where"></span><span class="sf-name"></span>';
+  root.appendChild(labelMeasure);
+  const labelSizes = new Map();
+  const labelHeight = (item) => {
+    if (!labelSizes.has(item)) {
+      fill(labelMeasure, item, false);
+      labelSizes.set(item, labelMeasure.offsetHeight);
+    }
+    return labelSizes.get(item);
+  };
+  const labelScale = (item) => 0.9 + 0.12 * clamp(item.p / 2);
 
   let w = 0, h = 0, dpr = 1, F = 1, cx = 0, cy = 0;
   let speed = 1, boost = 0, glide = 0, since = 9, roll = 0, camX = 0, camY = 0, steerX = 0, steerY = 0, leadX = 0, leadY = 0, settled = 1;
@@ -178,6 +195,7 @@
   const text = slide.querySelector('.split > :first-child');
   let floor = 0, ceil = 0, mid = 0, raised = false;
   const measure = () => {
+    labelSizes.clear();
     // On a phone held upright the field rises above the words (the phone CSS sets them at the foot, on the legend):
     // names and cards live between the top of the screen (floor) and the label (ceil).
     raised = w <= 760 && (h >= w || h > 500);
@@ -191,7 +209,7 @@
       return;
     }
     slide.style.removeProperty('--sf-top');
-    floor = Math.max(h * 0.48, t && t.height ? t.bottom - s.top + h * 0.06 : h * 0.5);
+    floor = t && t.height ? t.bottom - s.top + 12 : h * 0.5;
     ceil = l.height ? l.top - s.top - 10 : h - 40;
     // F's field is centred in the free space between the headline and the legend.
     mid = t && t.height && l.height ? (t.bottom + l.top) / 2 - s.top : h * 0.68;
@@ -414,13 +432,18 @@
     // an even, unhurried beat.
     const tired = held > 2.6;
     let best = null, bestScore = 0;
+    // The camera still glides from slide 1 when the first name appears. Choose
+    // names around the usable text area's stable centre, not that moving origin.
+    const focusX = low ? w / 2 : cx, focusY = low ? (floor + ceil) / 2 : cy;
     for (const n of named) {
       n.score = 0;
       // A name needs room above its dot, under the headline and over the
       // legend; a new one needs a little more, so it can travel before it must go.
-      const room = n === featured ? 0 : h * 0.05;
-      if (!n.vis || n.a < 0.6 || n.z > 3.2 || !clear(n) || (low ? n.sy - n.rad - 62 - room < floor || n.sy > ceil - room : n.sx < w * 0.53) || (n.rest > clock && n !== featured)) continue;
-      const dx = (n.sx - cx) / (F * 0.55), dy = (n.sy - cy) / (F * 0.55);
+      const room = n === featured ? 0 : 8;
+      if (!n.vis || n.a < 0.6 || n.z > 3.2 || !clear(n) || (n.rest > clock && n !== featured)) continue;
+      const height = labelHeight(n) * labelScale(n), bottom = n.sy - n.rad - 8;
+      if (low ? bottom - height < floor + room || n.sy + n.rad > ceil - room : n.sx < w * 0.53) continue;
+      const dx = (n.sx - focusX) / (F * 0.55), dy = (bottom - height / 2 - focusY) / (F * 0.55);
       n.score = n.p * Math.exp(-(dx * dx + dy * dy));
       if (n.score > bestScore && !(tired && n === featured)) { bestScore = n.score; best = n; }
     }
@@ -453,8 +476,9 @@
       const half = tag.el.offsetWidth / 2 + 6;
       const lo = low ? half : w * 0.5 + half;
       const x = clamp(it.sx, lo, Math.max(lo, w - half));
-      const y = Math.max((low ? floor + 2 : 4) + tag.el.offsetHeight, it.sy - it.rad - 8);
-      tag.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%) scale(${(0.9 + 0.12 * clamp(it.p / 2)).toFixed(3)})`;
+      const scale = labelScale(it);
+      const y = Math.max((low ? floor + 2 : 4) + tag.el.offsetHeight * scale, it.sy - it.rad - 8);
+      tag.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%) scale(${scale.toFixed(3)})`;
     });
 
     // The card: beside a hovered dot, or drawn to the centre when clicked.
@@ -821,5 +845,6 @@
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && running) { front = null; if (motionOff()) scheduleFrame(); } });
 
   resize();
+  document.fonts?.addEventListener('loadingdone', () => { labelSizes.clear(); scheduleFrame(); });
   start();
 })();
