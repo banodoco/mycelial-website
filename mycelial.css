@@ -117,14 +117,20 @@ body, button, input, select, textarea { font-family: var(--mycelial-body); }
   max-width: 57vw;
   /* Counterbalance the header above this flex region so the copy centres in the viewport. */
   padding: 0 0 7rem 5.2vw;
+  /* The headline's size and leading and the gap under it, named on the block
+     so the cue row can be spaced from the same numbers (.hero-cues below).
+     The breakpoints set these, never the h1's own properties. */
+  --hero-h1-size: clamp(3.8rem, 5.8vw, 6.2rem);
+  --hero-h1-leading: .96;
+  --hero-copy-gap: 1.7rem;
 }
 .ui .hero h1 {
   font-family: var(--mycelial-display);
   font-weight: 400;
-  font-size: clamp(3.8rem, 5.8vw, 6.2rem);
-  line-height: .96;
+  font-size: var(--hero-h1-size);
+  line-height: var(--hero-h1-leading);
   letter-spacing: -.035em;
-  margin-bottom: 1.7rem;
+  margin-bottom: var(--hero-copy-gap);
   text-shadow: none;
 }
 .ui .hero h1 em {
@@ -205,8 +211,8 @@ body:has(.manifesto-static) .manifesto-static .sub { font-size: 17px; line-heigh
   .ui #site-nav { --header-left: 5vw; padding: 2.1rem var(--header-left); }
   .ui .logo { --brand-width: 210px; }
   .ui .logo .wordmark { font-size: 18px; }
-  .ui .hero { max-width: 100%; padding: 4.5vh 6vw 0; justify-content: flex-start; }
-  .ui .hero h1 { font-size: clamp(2.9rem, 6.4vw, 4.5rem); line-height: 1; }
+  .ui .hero { max-width: 100%; padding: 4.5vh 6vw 0; justify-content: flex-start;
+    --hero-h1-size: clamp(2.9rem, 6.4vw, 4.5rem); --hero-h1-leading: 1; }
   .ui .hero .sub { max-width: 32rem; font-size: 12px; line-height: 2; }
   .j-h { font-size: clamp(2rem, 5vw, 3rem); }
 }
@@ -214,8 +220,9 @@ body:has(.manifesto-static) .manifesto-static .sub { font-size: 17px; line-heigh
   .ui #site-nav { --header-left: 6vw; padding: 2.1rem var(--header-left); }
   .ui .logo { --brand-width: 180px; }
   .ui .logo .wordmark { font-size: 16px; }
-  .ui .hero { padding: 3.5vh 6vw 0; text-align: center; }
-  .ui .hero h1 { font-size: clamp(2.65rem, 10.8vw, 4rem); line-height: .97; width: calc(100% + 6vw); margin: 0 -3vw 1.3rem; text-wrap: balance; }
+  .ui .hero { padding: 3.5vh 6vw 0; text-align: center;
+    --hero-h1-size: clamp(2.65rem, 10.8vw, 4rem); --hero-h1-leading: .97; --hero-copy-gap: 1.3rem; }
+  .ui .hero h1 { width: calc(100% + 6vw); margin: 0 -3vw var(--hero-copy-gap); text-wrap: balance; }
   .ui .hero h1 .hl { display: inline; white-space: normal; }
   .ui .hero .sub { max-width: 100%; font-size: 11px; line-height: 2; letter-spacing: .18em; margin: 0; }
   .j-h { font-size: clamp(2rem, 8vw, 2.8rem); }
@@ -224,11 +231,139 @@ body:has(.manifesto-static) .manifesto-static .sub { font-size: 17px; line-heigh
   .j-manifesto .j-manifesto-line { font-size: 16px; line-height: 1.9; letter-spacing: .015em; }
 }
 @media (max-height: 700px) and (min-width: 1025px) {
-  .ui .hero h1 { font-size: clamp(3rem, 5vw, 4.5rem); }
+  .ui .hero { --hero-h1-size: clamp(3rem, 5vw, 4.5rem); }
 }
 @media (max-height: 740px) and (max-width: 600px) {
-  .ui .hero { padding-top: 1vh; }
-  .ui .hero h1 { font-size: 9.6vw; }
+  .ui .hero { padding-top: 1vh; --hero-h1-size: 9.6vw; }
+}
+
+/* THE HERO'S TWO CUES. Wayfinding, not calls to action: the reference's
+   spaced small capitals in the headline's accent gold, no fill and no frame,
+   so the headline stays the only loud thing. Each arrow says where its
+   control lives: Explore's is aimed at the navigator by hero-cues.js,
+   Overview's at the menu in the top-right. Inside .hero, so they leave with
+   the copy.
+
+   THEY ARRIVE AS THE COPY'S LAST BEAT (2026-10-19, owner: "there's an appear
+   sequence for the text; they should show with it"). The same fade-on, the
+   same --hero-entry-duration and ease, released by the same barrier
+   (index.html's hero-entry-pending, below), one short step after the
+   headline and sub's 0.15s. They used to wait 0.5s and read as a second
+   event.
+
+   SPACED AS THE HEADLINE IS FROM THE SUB (2026-10-19, owner: "the same
+   distance from the secondary text as the primary text is"). Measured the
+   way the eye reads it: from the last baseline above to the cap height
+   below. Above the sub that is the h1's margin plus the leading on either
+   side of it; here it is this margin plus the sub's and the cue's. So the
+   margin is the headline's gap with the headline's leading added and the
+   cue's taken away, from the same variables, and the two gaps stay equal at
+   every size:
+
+     h1 below its baseline  size * (leading / 2 - .3185)
+                            Cormorant: (ascent .924 - descent .287) / 2
+     cue above its caps     the button's top padding, half the arrow's extra
+                            height, then .141em: DM Sans at line-height 1,
+                            .5 + (.992 - .31) / 2 - cap .7
+
+   The sub's own leading is in both gaps and cancels to within .02em. */
+.ui .hero .hero-cues {
+  --hero-cue-pad: .55rem;
+  --hero-cue-arrow: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2.5rem;
+  font: 400 11px/1 var(--mycelial-body);
+  margin-top: calc(var(--hero-copy-gap)
+    + var(--hero-h1-size) * (var(--hero-h1-leading) / 2 - .3185)
+    - var(--hero-cue-pad) - (var(--hero-cue-arrow) - 1em) / 2 - .141em);
+  animation: fade-on var(--hero-entry-duration) ease calc(.15s + .12s) both;
+}
+.ui .hero .hero-cue {
+  --cue-aim: 45deg;
+  display: inline-flex;
+  align-items: center;
+  gap: .7rem;
+  width: fit-content;
+  margin: 0;
+  padding: var(--hero-cue-pad) 0;
+  border: 0;
+  background: none;
+  color: #f3bd7c;
+  font: inherit;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color .2s;
+}
+.ui .hero .hero-cue-overview { --cue-aim: -45deg; }
+/* Tracking trails the last letter; pull it back so the arrow keeps the gap. */
+.ui .hero .hero-cue-word { margin-right: -.24em; }
+.ui .hero .hero-cue-arrow {
+  width: var(--hero-cue-arrow);
+  height: var(--hero-cue-arrow);
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  rotate: var(--cue-aim);
+  transition: translate .25s cubic-bezier(.22, 1, .36, 1);
+}
+.ui .hero .hero-cue:hover { color: var(--gold-bright); }
+/* The nudge travels along the arrow's own bearing. */
+.ui .hero .hero-cue:hover .hero-cue-arrow {
+  translate: calc(cos(var(--cue-aim)) * 2.5px) calc(sin(var(--cue-aim)) * 2.5px);
+}
+.ui .hero .hero-cue:focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+/* An Overview pressed before the site map exists waits in place: its arrow
+   breathes until the panel opens (hero-cues.js). Quiet on purpose. */
+.ui .hero .hero-cue.is-pending .hero-cue-arrow {
+  animation: hero-cue-wait 1.2s ease-in-out infinite;
+}
+@keyframes hero-cue-wait { 50% { opacity: .3; } }
+/* PL-1.4's 44px touch box, padded rather than drawn (hero.css .cta). */
+@media (pointer: coarse), (max-width: 720px), (max-height: 560px) {
+  .ui .hero .hero-cue { position: relative; }
+  .ui .hero .hero-cue::before {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+}
+/* Portrait frames centre the copy (hero.css), and the cues join its axis.
+   The navigator is then nearly straight below; hero-cues.js refines it. */
+@media (max-width: 900px) and (orientation: portrait) {
+  .ui .hero .hero-cues { justify-content: center; }
+  .ui .hero .hero-cue-explore { --cue-aim: 90deg; }
+}
+/* Phones: the specimen's cap rises to just under the copy, so the row stays
+   slim; the 44px pad above still makes the touch box. The block starts
+   higher instead (the header keeps its own padding). */
+@media (max-width: 600px) {
+  .ui .hero { padding-top: 0; }
+  .ui .hero .hero-cues { --hero-cue-pad: .2rem; justify-content: center; gap: 0 2rem; font-size: 10px; }
+  .ui .hero .hero-cue { letter-spacing: .22em; }
+  .ui .hero .hero-cue-word { margin-right: -.22em; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  body.hero-entry-pending .ui .hero .hero-cues {
+    opacity: 0;
+    animation: none !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui .hero .hero-cues { animation: none; }
+  .ui .hero .hero-cue-arrow { transition: none; }
+  .ui .hero .hero-cue.is-pending .hero-cue-arrow { animation: none; opacity: .45; }
 }
 /* Secondary documents use the same recognizable signature. */
 .logo:has(.mycelial-secondary-name) { display: flex; align-items: center; gap: 10px; width: auto; min-width: 170px; color: var(--parchment); }
