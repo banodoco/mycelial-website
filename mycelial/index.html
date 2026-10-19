@@ -80,8 +80,10 @@
           intro.poster.alt = '';
           intro.poster.decoding = 'sync';
           intro.poster.src = p.src;
-          // A transform keeps half-pixel positions exact on a phone's screen.
-          intro.poster.style.cssText = `position:fixed;left:0;top:0;width:${p.w}px;height:${p.h}px;transform:translate3d(${p.x}px,${p.y}px,0);z-index:3;pointer-events:none`;
+          // The gate drew it 1:1 with the screen's pixels and on their grid (gate.html makePoster); a transform keeps that
+          // exact, so the picture is never resampled.
+          const dev = devicePixelRatio || 1, on = (v) => Math.round(v * dev) / dev;
+          intro.poster.style.cssText = `position:fixed;left:0;top:0;width:${p.w}px;height:${p.h}px;transform:translate3d(${on(p.x)}px,${on(p.y)}px,0);z-index:3;pointer-events:none`;
           root.appendChild(intro.poster);
         }
       } else root.classList.add('dt-chrome-wait'); // the footer waits for the wordmark to come down into it

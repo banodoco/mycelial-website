@@ -480,27 +480,33 @@
       if (markBox) { mg.setTransform(1, 0, 0, 1, 0, 0); mg.clearRect(0, 0, markCv.width, markCv.height); markBox = 0; markKey = ''; }
       return;
     }
-    const B = Math.ceil(mark.size * 1.5 + 16);
-    const tl = `${(mark.x - B / 2).toFixed(1)}px ${(mark.y - B / 2).toFixed(1)}px`;
-    if (markCv.style.translate !== tl) markCv.style.translate = tl;
+    const dev = devicePixelRatio || 1, B = Math.ceil(mark.size * 1.5 + 16);
     // Its own resolution, budgeted by pixels rather than capped like the full-screen network: the small marks (the
     // opening, the thread's tip) are drawn at up to 3x so they stay crisp on a phone; a surface that would pass about
     // 1.5 megapixels there (the large faint crown) is drawn at the network's 2x.
-    const md = (B * Math.min(3, devicePixelRatio || 1)) ** 2 > 1.5e6 ? Math.min(2, devicePixelRatio || 1) : Math.min(3, devicePixelRatio || 1);
+    const md = (B * Math.min(3, dev)) ** 2 > 1.5e6 ? Math.min(2, dev) : Math.min(3, dev);
+    // A whole number of backing pixels shown at exactly one per screen pixel, with its corner on the screen's own pixel
+    // grid: a box centred on the screen otherwise lands half a pixel off on a 3x phone and the browser smears the
+    // whole mark across two pixels. The art is drawn offset within it, so the mark's middle stays exact. (The gate's
+    // mark layer is the same, so its poster and the hand-off match.)
+    const W = Math.ceil(B * md), side = W / md;
+    const left = Math.round((mark.x - side / 2) * dev) / dev, top = Math.round((mark.y - side / 2) * dev) / dev;
+    const tl = `${left}px ${top}px`;
+    if (markCv.style.translate !== tl) markCv.style.translate = tl;
     const art = mark.crown ? { ...mark, t: 2, shrink: 0 } : mark;
-    const key = `${B}|${md}|${mark.x}|${mark.y}|${art.shrink}|${Math.min(art.t, 1.2)}`;
+    const key = `${W}|${md}|${mark.x}|${mark.y}|${art.shrink}|${Math.min(art.t, 1.2)}`;
     if (key === markKey) return;
     markKey = key;
-    if (B !== markBox || markCv.width !== Math.round(B * md)) {
-      markBox = B;
-      markCv.width = markCv.height = Math.round(B * md);
-      markCv.style.width = markCv.style.height = `${B}px`;
+    if (W !== markBox) {
+      markBox = W;
+      markCv.width = markCv.height = W;
+      markCv.style.width = markCv.style.height = `${side}px`;
     }
     mg.setTransform(md, 0, 0, md, 0, 0);
-    mg.clearRect(0, 0, B, B);
+    mg.clearRect(0, 0, side, side);
     mg.lineCap = 'round';
     mg.lineJoin = 'round';
-    drawMark(mg, art, B / 2, B / 2);
+    drawMark(mg, art, mark.x - left, mark.y - top);
   };
 
   // The settled ground, then what is still growing on it, softened under the text together; then the passing
@@ -875,7 +881,14 @@
   name.tabIndex = -1;
   name.setAttribute('aria-hidden', 'true');
   document.body.appendChild(name);
-  const nameAt = (x, y, k) => `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translateY(-50%) scale(${k})`;
+  // On the screen's pixel grid, so the wordmark's own layer is never resampled half a pixel over.
+  const onGrid = (v) => Math.round(v * (devicePixelRatio || 1)) / (devicePixelRatio || 1);
+  const nameAt = (x, y, k) => `translate(${onGrid(x)}px, ${onGrid(y)}px) translateY(-50%) scale(${k})`;
+  // How far below the mark's middle the wordmark's middle sits in the opening: the ring's radius, a clear gap, then the
+  // rise of the caps above the middle of the 22 px line (DM Sans caps are 0.7 em tall and top out 0.28 em above it).
+  // The gap is most of a cap height plus a little of the mark, so a phone's small mark still reads as a lockup with its
+  // name and a desktop's large one keeps its proportion. The same as the gate's (gate.html), so the hand-off holds still.
+  const nameDrop = (size) => size / 2 + (0.8 * 0.7 * 22 + 0.07 * size) + 0.28 * 22;
   const nameSlot = document.querySelector('.chrome .brand');
   const nameCorner = () => {
     const r = nameSlot && nameSlot.getBoundingClientRect();
@@ -980,7 +993,7 @@
     name.tabIndex = -1;
     name.setAttribute('aria-hidden', 'true');
     name.classList.remove('is-resting');
-    name.style.transform = nameAt(c.x - name.offsetWidth / 2, c.y + size * 0.66, 1); // beneath the mark, so the two never cross
+    name.style.transform = nameAt(c.x - name.offsetWidth / 2, c.y + nameDrop(size), 1); // beneath the mark, clear of it
     name.style.transitionDelay = gate ? '' : '.35s';
     name.classList.add('is-on');
     if (gate) {
