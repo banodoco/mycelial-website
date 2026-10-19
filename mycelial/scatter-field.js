@@ -170,7 +170,7 @@
   let shift = { x: 0, y: 0, age: 9 };
   let resting = false, restAt = null;
   let pointer = null, touched = false, hot = null, front = null, f = 0, shown = null, keyHover = null, keyLock = null, lastLit;
-  let featured = null, held = 0, live = 0, clock = 0, running = false, last = 0, frameRaf = 0, holdFor = 0;
+  let featured = null, held = 0, live = 0, clock = 0, running = false, last = 0, frameRaf = 0, holdFor = 0, busy = -9, back = false;
   const tags = labels.map((el) => ({ el, item: null }));
 
   // Names and cards live in the lower screen: below the headline (floor) and
@@ -290,7 +290,8 @@
       shift.k = rewind.k0 + (1 - rewind.k0) * q * q * q * (q * (q * 6 - 15) + 10);
     }
     const vel = rewind ? rewindSpeed() : speed + boost + glide, dz = dt * 0.36 * vel;
-    clock += dt; held += dt; shift.age += dt;
+    clock += dt; shift.age += dt;
+    if (!hot && !front && clock - busy > 0.5) held += dt; // a name's time runs only while it shows
     roll += dt * 0.025 * speed;
     // Steering stays where the mouse left it; no snap back to centre. It eases
     // in two stages (no lurch when the mouse first moves), and just after an
@@ -431,13 +432,22 @@
       if (featured) fill(tags[0].el, featured, false);
       tags[0].item = featured;
     }
-    // Let the first name surface just after the initial dissolve, while its remaining motes drift away.
-    const quiet = !hot && !front && (!motes.length || since >= 1.1);
+    // Let the first name surface just after the initial dissolve, while its remaining motes drift away. A pointer on
+    // a dot (or a card in front) quietens the name at once; once it lets go, the name waits a moment (so passing over
+    // dots never flickers it), then comes back slowly, wherever its dot has drifted to on its way, or the name of
+    // whichever dot has taken its place meanwhile.
+    if (hot || front) busy = clock;
+    const quiet = !hot && !front && clock - busy > 0.5 && (!motes.length || since >= 1.1);
+    if (!quiet && clock - busy < 0.05) back = true; // put out by the pointer, not by the arrival
     const liveTarget = quiet && featured ? 1 : 0;
     live = motionOff() ? liveTarget : live + (liveTarget - live) * ease(3);
     tags.forEach((tag, i) => {
       const it = tag.item;
-      tag.el.classList.toggle('is-on', i === 0 && quiet && !!it && it.vis);
+      const on = i === 0 && quiet && !!it && it.vis;
+      if (on && back && !tag.el.classList.contains('is-on')) { tag.el.classList.add('is-back'); back = false; held = Math.min(held, 0.6); } // and has its turn again
+      if (!on || clock - busy > 2) tag.el.classList.remove('is-back');
+      tag.el.classList.toggle('is-hush', !on && (!!hot || !!front));
+      tag.el.classList.toggle('is-on', on);
       if (!it || !it.vis) return;
       // Centred above its dot, nudged inside the field rather than cut off.
       const half = tag.el.offsetWidth / 2 + 6;
