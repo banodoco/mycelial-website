@@ -478,6 +478,10 @@
     }
     // Flag leaders: from each plane's outer edge out to its flag; the layer being explained burns brighter.
     vis.lb.forEach((q, i) => {
+      // Once the phone's tour is available, every layer remains a usable control even if an
+      // interrupted arrival left its leader's reveal clock unfinished. Always clear stale zeroes.
+      const revealed = view.mobile && amb && !build?.back ? 1 : q * q;
+      flags[i].style.setProperty('--in', revealed.toFixed(3));
       if (q <= 0) return;
       const m = C[i][geo.E.m], x0 = m.x + 8 * k * geo.out, x1 = geo.callX - 3 * geo.out, y1 = flagY[i] ?? m.y, l = lit[i];
       g.lineWidth = 0.8 + 0.5 * l; g.strokeStyle = GOLD((0.5 + 0.4 * l) * q);
@@ -489,7 +493,6 @@
         partial(pts, ease(q));
       }
       dot(x0, m.y, 1.5, q * (0.7 + 0.3 * l));
-      flags[i].style.setProperty('--in', (q * q).toFixed(3));
     });
     // The guide: a bead of light with a short tail along its way, breathing while it waits at a flag.
     if (guide.a > 0.01 && guide.pos) {
@@ -689,7 +692,8 @@
     const dt = Math.min(0.05, (t - (guide.last || t)) / 1000);
     guide.last = t;
     const h = held();
-    let want = -1;
+    // The phone has one permanent card slot: retain its content while the guide travels.
+    let want = view.mobile ? (openI >= 0 ? openI : guide.i) : -1;
     if (h >= 0) { want = h; guide.paused = true; guide.i = h; guide.resumeAt = 0; guide.pos = geo.anchors[h]; guide.tail = null; }
     else if (guide.paused) {
       if (!guide.resumeAt) guide.resumeAt = t + RESUME * 1000;
@@ -731,7 +735,13 @@
     });
   };
   // With reduced motion there is no clock: hover and taps open the cards directly.
-  const react = () => { if (still) { show(held()); arrangeFlags(0); draw(); } else wake(); };
+  const react = () => {
+    if (motionOff()) {
+      const h = held();
+      show(h >= 0 ? h : view.mobile ? Math.max(0, openI) : -1);
+      arrangeFlags(0); draw();
+    } else wake();
+  };
   let leaving = 0;
   const enter = (i) => { clearTimeout(leaving); hold.hover = i; react(); };
   const leave = () => { clearTimeout(leaving); leaving = setTimeout(() => { hold.hover = -1; react(); }, 260); };
@@ -809,6 +819,7 @@
     flags.forEach((f) => { f.tabIndex = 0; });
     if (motionOff() || window.deckNav?.rest) {
       layout(); settleAll(); stepHead();
+      if (view.mobile) show(0);
       window.deckEntryDone?.(slide);
       // Landing at rest: the first card is open as it lands (on a wider screen, once the words are in).
       if (!motionOff()) { amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0)); play(); wake(); }

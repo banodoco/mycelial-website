@@ -161,6 +161,18 @@
   // every frame, as before; an empty screen, a still, or a film not yet ready once. Its size on screen comes from a
   // ResizeObserver rather than a layout read every frame.
   let picCW = -1, picCH = -1, picKey = '';
+  const outgoing = document.createElement('canvas'), og = outgoing.getContext('2d');
+  const PIC_FADE = 450;
+  let picFade = null, hasPicFrame = false;
+  const clearPicFade = () => { picFade = null; hasPicFrame = false; outgoing.width = outgoing.height = 1; };
+  const fadePic = () => {
+    if (motionOff() || !hasPicFrame) return;
+    // Capture the complete displayed result, including effects and any interrupted dissolve.
+    outgoing.width = pic.width; outgoing.height = pic.height;
+    og.drawImage(pic, 0, 0);
+    picFade = { at: null };
+    picKey = '';
+  };
   const sizePic = () => {
     const b = pic.getBoundingClientRect();
     pdpr = Math.min(2, devicePixelRatio || 1);
@@ -174,14 +186,18 @@
     if (Math.abs(cw * pdpr - pic.width) > 1 || Math.abs(ch * pdpr - pic.height) > 1) sizePic();
     const src = view.mode === 'still' ? anchors[view.i] : view.mode === 'play' ? videos[view.i] : null;
     root.classList.toggle('has-pic', !!src);
-    const ready = !!src && (src.tagName === 'VIDEO' ? src.readyState >= 2 : src.complete && src.naturalWidth > 0);
-    const key = view.mode === 'play' && ready ? '' : `${view.mode}|${view.i}|${ready}`;
+    const ready = !!src && (src.tagName === 'VIDEO' ? src.readyState >= 2 && !src.seeking : src.complete && src.naturalWidth > 0);
+    const key = picFade || (view.mode === 'play' && ready) ? '' : `${view.mode}|${view.i}|${ready}`;
     if (key && key === picKey) return; // the same picture as last frame
     picKey = key;
     const w = pic.width, h = pic.height;
     pg.setTransform(1, 0, 0, 1, 0, 0);
     pg.clearRect(0, 0, w, h);
-    if (!ready) return;
+    if (!ready) {
+      // Keep the outgoing frame until the requested seek has decoded; never dissolve into black.
+      if (picFade && src) pg.drawImage(outgoing, 0, 0, w, h);
+      return;
+    }
     const s = Math.min(w / 16, h / 9) * 0.86, dw = 16 * s, dh = 9 * s, dx = Math.round((w - dw) / 2), dy = Math.round((h - dh) / 2);
     pg.drawImage(src, dx, dy, dw, dh);
     const seqT = view.mode === 'play' ? view.seq : -1;
@@ -221,15 +237,23 @@
         pg.shadowBlur = 0;
       }
     }
+    if (picFade) {
+      if (picFade.at === null) picFade.at = t;
+      const q = clamp((t - picFade.at) / PIC_FADE);
+      if (q < 1) { pg.save(); pg.globalAlpha = 1 - easeIO(q); pg.drawImage(outgoing, 0, 0, w, h); pg.restore(); }
+      else picFade = null;
+    }
+    hasPicFrame = true;
   };
-  const showStill = (i) => { view.mode = 'still'; view.i = i; view.seq = -1; videos.forEach((v) => v.pause()); gradedVideos.forEach((v) => v?.pause()); };
-  const playFrom = (seqT, rate) => { view.mode = 'play'; view.seq = seqT; view.rate = rate; view.i = -2; };
+  const showStill = (i) => { if (view.mode !== 'still' || view.i !== i) fadePic(); view.mode = 'still'; view.i = i; view.seq = -1; videos.forEach((v) => v.pause()); gradedVideos.forEach((v) => v?.pause()); };
+  const playFrom = (seqT, rate) => { fadePic(); view.mode = 'play'; view.seq = seqT; view.rate = rate; view.i = -2; };
   const stepPlay = (dt) => {
     if (view.mode !== 'play') { gradedVideos.forEach((v) => v?.pause()); return; }
     view.seq += dt * view.rate;
     if (view.seq >= 28) view.seq = 0;
     const i = view.seq < 8 ? 0 : view.seq < 20 ? 1 : 2, local = view.seq - CLIPS[i].at;
     if (view.i !== i) {
+      if (view.i >= 0) fadePic(); // a natural clip boundary (playFrom already captured explicit jumps)
       videos.forEach((v, j) => { if (j !== i) v.pause(); });
       gradedVideos.forEach((v, j) => { if (v && j !== i) v.pause(); });
       view.i = i;
@@ -285,7 +309,7 @@
     { at: 5.9, ask: 'Animate them.', reply: 'Animating each one from its anchor.', step: ['Animating the anchors', 'animated_video', '× 3'], dur: 3.7 },
     { at: 11.2, ask: 'Add a title and a colour look on top.', reply: 'Layering two community-made effects.', step: ['Adding text-card · type-on and audio-reactive-colour', 'rendering', 'community-made'], dur: 5.2 },
   ];
-  const CPS = 30, RESET = 20.6, LOOP = 21.6;
+  const CPS = 30, FINISHED_HOLD = 10;
   let td = -1, wait = 0, rows = [];
   const bubble = (cls, html) => {
     const el = document.createElement('div');
@@ -296,6 +320,7 @@
     return el;
   };
   const clearAll = () => {
+    clearPicFade();
     msgs.innerHTML = ''; typed.textContent = ''; rows = [];
     root.classList.remove('is-typing', 'has-draft', 'is-working', 'is-playing', 'is-resetting');
     anchorEls.forEach((el) => { el.className = 'as-clip'; el.style.opacity = '0'; kind(el, 'image'); });
@@ -309,6 +334,8 @@
     const typeEnd = b.at + b.ask.length / CPS;
     return { typeEnd, send: typeEnd + 0.25, reply: typeEnd + 0.75, act: typeEnd + 0.95, done: typeEnd + 0.95 + b.dur };
   };
+  // Let the completed result keep playing for ten seconds, then use the existing one-second reset fade.
+  const RESET = beatTimes(BEATS[BEATS.length - 1]).done + FINISHED_HOLD, LOOP = RESET + 1;
   const stepBeats = (dt) => {
     if (td < 0) return false;
     if (wait > 0) { wait -= dt; return true; }
@@ -360,7 +387,7 @@
         if (at(i * 1.2)) { el.classList.add('is-animated'); kind(el, 'video'); touch(el, true); root.classList.add('is-playing'); playFrom(c.at, 1); }
         if (at(i * 1.2 + 1.15)) touch(el, false);
       });
-      if (at(3.6)) { view.mode = 'still'; view.i = 2; videos.forEach((v) => v.pause()); root.classList.remove('is-playing'); }
+      if (at(3.6)) { showStill(2); root.classList.remove('is-playing'); }
     }
     if (bi === 2) { // effects land on V2, above the clips, and the preview shows each come on
       if (at(0)) { fxEls[0].classList.add('on'); touch(fxEls[0], true); playFrom(0.3, 1); view.title = now() + 450; root.classList.add('is-playing'); }
@@ -395,7 +422,8 @@
   document.body.appendChild(sky);
   const sg = sky.getContext('2d');
   let morph = null;
-  const MORPH = { rings: [0.05, 1.15], fly: [0, 1.1], outline: [0.1, 0.9], pixels: [0.85, 0.45], resolve: 1.05, handoff: 1.35, turn: 1.55, end: 1.75, demo: 4.0 };
+  // Type as the panels resolve, so the first message lands during the mink's turn.
+  const MORPH = { rings: [0.05, 1.15], fly: [0, 1.1], outline: [0.1, 0.9], pixels: [0.85, 0.45], resolve: 1.05, handoff: 1.35, turn: 1.55, end: 1.75, demo: 0.6 };
   // A rounded rectangle as n points spaced evenly round it, clockwise from the top centre.
   const roundRect = (b, rad, n) => {
     const { left: l, top: t, right: r, bottom: bt } = b, pts = [];
@@ -600,7 +628,7 @@
       settledState(); paint('profile', 0, 0); requestAnimationFrame(() => drawPic(now()));
       window.deckEntryDone?.(slide);
       // Back at rest: the finished editor, its preview playing, until the loop's own reset starts the demo again.
-      if (!motionOff()) { view.rate = 1; td = beatTimes(BEATS[BEATS.length - 1]).act + 4; wait = 0; wake(); }
+      if (!motionOff()) { playFrom(12, 1); td = beatTimes(BEATS[BEATS.length - 1]).done; wait = 0; root.classList.add('is-playing'); wake(); }
       return;
     }
     clearAll();
@@ -611,6 +639,7 @@
     wake();
   };
   const stop = () => {
+    clearPicFade();
     running = false;
     paused = false; pausedTime = 0; pendingStart = null; pausedVideos = [];
     if (raf) cancelAnimationFrame(raf);

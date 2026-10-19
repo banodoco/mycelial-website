@@ -511,9 +511,13 @@
   let markBox = 0, markKey = '';
   const drawMarkLayer = () => {
     if (!mark) {
-      if (markBox) { markCv.style.visibility = 'hidden'; markBox = 0; markKey = ''; }
+      // SVG parts set their own visibility, so they can override visibility:hidden on the parent.
+      // Retire the whole layer when its mark is gone; no old strokes may survive behind another slide.
+      markCv.style.display = 'none';
+      markBox = 0; markKey = '';
       return;
     }
+    markCv.style.display = '';
     const dev = devicePixelRatio || 1, B = Math.ceil(mark.size * 1.5 + 16);
     // Its corner on the screen's own pixel grid, placed by left/top rather than a transform.
     const left = Math.round((mark.x - B / 2) * dev) / dev, top = Math.round((mark.y - B / 2) * dev) / dev;
