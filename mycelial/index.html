@@ -1094,17 +1094,27 @@
     html[data-ver="f"] .fw-raise > .split { row-gap: .65rem; }
     html[data-ver="f"] .fw-raise > .split > :first-child > .num { margin-bottom: 2.1rem; } /* air between the mark and headline */
     .fw-raise .fw-asks { position: relative; left: auto; top: auto; translate: none; margin-top: 0; }
-    /* Upright, the pill is too wide: the same tabs stand as one short list, each a full-width row with its plus at the
-       end (full-width rows keep their cards centred too). */
-    .fw-asks { flex-direction: column; align-items: stretch; width: min(15.5rem, 100%); border-radius: 10px; }
-    .fw-ask + .fw-ask { border-left: 0; border-top: 1px solid #f0c87726; }
+    /* Upright, the pill is too wide: Who's behind it and The goal stand side by side, and Details on the round runs
+       the full width beneath them, each with its plus at the end (the cards still hang centred from the whole set). */
+    .fw-asks { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); width: min(22rem, 100%); border-radius: 10px; }
+    .fw-ask:nth-child(1) { grid-area: 1 / 1; }
+    .fw-ask:nth-child(3) { grid-area: 1 / 2; }
+    .fw-ask:nth-child(2) { grid-area: 2 / 1 / 3 / 3; }
+    .fw-ask + .fw-ask { border-left: 0; }
+    .fw-ask:nth-child(3) { border-left: 1px solid #f0c87726; }
+    .fw-ask:nth-child(2) { border-top: 1px solid #f0c87726; }
     .fw-ask-q, .fw-ask:first-child .fw-ask-q, .fw-ask:last-child .fw-ask-q { box-sizing: border-box; width: 100%; justify-content: space-between;
-      padding: 1.25em 1.3em 1.2em 1.45em; font-size: .7rem; }
-    .fw-ask:first-child .fw-ask-q { border-radius: 9px 9px 0 0; }
-    .fw-ask:last-child .fw-ask-q { border-radius: 0 0 9px 9px; }
+      padding: 1.25em 1.1em 1.2em 1.25em; font-size: .7rem; }
+    .fw-ask:nth-child(1) .fw-ask-q { border-radius: 9px 0 0 0; }
+    .fw-ask:nth-child(3) .fw-ask-q { border-radius: 0 9px 0 0; }
+    .fw-ask:nth-child(2) .fw-ask-q { border-radius: 0 0 9px 9px; }
     .fw-ask-q::after { inset: 0; }
     .fw-ask.is-open .fw-ask-q, .fw-ask.is-down.is-open .fw-ask-q { box-shadow: none; } /* the card hangs from the list, not from its row */
     .fw-ask-card { width: min(22rem, calc(100vw - 32px)); font-size: .95rem; }
+  }
+  /* The narrowest phones: a little less air in the two side-by-side tabs, so Who's behind it keeps one line. */
+  @media (max-width: 380px) and (orientation: portrait) {
+    .fw-ask-q, .fw-ask:first-child .fw-ask-q, .fw-ask:last-child .fw-ask-q { gap: .6em; padding: 1.25em .9em 1.2em 1em; font-size: .64rem; }
   }
 
   @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px) {
