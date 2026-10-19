@@ -348,9 +348,10 @@ if (logoLink) {
 }
 
 // The hero's Explore and Overview cues call into the navigator and the menu.
-// Wired here with the other hero controls, before the scene is awaited, so
-// an early press is held rather than lost (their own register: hero-cues.js).
-attachHeroCues(document.querySelector('.ui .hero-cues'));
+// Wired here with the other hero controls, before the scene is awaited: they
+// appear with the copy, so a press during loading answers at once, and the
+// handoff gives them the live rail as soon as it exists (hero-cues.js).
+const heroCues = attachHeroCues(document.querySelector('.ui .hero-cues'));
 
 /* THE ONE PLACE THIS FILE WAITS. Everything above runs on ~60 KB of
    leaves; everything below needs a scene, so it needs three.js, and a
@@ -1004,5 +1005,8 @@ if (sceneApi) {
     frozen: introAt !== null,
     introSeconds: INTRO_S,
     onNavigate: (chapter) => setLogoAway(chapter !== 'mission'),
+    onRail: heroCues.railReady,
   });
+} else {
+  heroCues.unavailable();
 }

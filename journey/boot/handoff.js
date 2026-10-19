@@ -107,9 +107,13 @@ import { heroSpores } from '../../organism/hero-spores.js';
  * @param frozen          ?introat — the choreography is pinned at a
  *                        progress and nothing should animate off it
  * @param introSeconds    the hero entry choreography length
+ * @param onRail          called once with the live rail, in the task that
+ *                        swaps it in for the preboot shell; the hero cues
+ *                        open its site-map panel from then on
  */
 export function createJourneyHandoff({ scene, entryQueue, note, journeyModule,
-  bakedGeomReady, skipIntro, frozen, introSeconds, onNavigate = null }) {
+  bakedGeomReady, skipIntro, frozen, introSeconds, onNavigate = null,
+  onRail = null }) {
   // Read the specimen's clock rather than running a second CSS duration.
   // This is a one-shot entrance: navigation back to Mission cannot restart it.
   const heroCopy = document.querySelector('.ui .hero');
@@ -528,6 +532,10 @@ export function createJourneyHandoff({ scene, entryQueue, note, journeyModule,
           const shell = document.querySelector('.j-rail-preboot');
           earlyRail.reveal();
           if (shell) continueRailEntry(earlyRail.root, shell, () => journeyFailed);
+        }
+        // A page control's failure must not become the journey's.
+        if (earlyRail && typeof onRail === 'function') {
+          try { onRail(earlyRail); } catch (err) { console.error('[journey-v6] rail listener failed', err); }
         }
         stage = 'loading chapter geometry';
         await bakedGeomReady;
