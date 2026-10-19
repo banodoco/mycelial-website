@@ -299,7 +299,7 @@
   </head>
   <body>
     <canvas class="g-net" aria-hidden="true"></canvas>
-    <canvas class="g-mark" aria-hidden="true"></canvas>
+    <svg class="g-mark" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>
     <div class="g-name" aria-hidden="true">Mycelial</div>
     <main class="g-prompt">
       <h1 class="g-sr">Mycelial</h1>
@@ -449,8 +449,7 @@
         };
         const net = document.querySelector(".g-net"),
           g = net.getContext("2d"),
-          markCv = document.querySelector(".g-mark"),
-          mg = markCv.getContext("2d");
+          markCv = document.querySelector(".g-mark");
         const name = document.querySelector(".g-name"),
           prompt = document.querySelector(".g-prompt"),
           form = document.querySelector("#gate"),
@@ -563,37 +562,113 @@
             }
           }
         };
+        // The mark on screen is vector, the brand's own geometry drawn in stroke by stroke, as in the deck
+        // (dot-transitions.js), so it is as sharp as the wordmark on any phone. drawMark above, the same art on a
+        // canvas, now only paints the poster the deck holds while it loads (makePoster).
+        const SVGNS = "http://www.w3.org/2000/svg";
+        const setAttrs = (n, attrs) => {
+          for (const k in attrs) n.setAttribute(k, attrs[k]);
+        };
+        let markParts = null;
+        const markSvg = () => {
+          if (markParts) return markParts;
+          const el = (tag, attrs, parent) => {
+            const n = document.createElementNS(SVGNS, tag);
+            setAttrs(n, attrs);
+            parent.append(n);
+            return n;
+          };
+          const defs = el("defs", {}, markCv);
+          const glowOf = (id) => {
+            const gr = el("radialGradient", { id }, defs);
+            el("stop", { offset: 1, "stop-color": `rgb(${NODE})`, "stop-opacity": 0 }, gr);
+            const stop = el("stop", { offset: 0, "stop-color": `rgb(${NODE})`, "stop-opacity": 0 }, gr);
+            gr.prepend(stop);
+            return stop;
+          };
+          const art = el("g", {}, markCv);
+          const haloStop = glowOf("g-mark-halo");
+          el("circle", { cx: 32, cy: 32, r: 36, fill: "url(#g-mark-halo)" }, art);
+          const ring = el("circle", { cx: 32, cy: 32, r: 27, fill: "none", "stroke-linecap": "round", transform: "rotate(-90 32 32)" }, art);
+          const lengths = MARK.curves.map(([x0, y0, qx, qy, x1, y1]) => {
+            let L = 0,
+              px = x0,
+              py = y0;
+            for (let i = 1; i <= 48; i++) {
+              const t = i / 48,
+                u = 1 - t,
+                x = u * u * x0 + 2 * u * t * qx + t * t * x1,
+                y = u * u * y0 + 2 * u * t * qy + t * t * y1;
+              L += Math.hypot(x - px, y - py);
+              px = x;
+              py = y;
+            }
+            return L;
+          });
+          const curves = MARK.curves.map(([x0, y0, qx, qy, x1, y1]) =>
+            el("path", { d: `M${x0} ${y0}Q${qx} ${qy} ${x1} ${y1}`, fill: "none", "stroke-linecap": "round" }, art),
+          );
+          const nodes = MARK.nodes.map(([x, y], i) => ({
+            stop: glowOf(`g-mark-n${i}`),
+            glow: el("circle", { cx: x, cy: y, fill: `url(#g-mark-n${i})` }, art),
+            core: el("circle", { cx: x, cy: y }, art),
+          }));
+          return (markParts = { art, haloStop, ring, curves, lengths, nodes });
+        };
+        const drawMarkSvg = (m, cx, cy) => {
+          const p = markSvg(),
+            k = m.t,
+            S = (m.size * (1 - 0.94 * m.shrink)) / 54,
+            fade = (1 - 0.55 * m.shrink) * (m.faint || 1),
+            fine = m.faint ? 0.55 : 1,
+            glowK = 2.2 + 0.8 * clamp((S - 1) / 1.5),
+            ink = `rgba(${THREAD},${(0.8 * fade).toFixed(3)})`;
+          p.art.setAttribute("transform", `translate(${cx - 32 * S} ${cy - 32 * S}) scale(${S})`);
+          p.haloStop.setAttribute("stop-opacity", (0.1 * clamp(k / 1) * fade).toFixed(3));
+          const rp = clamp(k / 0.8),
+            C = 2 * Math.PI * 27;
+          setAttrs(p.ring, {
+            stroke: ink,
+            "stroke-width": Math.max(1.15, S * 0.66 * fine) / S,
+            "stroke-dasharray": `${rp * C} ${C}`,
+            visibility: rp > 0 ? "visible" : "hidden",
+          });
+          const w = Math.max(0.85, S * 0.5 * fine) / S;
+          p.curves.forEach((c, i) => {
+            const q = clamp((k - 0.2 - i * 0.05) / 0.5),
+              L = p.lengths[i];
+            setAttrs(c, { stroke: ink, "stroke-width": w, "stroke-dasharray": `${q * L} ${L + 1}`, visibility: q > 0 ? "visible" : "hidden" });
+          });
+          p.nodes.forEach((n, i) => {
+            const r = MARK.nodes[i][2],
+              a = clamp((k - 0.15 - i * 0.08) / 0.25) * fade,
+              rr = Math.max(1.4, r * S * 0.8 * (m.faint ? 0.55 : 1)),
+              vis = a > 0 ? "visible" : "hidden";
+            n.stop.setAttribute("stop-opacity", (0.5 * a * fine).toFixed(3));
+            setAttrs(n.glow, { r: (rr * glowK) / S, visibility: vis });
+            setAttrs(n.core, { r: rr / S, fill: `rgba(255,236,190,${Math.min(1, a * fine * 1.2).toFixed(3)})`, visibility: vis });
+          });
+        };
         const drawMarkLayer = () => {
           if (!mark) return;
-          // Same as the deck's mark layer (dot-transitions.js drawMarkLayer): a whole number of backing pixels shown
-          // at exactly one per screen pixel, its corner on the screen's own pixel grid (a box centred on the screen
-          // otherwise lands half a pixel off on a 3x phone and is smeared across two), the art offset within it.
+          // As the deck's mark layer (dot-transitions.js): its corner on the screen's own pixel grid, placed by left/top.
           const dev = devicePixelRatio || 1,
             B = Math.ceil(mark.size * 1.5 + 16),
-            md = (B * Math.min(3, dev)) ** 2 > 1.5e6 ? Math.min(2, dev) : Math.min(3, dev),
-            W = Math.ceil(B * md),
-            side = W / md,
-            left = Math.round((mark.x - side / 2) * dev) / dev,
-            top = Math.round((mark.y - side / 2) * dev) / dev;
-          // Placed by left/top, not a transform: an iPhone's WebKit composites a transformed canvas at its own raster
-          // scale and softens the mark (dot-transitions.js does the same).
+            left = Math.round((mark.x - B / 2) * dev) / dev,
+            top = Math.round((mark.y - B / 2) * dev) / dev;
           if (markCv.style.left !== `${left}px`) markCv.style.left = `${left}px`;
           if (markCv.style.top !== `${top}px`) markCv.style.top = `${top}px`;
-          const key = `${W}|${md}|${mark.x}|${mark.y}|${mark.shrink}|${Math.min(mark.t, 1.2)}`;
+          const key = `${B}|${mark.x}|${mark.y}|${mark.shrink}|${Math.min(mark.t, 1.2)}`;
           if (key === markKey) return;
           markKey = key;
-          if (W !== markBox) {
-            markBox = W;
-            markCv.width = markCv.height = W;
-            markCv.style.width = markCv.style.height = `${side}px`;
+          if (B !== markBox) {
+            markBox = B;
+            setAttrs(markCv, { width: B, height: B, viewBox: `0 0 ${B} ${B}` });
           }
-          markMd = md;
-          markAt = { left, top, side };
-          mg.setTransform(md, 0, 0, md, 0, 0);
-          mg.clearRect(0, 0, side, side);
-          mg.lineCap = "round";
-          mg.lineJoin = "round";
-          drawMark(mg, mark, mark.x - left, mark.y - top);
+          // The poster paints at up to the screen's ratio, budgeted like the deck's large marks.
+          markMd = (B * Math.min(3, dev)) ** 2 > 1.5e6 ? Math.min(2, dev) : Math.min(3, dev);
+          markAt = { left, top, side: B };
+          drawMarkSvg(mark, mark.x - left, mark.y - top);
         };
         const draw = () => {
           g.setTransform(1, 0, 0, 1, 0, 0);
@@ -871,8 +946,11 @@
           const w = cv.width / md,
             h = cv.height / md;
           const c = cv.getContext("2d");
-          c.drawImage(markCv, Math.round((markRect.left - left) * md), Math.round((markRect.top - top) * md));
-          c.scale(md, md);
+          c.setTransform(md, 0, 0, md, 0, 0);
+          c.lineCap = "round";
+          c.lineJoin = "round";
+          drawMark(c, mark, mark.x - left, mark.y - top);
+          c.setTransform(md, 0, 0, md, 0, 0);
           c.font = '400 22px "DM Sans"';
           c.fillStyle = "#f7ebd7";
           c.globalAlpha = 0.92;

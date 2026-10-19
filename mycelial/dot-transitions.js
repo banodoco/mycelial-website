@@ -30,11 +30,14 @@
   net.setAttribute('aria-hidden', 'true');
   // The Mycelial mark (the opening, and the crown on the last slide) has a small canvas of its own, so whatever
   // quiets the network behind a slide's picture never fades the mark.
-  const markCv = document.createElement('canvas');
-  markCv.className = 'dt-mark';
+  // The Mycelial mark is vector, the brand's own geometry (assets/brand/favicon.svg) drawn in stroke by stroke, so it
+  // is as sharp as the wordmark on any screen: drawn on a canvas it came out soft on an iPhone, however many pixels.
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const markCv = document.createElementNS(SVGNS, 'svg');
+  markCv.setAttribute('class', 'dt-mark');
   markCv.setAttribute('aria-hidden', 'true');
   document.body.append(net, markCv, dot);
-  const g = net.getContext('2d'), mg = markCv.getContext('2d');
+  const g = net.getContext('2d');
   // Settled threads are drawn once into an offscreen layer and leave the frame loop, so the network can spread
   // across the whole screen while each frame only draws what is still growing or glowing.
   const ground = document.createElement('canvas'), gg = ground.getContext('2d');
@@ -314,47 +317,74 @@
   };
 
   // The mark, drawn on its own canvas around (cx, cy).
-  const drawMark = (g, m, cx, cy) => {
-    const k = m.t;
+  // The mark's parts, made once in the art's own 64-unit space; each frame only moves and scales the group and sets
+  // the strokes' weights, how far each has drawn in, and the opacities.
+  let markParts = null;
+  const markSvg = () => {
+    if (markParts) return markParts;
+    const el = (name, attrs, parent) => {
+      const n = document.createElementNS(SVGNS, name);
+      for (const k in attrs) n.setAttribute(k, attrs[k]);
+      parent.append(n);
+      return n;
+    };
+    const defs = el('defs', {}, markCv);
+    const glowOf = (id) => {
+      const gr = el('radialGradient', { id }, defs);
+      el('stop', { offset: 1, 'stop-color': `rgb(${NODE})`, 'stop-opacity': 0 }, gr);
+      const stop = el('stop', { offset: 0, 'stop-color': `rgb(${NODE})`, 'stop-opacity': 0 }, gr);
+      gr.prepend(stop);
+      return stop;
+    };
+    const art = el('g', {}, markCv);
+    const haloStop = glowOf('dt-mark-halo');
+    el('circle', { cx: 32, cy: 32, r: 36, fill: 'url(#dt-mark-halo)' }, art);
+    const ring = el('circle', { cx: 32, cy: 32, r: 27, fill: 'none', 'stroke-linecap': 'round', transform: 'rotate(-90 32 32)' }, art);
+    // Each curve's length, measured from its own quadratic so it needs no layout.
+    const lengths = MARK.curves.map(([x0, y0, qx, qy, x1, y1]) => {
+      let L = 0, px = x0, py = y0;
+      for (let s2 = 1; s2 <= 48; s2++) {
+        const t = s2 / 48, u = 1 - t, x = u * u * x0 + 2 * u * t * qx + t * t * x1, y = u * u * y0 + 2 * u * t * qy + t * t * y1;
+        L += Math.hypot(x - px, y - py); px = x; py = y;
+      }
+      return L;
+    });
+    const curves = MARK.curves.map(([x0, y0, qx, qy, x1, y1]) =>
+      el('path', { d: `M${x0} ${y0}Q${qx} ${qy} ${x1} ${y1}`, fill: 'none', 'stroke-linecap': 'round' }, art));
+    const nodes = MARK.nodes.map(([x, y], i) => ({
+      stop: glowOf(`dt-mark-n${i}`),
+      glow: el('circle', { cx: x, cy: y, fill: `url(#dt-mark-n${i})` }, art),
+      core: el('circle', { cx: x, cy: y }, art),
+    }));
+    return (markParts = { art, haloStop, ring, curves, lengths, nodes });
+  };
+  const setAttrs = (n, attrs) => { for (const k in attrs) n.setAttribute(k, attrs[k]); };
+  const drawMark = (m, cx, cy) => {
+    const p = markSvg(), k = m.t;
     const S = (m.size * (1 - 0.94 * m.shrink)) / 54; // px per unit; the ring spans 54 units
-    const at = (x, y) => [cx + (x - 32) * S, cy + (y - 32) * S];
     const fade = (1 - 0.55 * m.shrink) * (m.faint || 1);
     const fine = m.faint ? 0.55 : 1; // the large faint crown is drawn in a finer hand, so the words over it stay clear
-    const halo = g.createRadialGradient(cx, cy, 0, cx, cy, 36 * S);
-    halo.addColorStop(0, `rgba(${NODE},${(0.1 * clamp(k / 1) * fade).toFixed(3)})`);
-    halo.addColorStop(1, `rgba(${NODE},0)`);
-    g.fillStyle = halo;
-    g.beginPath(); g.arc(cx, cy, 36 * S, 0, 7); g.fill();
-    g.strokeStyle = `rgba(${THREAD},${(0.8 * fade).toFixed(3)})`;
     // A phone's small mark (and the mark shrinking on its ride) keeps lines of real weight and tight glows: hairline,
-    // half-transparent strokes in wide halos read as a low-resolution smudge beside the solid wordmark. A desktop's
-    // larger mark is already above these floors and draws as before.
+    // half-transparent strokes in wide halos read as a smudge beside the solid wordmark. A desktop's larger mark is
+    // already above these floors and draws as before.
     const glowK = 2.2 + 0.8 * clamp((S - 1) / 1.5);
-    g.lineWidth = Math.max(m.crown ? 1.1 : 1.15, S * 0.66 * fine);
-    g.beginPath(); g.arc(cx, cy, 27 * S, -Math.PI / 2, -Math.PI / 2 + clamp(k / 0.8) * Math.PI * 2); g.stroke();
-    g.lineWidth = Math.max(m.crown ? 0.9 : 0.85, S * 0.5 * fine);
-    MARK.curves.forEach(([x0, y0, qx, qy, x1, y1], i) => {
-      const p = clamp((k - 0.2 - i * 0.05) / 0.5);
-      if (p <= 0) return;
-      g.beginPath();
-      for (let s = 0; s <= 20; s++) {
-        const t = (s / 20) * p, u = 1 - t;
-        const [px, py] = at(u * u * x0 + 2 * u * t * qx + t * t * x1, u * u * y0 + 2 * u * t * qy + t * t * y1);
-        s ? g.lineTo(px, py) : g.moveTo(px, py);
-      }
-      g.stroke();
+    const ink = `rgba(${THREAD},${(0.8 * fade).toFixed(3)})`;
+    p.art.setAttribute('transform', `translate(${cx - 32 * S} ${cy - 32 * S}) scale(${S})`);
+    p.haloStop.setAttribute('stop-opacity', (0.1 * clamp(k / 1) * fade).toFixed(3));
+    const rp = clamp(k / 0.8), C = 2 * Math.PI * 27;
+    setAttrs(p.ring, { stroke: ink, 'stroke-width': Math.max(m.crown ? 1.1 : 1.15, S * 0.66 * fine) / S,
+      'stroke-dasharray': `${rp * C} ${C}`, visibility: rp > 0 ? 'visible' : 'hidden' });
+    const w = Math.max(m.crown ? 0.9 : 0.85, S * 0.5 * fine) / S;
+    p.curves.forEach((c, i) => {
+      const q = clamp((k - 0.2 - i * 0.05) / 0.5), L = p.lengths[i];
+      setAttrs(c, { stroke: ink, 'stroke-width': w, 'stroke-dasharray': `${q * L} ${L + 1}`, visibility: q > 0 ? 'visible' : 'hidden' });
     });
-    MARK.nodes.forEach(([x, y, r], i) => {
-      const a = clamp((k - 0.15 - i * 0.08) / 0.25) * fade;
-      if (a <= 0) return;
-      const [px, py] = at(x, y), rr = Math.max(1.4, r * S * 0.8 * (m.faint ? 0.55 : 1));
-      const glow = g.createRadialGradient(px, py, 0, px, py, rr * glowK);
-      glow.addColorStop(0, `rgba(${NODE},${(0.5 * a * fine).toFixed(3)})`);
-      glow.addColorStop(1, `rgba(${NODE},0)`);
-      g.fillStyle = glow;
-      g.beginPath(); g.arc(px, py, rr * glowK, 0, 7); g.fill();
-      g.fillStyle = `rgba(255,236,190,${(a * fine * 1.2).toFixed(3)})`;
-      g.beginPath(); g.arc(px, py, rr, 0, 7); g.fill();
+    p.nodes.forEach((n, i) => {
+      const r = MARK.nodes[i][2], a = clamp((k - 0.15 - i * 0.08) / 0.25) * fade;
+      const rr = Math.max(1.4, r * S * 0.8 * (m.faint ? 0.55 : 1)), vis = a > 0 ? 'visible' : 'hidden';
+      n.stop.setAttribute('stop-opacity', (0.5 * a * fine).toFixed(3));
+      setAttrs(n.glow, { r: (rr * glowK) / S, visibility: vis });
+      setAttrs(n.core, { r: rr / S, fill: `rgba(255,236,190,${Math.min(1, a * fine * 1.2).toFixed(3)})`, visibility: vis });
     });
   };
 
@@ -475,44 +505,30 @@
     }
   };
 
-  // The mark rides on its own canvas, moved into place. Its art is redrawn only while it changes: the opening mark as
-  // it draws itself in and rides out; the large crown behind the last slide's words is drawn once, at its finished art,
-  // and comes in and folds away by the canvas's opacity and scale (crown(), uncrown()).
+  // The mark rides on its own layer, moved into place. Its art is updated only while it changes: the opening mark as
+  // it draws itself in and rides out; the large crown behind the last slide's words is set once, at its finished art,
+  // and comes in and folds away by the layer's opacity and scale (crown(), uncrown()).
   let markBox = 0, markKey = '';
   const drawMarkLayer = () => {
     if (!mark) {
-      if (markBox) { mg.setTransform(1, 0, 0, 1, 0, 0); mg.clearRect(0, 0, markCv.width, markCv.height); markBox = 0; markKey = ''; }
+      if (markBox) { markCv.style.visibility = 'hidden'; markBox = 0; markKey = ''; }
       return;
     }
     const dev = devicePixelRatio || 1, B = Math.ceil(mark.size * 1.5 + 16);
-    // Its own resolution, budgeted by pixels rather than capped like the full-screen network: the small marks (the
-    // opening, the thread's tip) are drawn at up to 3x so they stay crisp on a phone; a surface that would pass about
-    // 1.5 megapixels there (the large faint crown) is drawn at the network's 2x.
-    const md = (B * Math.min(3, dev)) ** 2 > 1.5e6 ? Math.min(2, dev) : Math.min(3, dev);
-    // A whole number of backing pixels shown at exactly one per screen pixel, with its corner on the screen's own pixel
-    // grid: a box centred on the screen otherwise lands half a pixel off on a 3x phone and the browser smears the
-    // whole mark across two pixels. The art is drawn offset within it, so the mark's middle stays exact. (The gate's
-    // mark layer is the same, so its poster and the hand-off match.)
-    const W = Math.ceil(B * md), side = W / md;
-    const left = Math.round((mark.x - side / 2) * dev) / dev, top = Math.round((mark.y - side / 2) * dev) / dev;
-    // Placed by left/top, not a transform: on an iPhone, WebKit composites a transformed canvas at its own raster
-    // scale and the mark comes out soft beside the crisp wordmark, though its bitmap is a full 3x.
+    // Its corner on the screen's own pixel grid, placed by left/top rather than a transform.
+    const left = Math.round((mark.x - B / 2) * dev) / dev, top = Math.round((mark.y - B / 2) * dev) / dev;
     if (markCv.style.left !== `${left}px`) markCv.style.left = `${left}px`;
     if (markCv.style.top !== `${top}px`) markCv.style.top = `${top}px`;
     const art = mark.crown ? { ...mark, t: 2, shrink: 0 } : mark;
-    const key = `${W}|${md}|${mark.x}|${mark.y}|${art.shrink}|${Math.min(art.t, 1.2)}`;
+    const key = `${B}|${mark.x}|${mark.y}|${art.shrink}|${Math.min(art.t, 1.2)}`;
     if (key === markKey) return;
     markKey = key;
-    if (W !== markBox) {
-      markBox = W;
-      markCv.width = markCv.height = W;
-      markCv.style.width = markCv.style.height = `${side}px`;
+    if (B !== markBox) {
+      markBox = B;
+      setAttrs(markCv, { width: B, height: B, viewBox: `0 0 ${B} ${B}` });
     }
-    mg.setTransform(md, 0, 0, md, 0, 0);
-    mg.clearRect(0, 0, side, side);
-    mg.lineCap = 'round';
-    mg.lineJoin = 'round';
-    drawMark(mg, art, mark.x - left, mark.y - top);
+    markCv.style.visibility = '';
+    drawMark(art, mark.x - left, mark.y - top);
   };
 
   // The settled ground, then what is still growing on it, softened under the text together; then the passing
