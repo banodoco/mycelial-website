@@ -467,6 +467,8 @@
           last = 0,
           elapsed = 0,
           markBox = 0,
+          markMd = 1,
+          markAt = null,
           markKey = "",
           dpr = 1;
         let opening = false,
@@ -561,26 +563,33 @@
         };
         const drawMarkLayer = () => {
           if (!mark) return;
-          const B = Math.ceil(mark.size * 1.5 + 16),
-            tl = `${(mark.x - B / 2).toFixed(1)}px ${(mark.y - B / 2).toFixed(1)}px`;
+          // Same as the deck's mark layer (dot-transitions.js drawMarkLayer): a whole number of backing pixels shown
+          // at exactly one per screen pixel, its corner on the screen's own pixel grid (a box centred on the screen
+          // otherwise lands half a pixel off on a 3x phone and is smeared across two), the art offset within it.
+          const dev = devicePixelRatio || 1,
+            B = Math.ceil(mark.size * 1.5 + 16),
+            md = (B * Math.min(3, dev)) ** 2 > 1.5e6 ? Math.min(2, dev) : Math.min(3, dev),
+            W = Math.ceil(B * md),
+            side = W / md,
+            left = Math.round((mark.x - side / 2) * dev) / dev,
+            top = Math.round((mark.y - side / 2) * dev) / dev,
+            tl = `${left}px ${top}px`;
           if (markCv.style.translate !== tl) markCv.style.translate = tl;
-          const md =
-            (B * Math.min(3, devicePixelRatio || 1)) ** 2 > 1.5e6
-              ? Math.min(2, devicePixelRatio || 1)
-              : Math.min(3, devicePixelRatio || 1);
-          const key = `${B}|${md}|${mark.x}|${mark.y}|${mark.shrink}|${Math.min(mark.t, 1.2)}`;
+          const key = `${W}|${md}|${mark.x}|${mark.y}|${mark.shrink}|${Math.min(mark.t, 1.2)}`;
           if (key === markKey) return;
           markKey = key;
-          if (B !== markBox || markCv.width !== Math.round(B * md)) {
-            markBox = B;
-            markCv.width = markCv.height = Math.round(B * md);
-            markCv.style.width = markCv.style.height = `${B}px`;
+          if (W !== markBox) {
+            markBox = W;
+            markCv.width = markCv.height = W;
+            markCv.style.width = markCv.style.height = `${side}px`;
           }
+          markMd = md;
+          markAt = { left, top, side };
           mg.setTransform(md, 0, 0, md, 0, 0);
-          mg.clearRect(0, 0, B, B);
+          mg.clearRect(0, 0, side, side);
           mg.lineCap = "round";
           mg.lineJoin = "round";
-          drawMark(mg, mark, B / 2, B / 2);
+          drawMark(mg, mark, mark.x - left, mark.y - top);
         };
         const draw = () => {
           g.setTransform(1, 0, 0, 1, 0, 0);
@@ -636,7 +645,14 @@
             y: b.top + b.height * ((i + 0.3 + rnd() * 0.4) / n),
           }));
         };
-        const nameAt = (x, y) => `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translateY(-50%) scale(1)`;
+        // On the screen's pixel grid, so the wordmark's own layer is never resampled half a pixel over.
+        const onGrid = (v) => Math.round(v * (devicePixelRatio || 1)) / (devicePixelRatio || 1);
+        const nameAt = (x, y) => `translate(${onGrid(x)}px, ${onGrid(y)}px) translateY(-50%) scale(1)`;
+        // How far below the mark's middle the wordmark's middle sits: the ring's radius, a clear gap, then the rise of
+        // the caps above the middle of the 22 px line (DM Sans caps are 0.7 em tall and top out 0.28 em above it). The
+        // gap is most of a cap height plus a little of the mark, so a phone's small mark still reads as a lockup with its
+        // name and a desktop's large one keeps its proportion. The deck's opening uses the same (dot-transitions.js).
+        const nameDrop = (size) => size / 2 + (0.8 * 0.7 * 22 + 0.07 * size) + 0.28 * 22;
         // Layout places the mark, name, and prompt without changing drawing progress.
         const layout = (settle = true) => {
           const c = { x: innerWidth / 2, y: innerHeight / 2 },
@@ -644,7 +660,7 @@
           const gap = Math.min(34, Math.max(22, innerHeight * 0.034));
           const blockH = form.getBoundingClientRect().height;
           let sy = c.y;
-          const nameCentreOffset = size * 0.66;
+          const nameCentreOffset = nameDrop(size);
           const top = (y) => y + nameCentreOffset + 11 + gap;
           const bottomNeed = top(sy) + blockH;
           if (settle && bottomNeed > innerHeight - 24) sy -= bottomNeed - (innerHeight - 24);
@@ -665,7 +681,7 @@
             mark.y = sy;
             mark.size = size;
           }
-          name.style.transform = nameAt(c.x - name.offsetWidth / 2, sy + size * 0.66);
+          name.style.transform = nameAt(c.x - name.offsetWidth / 2, sy + nameCentreOffset);
           prompt.style.transform = `translateY(${(sy + nameCentreOffset + 11 + gap).toFixed(1)}px)`;
           return { c, size, sy };
         };
@@ -745,7 +761,7 @@
                 settleDuration = 1.1;
                 settleElapsed = 0;
                 mark.y = c.y;
-                name.style.transform = nameAt(c.x - name.offsetWidth / 2, c.y + size * 0.66);
+                name.style.transform = nameAt(c.x - name.offsetWidth / 2, c.y + nameDrop(size));
               } else {
                 mark.y = sy;
                 settled = true;
@@ -758,7 +774,7 @@
               const k = clamp(settleElapsed / settleDuration),
                 y = settleFrom + (settleTo - settleFrom) * seep(k);
               mark.y = y;
-              name.style.transform = nameAt(mark.x - name.offsetWidth / 2, y + mark.size * 0.66);
+              name.style.transform = nameAt(mark.x - name.offsetWidth / 2, y + nameDrop(mark.size));
               if (k >= 1) {
                 settleDuration = 0;
                 settled = true;
@@ -838,19 +854,18 @@
         const showWrong = () => noteOn(wrong);
         // The poster combines the live mark canvas and the visible wordmark.
         const makePoster = () => {
-          const B = markBox,
-            md = markCv.width / B,
-            markRect = markCv.getBoundingClientRect(),
+          if (!markAt) return null;
+          // On the mark canvas's own pixel grid (the screen's, at the device's ratio), so the poster shows 1:1 too.
+          const md = markMd,
+            markRect = { left: markAt.left, top: markAt.top, right: markAt.left + markAt.side, bottom: markAt.top + markAt.side },
             nr = name.getBoundingClientRect();
           const left = Math.floor((Math.min(markRect.left, nr.left - 2) - markRect.left) * md) / md + markRect.left;
           const top = Math.floor((Math.min(markRect.top, nr.top - 2) - markRect.top) * md) / md + markRect.top;
-          const right = Math.ceil((Math.max(markRect.right, nr.right + 2) - left) * md) / md + left,
-            bottom = Math.ceil((Math.max(markRect.bottom, nr.bottom + 2) - top) * md) / md + top;
-          const w = right - left,
-            h = bottom - top,
-            cv = document.createElement("canvas");
-          cv.width = Math.ceil(w * md);
-          cv.height = Math.ceil(h * md);
+          const cv = document.createElement("canvas");
+          cv.width = Math.ceil((Math.max(markRect.right, nr.right + 2) - left) * md - 1e-6);
+          cv.height = Math.ceil((Math.max(markRect.bottom, nr.bottom + 2) - top) * md - 1e-6);
+          const w = cv.width / md,
+            h = cv.height / md;
           const c = cv.getContext("2d");
           c.drawImage(markCv, Math.round((markRect.left - left) * md), Math.round((markRect.top - top) * md));
           c.scale(md, md);
@@ -1006,7 +1021,7 @@
             document.documentElement.classList.remove("g-wait");
             const { c, size } = layout(false);
             mark = { x: c.x, y: c.y, t: 0, size, shrink: 0 };
-            name.style.transform = nameAt(c.x - name.offsetWidth / 2, c.y + size * 0.66);
+            name.style.transform = nameAt(c.x - name.offsetWidth / 2, c.y + nameDrop(size));
             name.style.transitionDelay = ".35s";
             name.classList.add("is-on");
             prompt.style.visibility = "hidden";
