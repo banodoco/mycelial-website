@@ -326,9 +326,13 @@
     g.fillStyle = halo;
     g.beginPath(); g.arc(cx, cy, 36 * S, 0, 7); g.fill();
     g.strokeStyle = `rgba(${THREAD},${(0.8 * fade).toFixed(3)})`;
-    g.lineWidth = Math.max(m.crown ? 1.1 : 0.6, S * 0.66 * fine);
+    // A phone's small mark (and the mark shrinking on its ride) keeps lines of real weight and tight glows: hairline,
+    // half-transparent strokes in wide halos read as a low-resolution smudge beside the solid wordmark. A desktop's
+    // larger mark is already above these floors and draws as before.
+    const glowK = 2.2 + 0.8 * clamp((S - 1) / 1.5);
+    g.lineWidth = Math.max(m.crown ? 1.1 : 1.15, S * 0.66 * fine);
     g.beginPath(); g.arc(cx, cy, 27 * S, -Math.PI / 2, -Math.PI / 2 + clamp(k / 0.8) * Math.PI * 2); g.stroke();
-    g.lineWidth = Math.max(m.crown ? 0.9 : 0.5, S * 0.5 * fine);
+    g.lineWidth = Math.max(m.crown ? 0.9 : 0.85, S * 0.5 * fine);
     MARK.curves.forEach(([x0, y0, qx, qy, x1, y1], i) => {
       const p = clamp((k - 0.2 - i * 0.05) / 0.5);
       if (p <= 0) return;
@@ -343,12 +347,12 @@
     MARK.nodes.forEach(([x, y, r], i) => {
       const a = clamp((k - 0.15 - i * 0.08) / 0.25) * fade;
       if (a <= 0) return;
-      const [px, py] = at(x, y), rr = Math.max(1, r * S * 0.8 * (m.faint ? 0.55 : 1));
-      const glow = g.createRadialGradient(px, py, 0, px, py, rr * 3);
+      const [px, py] = at(x, y), rr = Math.max(1.4, r * S * 0.8 * (m.faint ? 0.55 : 1));
+      const glow = g.createRadialGradient(px, py, 0, px, py, rr * glowK);
       glow.addColorStop(0, `rgba(${NODE},${(0.5 * a * fine).toFixed(3)})`);
       glow.addColorStop(1, `rgba(${NODE},0)`);
       g.fillStyle = glow;
-      g.beginPath(); g.arc(px, py, rr * 3, 0, 7); g.fill();
+      g.beginPath(); g.arc(px, py, rr * glowK, 0, 7); g.fill();
       g.fillStyle = `rgba(255,236,190,${(a * fine * 1.2).toFixed(3)})`;
       g.beginPath(); g.arc(px, py, rr, 0, 7); g.fill();
     });
