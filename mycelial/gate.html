@@ -572,9 +572,11 @@
             W = Math.ceil(B * md),
             side = W / md,
             left = Math.round((mark.x - side / 2) * dev) / dev,
-            top = Math.round((mark.y - side / 2) * dev) / dev,
-            tl = `${left}px ${top}px`;
-          if (markCv.style.translate !== tl) markCv.style.translate = tl;
+            top = Math.round((mark.y - side / 2) * dev) / dev;
+          // Placed by left/top, not a transform: an iPhone's WebKit composites a transformed canvas at its own raster
+          // scale and softens the mark (dot-transitions.js does the same).
+          if (markCv.style.left !== `${left}px`) markCv.style.left = `${left}px`;
+          if (markCv.style.top !== `${top}px`) markCv.style.top = `${top}px`;
           const key = `${W}|${md}|${mark.x}|${mark.y}|${mark.shrink}|${Math.min(mark.t, 1.2)}`;
           if (key === markKey) return;
           markKey = key;

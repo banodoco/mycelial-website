@@ -491,8 +491,10 @@
     // mark layer is the same, so its poster and the hand-off match.)
     const W = Math.ceil(B * md), side = W / md;
     const left = Math.round((mark.x - side / 2) * dev) / dev, top = Math.round((mark.y - side / 2) * dev) / dev;
-    const tl = `${left}px ${top}px`;
-    if (markCv.style.translate !== tl) markCv.style.translate = tl;
+    // Placed by left/top, not a transform: on an iPhone, WebKit composites a transformed canvas at its own raster
+    // scale and the mark comes out soft beside the crisp wordmark, though its bitmap is a full 3x.
+    if (markCv.style.left !== `${left}px`) markCv.style.left = `${left}px`;
+    if (markCv.style.top !== `${top}px`) markCv.style.top = `${top}px`;
     const art = mark.crown ? { ...mark, t: 2, shrink: 0 } : mark;
     const key = `${W}|${md}|${mark.x}|${mark.y}|${art.shrink}|${Math.min(art.t, 1.2)}`;
     if (key === markKey) return;
