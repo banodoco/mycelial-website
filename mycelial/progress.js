@@ -72,10 +72,11 @@ window.installDeckProgress = ({ slides, go, current }) => {
     });
     button.addEventListener('keydown', (event) => {
       touch = false;
-      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+      // Horizontal arrows keep the deck's normal navigation, even after a bar click.
+      if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { hide(); return; }
+      if (['ArrowUp', 'ArrowDown'].includes(event.key)) {
         event.preventDefault(); event.stopPropagation();
-        const next = event.key === 'Home' ? 0 : event.key === 'End' ? slides.length - 1
-          : Math.max(0, Math.min(slides.length - 1, index + (['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1)));
+        const next = Math.max(0, Math.min(slides.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)));
         buttons.forEach((item, k) => { item.tabIndex = k === next ? 0 : -1; });
         buttons[next].focus(); show(next);
       } else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); hide(); }
@@ -90,10 +91,11 @@ window.installDeckProgress = ({ slides, go, current }) => {
   preview.addEventListener('focus', cancelClose);
   preview.addEventListener('click', () => { if (shown >= 0) jump(shown); });
   preview.addEventListener('keydown', (event) => {
+    if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { hide(); return; }
     if (event.key === 'Escape') {
       event.preventDefault(); event.stopPropagation();
       buttons[shown >= 0 ? shown : current()].focus(); hide();
-    } else if ([' ', 'Enter', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) event.stopPropagation();
+    } else if ([' ', 'Enter'].includes(event.key)) event.stopPropagation();
   });
   document.addEventListener('keydown', () => { touch = false; }, { capture: true });
   document.addEventListener('pointerdown', (event) => { if (!bar.contains(event.target) && !preview.contains(event.target)) hide(); });

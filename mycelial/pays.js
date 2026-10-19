@@ -112,17 +112,16 @@
       ox = W / 2 - 29 * k;
       oy = Math.max(40, top - 34 - 690 * ky) + 345 * ky;
     } else { // to the right of the text: from ~96 px past the text column to 64 px short of the edge, centred down the slide
-      const text = slide.querySelector('.split > :first-child').getBoundingClientRect();
+      const column = slide.querySelector('.split > :first-child'), text = column.getBoundingClientRect();
       const left = text.right - b.left + (low ? 48 : 96), right = W - (low ? 32 : 64); // the builders keep ~96 px of air after the text
       kx = (right - left - 20) / 1430;
       ky = Math.min((H - (low ? 120 : 230)) / 690, 1.0);
       k = Math.min(ky, kx * 1.35, 1.05);
       ox = left + 52 * k - 63 * kx; // the builders' circles (reference x 213) sit just inside the left edge
-      // The picture's middle (reference y 415, the lens) on the headline's horizon, so the two read as one line;
+      // The picture's middle (reference y 415, the lens) follows the whole text column, including its subtitle;
       // measured by layout (offsets), not by boxes, which the slide's entry and the text's drift move.
-      const h1 = slide.querySelector('h1');
-      let mid = h1.offsetHeight / 2;
-      for (let n = h1; n && n !== slide; n = n.offsetParent) mid += n.offsetTop;
+      let mid = column.offsetHeight / 2;
+      for (let n = column; n && n !== slide; n = n.offsetParent) mid += n.offsetTop;
       oy = low ? (H - 64) / 2 : clamp(mid, 40 + 330 * ky, H - 100 - 330 * ky);
     }
     LW = Math.max(0.75, Math.min(1.15, k * 1.1));

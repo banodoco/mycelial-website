@@ -1,14 +1,15 @@
 // Version E, slide 2: "scattered across thousands of repos and threads" as a
 // field you can feel, quietly: it should reward noticing, not demand it.
-// We fly slowly forward through an endless field of models, LoRAs, repos,
+// We fly slowly forward through an endless field of specialist tools, LoRAs, LUTs,
 // workflows, threads and guides: each appears faint at the vanishing point,
 // grows as it nears, slides past the edges and comes round again far ahead.
 // Whatever approaches nearest the middle carries its name. The mouse steers a
 // little (near things shift more than far ones) and scrolling flies you through
 // it, forward or back, as far as you like; hovering a dot shows what it is,
-// clicking pulls it forward. Project and model names are real; files,
-// LoRAs and threads are illustrative. Arriving from slide 1, its films come
-// apart into motes of their own colours that fly at us and become the field.
+// clicking pulls it forward. Every named resource has a recorded source;
+// short titles describe the useful technique rather than reproduce repository names.
+// Arriving from slide 1, its films come apart into motes of their own colours
+// that fly at us and become the field.
 (() => {
   const root = document.querySelector('[data-scatter-field]');
   if (!root) return;
@@ -24,100 +25,53 @@
 
   // share = each kind's slice of the long-tail dust.
   const TYPES = {
-    model: { label: 'Models', color: '#e0ab5e', share: 0.07 },
-    lora: { label: 'LoRAs', color: '#c89fb5', share: 0.33 },
-    repo: { label: 'Repos & nodes', color: '#9fc8a6', share: 0.18 },
-    workflow: { label: 'Workflows', color: '#9fb5c8', share: 0.18 },
-    thread: { label: 'Threads', color: '#c7b9ed', share: 0.17 },
-    guide: { label: 'Guides & papers', color: '#d9b98f', share: 0.07 },
+    model: { label: 'Upscalers', color: '#e0ab5e', share: 0.10 },
+    lora: { label: 'LoRAs', color: '#c89fb5', share: 0.18 },
+    repo: { label: 'Tools & LUTs', color: '#9fc8a6', share: 0.18 },
+    workflow: { label: 'Workflows', color: '#9fb5c8', share: 0.24 },
+    thread: { label: 'Q&A threads', color: '#c7b9ed', share: 0.16 },
+    guide: { label: 'Guides', color: '#d9b98f', share: 0.14 },
   };
 
-  // [kind, where it lives, name, what you find when you open it]
+  // Short editorial titles for real resources; provenance: docs/slide-2-resources.md.
+  // [kind, resource format / community, title, what you can learn or make]
   const ITEMS = [
-    ['model', 'huggingface.co', 'Wan-AI/Wan2.1-I2V-14B-720P', 'Image-to-video, 14B. Wants 24GB+, or an fp8 build.'],
-    ['model', 'huggingface.co', 'Wan-AI/Wan2.2-T2V-A14B', 'Two experts, high-noise and low-noise. Load both.'],
-    ['model', 'huggingface.co', 'Lightricks/LTX-Video', 'Fast video model. Which version does that workflow need?'],
-    ['model', 'huggingface.co', 'tencent/HunyuanVideo', '13B video model. bf16, fp8 or GGUF?'],
-    ['model', 'huggingface.co', 'genmo/mochi-1-preview', '10B video model. Runs, eventually.'],
-    ['model', 'huggingface.co', 'THUDM/CogVideoX-5b', 'Video model with its own LoRA format.'],
-    ['model', 'huggingface.co', 'black-forest-labs/FLUX.1-dev', 'Image model. Read the licence first.'],
-    ['model', 'huggingface.co', 'black-forest-labs/FLUX.1-Kontext-dev', 'Edit images by instruction.'],
-    ['model', 'huggingface.co', 'stabilityai/stable-diffusion-xl-base-1.0', 'The base thousands of LoRAs were trained on.'],
-    ['model', 'huggingface.co', 'stabilityai/stable-video-diffusion-img2vid-xt', 'Image-to-video, 25 frames.'],
-    ['model', 'huggingface.co', 'Qwen/Qwen-Image-Edit', 'Image editing, 20B.'],
-    ['model', 'huggingface.co', 'lllyasviel/ControlNet-v1-1', 'Pose, depth, edges. Pick the right preprocessor.'],
-    ['model', 'huggingface.co', 'h94/IP-Adapter', 'Style from a reference image. Which checkpoint matches your base?'],
-    ['model', 'huggingface.co', 'guoyww/animatediff', 'Motion modules: v2, v3, or the LCM one?'],
-    ['model', 'huggingface.co', 'depth-anything/Depth-Anything-V2-Large', 'Depth maps to drive ControlNet.'],
-    ['model', 'huggingface.co', 'facebook/sam2-hiera-large', 'Segmentation: masks for inpainting.'],
-
-    ['lora', 'civitai.com', '16mm film grain', 'Wan 14B. Strength 0.6–0.8, trigger word "16mm".'],
-    ['lora', 'civitai.com', 'VHS tape artefacts', 'LTX. Works best at half strength.'],
-    ['lora', 'civitai.com', 'claymation style', 'Hunyuan. Trained on forty clips.'],
-    ['lora', 'huggingface.co', 'ink-wash animation', 'Wan 1.3B. Only on the creator’s page.'],
-    ['lora', 'civitai.com', 'orbit camera move', 'Motion LoRA for image-to-video.'],
-    ['lora', 'civitai.com', 'dolly zoom', 'Motion LoRA, AnimateDiff v3.'],
-    ['lora', 'civitai.com', 'anamorphic lens flare', 'FLUX. Trigger word is in the comments.'],
-    ['lora', 'civitai.com', 'Kodachrome 64', 'SDXL. v2 fixed the skin tones.'],
-    ['lora', 'civitai.com', 'pixel-art sprite sheet', 'FLUX. Pair with the 4-step LoRA.'],
-    ['lora', 'huggingface.co', '4-step distill', 'Speed LoRA. Stack it last.'],
-    ['lora', 'civitai.com', 'consistent character v3', 'v2 had the hands.'],
-    ['lora', 'civitai.com', 'watercolour bloom', 'SDXL. Pairs with the paper texture one.'],
-    ['lora', 'civitai.com', 'rotoscope linework', 'Wan 14B, image-to-video.'],
-    ['lora', 'huggingface.co', 'risograph print', 'FLUX. Two-colour presets in the README.'],
-
-    ['repo', 'github.com', 'comfyanonymous/ComfyUI', 'The node graph most of this runs in.'],
-    ['repo', 'github.com', 'kijai/ComfyUI-WanVideoWrapper', 'Wan nodes. Updates most days.'],
-    ['repo', 'github.com', 'kijai/ComfyUI-KJNodes', 'Utility nodes everyone ends up needing.'],
-    ['repo', 'github.com', 'Kosinkadink/ComfyUI-VideoHelperSuite', 'Load and save video frames.'],
-    ['repo', 'github.com', 'Kosinkadink/ComfyUI-AnimateDiff-Evolved', 'AnimateDiff with context windows.'],
-    ['repo', 'github.com', 'Fannovel16/ComfyUI-Frame-Interpolation', 'RIFE and FILM: 24 → 60fps.'],
-    ['repo', 'github.com', 'cubiq/ComfyUI_IPAdapter_plus', 'IP-Adapter nodes.'],
-    ['repo', 'github.com', 'ltdrdata/ComfyUI-Manager', 'Installs the missing nodes. Usually.'],
-    ['repo', 'github.com', 'ltdrdata/ComfyUI-Impact-Pack', 'Detailers and detectors.'],
-    ['repo', 'github.com', 'rgthree/rgthree-comfy', 'Quality-of-life nodes.'],
-    ['repo', 'github.com', 'kohya-ss/sd-scripts', 'LoRA training. Many, many flags.'],
-    ['repo', 'github.com', 'ostris/ai-toolkit', 'LoRA training for FLUX and video.'],
-    ['repo', 'github.com', 'tdrussell/diffusion-pipe', 'Video LoRA training.'],
-    ['repo', 'github.com', 'lllyasviel/FramePack', 'Long video on smaller GPUs.'],
-    ['repo', 'github.com', 'banodoco/Steerable-Motion', 'Steer video with batches of images.'],
-    ['repo', 'github.com', 'huggingface/diffusers', 'The Python library underneath.'],
-    ['repo', 'github.com', 'xinntao/Real-ESRGAN', 'Upscaling.'],
-    ['repo', 'github.com', 'AUTOMATIC1111/stable-diffusion-webui', 'Where a lot of people started.'],
-
-    ['workflow', 'shared in #showcase', 'workflow_final_v7_FIXED.json', 'Needs fourteen custom nodes. Three are missing.'],
-    ['workflow', 'shared in a thread', 'wan_i2v_720p_upscale.json', 'Rebuilt from a screenshot.'],
-    ['workflow', 'shared in #flux', 'flux_kontext_restyle (2).json', 'The (1) didn’t work.'],
-    ['workflow', 'shared in #animatediff', 'animatediff_lcm_loop.json', 'Set context to 16. Don’t ask why.'],
-    ['workflow', 'shared in #ltx', 'ltx_long_video_chunked.json', 'Stitches chunks. Watch the seams.'],
-    ['workflow', 'shared in #help', 'vace_inpaint_v3_WORKING.json', 'Working, on one machine.'],
-    ['workflow', 'github.com', 'steerable_motion_batch.json', 'Keyframes in, video out.'],
-    ['workflow', 'shared in #hunyuan', 'hunyuan_lora_test_DONT_USE.json', 'Someone used it.'],
-    ['workflow', 'shared in a DM', 'depth_controlnet_dolly.json', 'A camera move from a depth map.'],
-    ['workflow', 'shared in #showcase', 'upscale_then_interp_60fps.json', 'Four hours on a 3090.'],
-    ['workflow', 'a Google Drive link', 'my_settings_dont_touch.json', 'Nobody remembers why.'],
-    ['workflow', 'shared in #resources', 'ipadapter_style_transfer_v12.json', 'v1 to v11 are in a thread somewhere.'],
-
-    ['thread', 'Discord · #wan-video', 'anyone got the new lora working w/ 14B?', '“Use the fp8 branch, set shift to 5, see pinned.”'],
-    ['thread', 'Discord · #comfyui', 'which pinned 😭', 'Forty pinned messages.'],
-    ['thread', 'Discord · #ltx', 'OOM at 97 frames on 24GB?', '“Lower the tile size.” “Which one?”'],
-    ['thread', 'Reddit · r/StableDiffusion', 'consistent characters, finally (workflow inside)', 'The workflow link is dead.'],
-    ['thread', 'Discord · #training', 'rank 32 or 64 for a style LoRA?', 'Dozens of replies, no consensus.'],
-    ['thread', 'Discord · #help', 'ERROR: torch 2.4 required…', '“Fresh venv, reinstall everything.”'],
-    ['thread', 'Discord · #resources', 'updated my node pack: breaking changes', 'Old workflows now open red.'],
-    ['thread', 'Discord · #showcase', 'made this with 3 LoRAs + an upscale', '“Which three?” No reply.'],
-    ['thread', 'Discord · #flux', 'Kontext keeps shifting my colours', 'Three fixes, all different.'],
-    ['thread', 'Discord · #hunyuan', 'fp8 vs GGUF, side by side', 'The comparison images expired.'],
-    ['thread', 'Discord · #help', 'it worked yesterday', 'A node updated overnight.'],
-
-    ['guide', 'youtube.com', 'Install Wan 2.2 in ComfyUI, step by step', 'Forty minutes long. Already out of date.'],
-    ['guide', 'youtube.com', 'The custom nodes you actually need', 'Half of them were renamed.'],
-    ['guide', 'arxiv.org', 'LoRA: Low-Rank Adaptation of Large Language Models', 'The idea behind every LoRA here.'],
-    ['guide', 'arxiv.org', 'Adding Conditional Control to Text-to-Image Diffusion Models', 'The ControlNet paper.'],
-    ['guide', 'arxiv.org', 'Wan: Open and Advanced Large-Scale Video Generative Models', 'The Wan technical report.'],
-    ['guide', 'rentry.org', 'the unofficial VACE guide', 'Maintained by one person, in their spare time.'],
-    ['guide', 'docs.google.com', 'LoRA training notes', 'Comment access only.'],
-    ['guide', 'github.com wiki', 'Troubleshooting: CUDA out of memory', 'Eleven suggestions. Try them in order.'],
+    ["model", "Upscaler · FlashVSR", "Streaming video super-resolution", "A one-step diffusion upscaler designed to process video as a stream."],
+    ["model", "Upscaler · SeedVR2", "Restore detail in low-res footage", "SeedVR2 7B: diffusion-based restoration for images and video."],
+    ["model", "Upscaler · ComfyUI", "Tile an H3 upscale through time", "Temporal splitting and overlap controls for the H3 latent upscaler."],
+    ["lora", "LoRA · FLUX.2 Klein", "One object, four sprite-sheet views", "fal’s sprite-sheet LoRA makes a 2×2 set of isometric, side and top-down views."],
+    ["lora", "LoRA · LTX-2", "A controlled dolly-out camera move", "Lightricks’ camera-control LoRA biases a shot toward pulling back from its subject."],
+    ["lora", "LoRA · MOSS", "Remove stripe artefacts with SFT", "Nynxz’s small MOSS SFT Destripe adapter, with downloadable weights."],
+    ["lora", "LoRA · Wan", "FlippinRad Motion Morph", "A specialised motion LoRA for dynamic, stylised movement in Wan 2.1 14B."],
+    ["lora", "LoRA · LTX 2.3", "ICEdit Insight video editing", "Joyfox’s instruction-based video-editing adapter for LTX 2.3."],
+    ["repo", "LUT tool · Kijai", "Build a colour LUT from a reference", "VideoColorGrading generates a 3D LUT from a reference image and source footage."],
+    ["repo", "LUT tool · ComfyUI", "Match a shot to a colour palette", "MLUT applies LUTs, swatches and palettes inside a ComfyUI graph."],
+    ["repo", "Tool · PixelPipeline", "Clean pixel grids and pack sprites", "Grid restoration, palette reduction, background removal and sprite-sheet packing."],
+    ["repo", "Tool · WanVaceAdvanced", "Schedule VACE strength frame by frame", "Control nodes for adjusting how strongly VACE follows its conditioning over time."],
+    ["repo", "Tool · Klippbok", "Curate and caption a video dataset", "A dedicated workspace for preparing clips before training a video LoRA."],
+    ["repo", "Tool · Flimmer", "Raw footage to a trained video LoRA", "Scene detection, captions, validation, encoding and phased Wan training."],
+    ["repo", "Tool · H3 ToneCompensate", "Balance tone between chained clips", "A focused helper for colour continuity in chained H3 video segments."],
+    ["workflow", "Workflow · Banodoco", "Wan 2.2 AnimateDiff looping pack", "Brbbbq’s shared graphs combine keyframes, depth maps and VACE animation."],
+    ["workflow", "Workflow · ComfyUI", "Edit a still with multiple references", "Wan Humo image-editing graphs use reference-conditioned video to produce a still."],
+    ["workflow", "Workflow · H3", "Reference-to-video with pose control", "A shared 448×800 API graph for conditioning video on a reference and pose."],
+    ["workflow", "Workflow · Banodoco", "Upscale anchors, then fill between", "A community recipe: upscale key images, interpolate with VACE, colour-match and stitch."],
+    ["workflow", "Workflow · Banodoco", "Swap a character, keep the scene", "A shared approach using Qwen Image Edit for a reference, then Wan Animate."],
+    ["workflow", "Workflow · Banodoco", "Relight a subject in a new scene", "Separate foreground, edges and background before feeding the shot into VACE."],
+    ["workflow", "Workflow · Banodoco", "Guide an eight-second video loop", "A community H3 recipe using a tiny guide video and overlapping end frames."],
+    ["workflow", "Workflow · Banodoco", "VACE first, Animate second", "Nathan Shipley’s two-pass approach: VACE followed by a partial-denoise Animate pass."],
+    ["workflow", "Workflow · ComfyUI", "One character, layered sprite sheets", "Base animation and separately tintable cosmetic layers, aligned for compositing."],
+    ["thread", "Q&A · Banodoco", "Why does a fast face escape its mask?", "A discussion of rapid motion, changing scale and the limits of temporal mask tracking."],
+    ["thread", "Q&A · Banodoco", "Why do colours drift between cuts?", "Ablejones explains matching a frame per clip instead of rematching every frame."],
+    ["thread", "Q&A · Banodoco", "Pose or depth: which should lead?", "Community notes on balancing motion control against character accuracy."],
+    ["thread", "Q&A · LoRA training", "What should go in a training caption?", "PineAmbassador discusses captioning the concepts you want to vary later."],
+    ["thread", "Q&A · LoRA training", "Why does identity fade at higher res?", "Spacepxl explains the gap between training resolution and inference resolution."],
+    ["thread", "Q&A · Banodoco", "Can an upscale hide a clip join?", "A community comparison of temporal FlashVSR and frame-by-frame upscaling."],
+    ["guide", "Video guide · YouTube", "Repair smeared frames with a hold map", "SmallKino’s walkthrough: extend the damaged frames, denoise, then restore the timing."],
+    ["guide", "Video guide · YouTube", "Use Wan Humo as an image editor", "A walkthrough of reference-guided image editing with a video model."],
+    ["guide", "Guide · Klippbok", "Caption a dataset with intent", "A dedicated captioning guide for preparing video training data."],
+    ["guide", "Comparison · WanTests", "Compare distilled VACE samplers", "Side-by-side test results for making a more informed sampling choice."],
+    ["guide", "Guide · ComfyUI", "Turn animation into RGBA sprites", "A documented video-to-sprite-sheet pipeline for layered 2D characters."],
+    ["guide", "Field notes · Banodoco", "Test the motion before the long render", "Atom.p’s image-shift prototype checks the move before committing to full animation."],
   ];
 
   // Seeded, so the field has the same shape on every visit.

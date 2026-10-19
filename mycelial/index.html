@@ -621,8 +621,13 @@
   html[data-ver="f"] .pa-host > .split { grid-template-columns: minmax(300px, 31vw) minmax(0, 1fr); }
   html[data-ver="f"] .pa-host > .split > :first-child { grid-column: 1; text-align: left; }
   html[data-ver="f"] .pa-host h1 { max-width: 10.6em; margin-right: auto; font-size: clamp(1.9rem, 3.1vw, 3.2rem); text-wrap: balance; }
-  /* The text sits a little above the middle; the picture's lens takes the headline's horizon (pays.js). */
+  /* The desktop text and picture share the full text column's optical centre (pays.js). */
   @media (min-height: 501px) { html[data-ver="f"] .pa-host { padding-bottom: 88px; } }
+  @media (min-width: 761px) and (min-height: 501px) {
+    html[data-ver="f"] .pa-host { padding-top: 24px; padding-bottom: 44px; }
+    /* Lift the denser text optically; the diagram keeps its layout-based centre. */
+    html[data-ver="f"] .pa-host > .split > :first-child { translate: 0 -24px; }
+  }
   /* From slide 6 the slide shows at once, so the mink's power-up can play over the stack as it recedes. */
   .slide.pa-arrive { transition: none; }
   /* From slide 7 too: slide 8's first frame is slide 7's picture, carried on (its core in the same place), so it shows at once. */
@@ -663,6 +668,15 @@
   /* Safari balances this heading differently unless "community-built" stays whole (on a phone both break it the same). */
   html[data-ver="f"] .st-host h1 .st-nb { white-space: nowrap; }
   .st-host .body, .st-host .vis { display: none; }
+  .body.desktop-subtitle { display: none; }
+  @media (min-width: 761px) and (min-height: 501px) {
+    html[data-ver="f"] .slide .body.desktop-subtitle {
+      display: block; max-width: 23em; text-wrap: balance;
+      margin-top: clamp(.9rem, 2.6vh, 1.5rem);
+      font-size: clamp(1.05rem, min(1.35vw, 2.75vh), 1.5rem); line-height: 1.55;
+    }
+    html[data-ver="f"] .st-host .body.desktop-subtitle { width: 40vw; max-width: none; }
+  }
   .st-host > .num, .st-host > .split { position: relative; z-index: 1; }
   /* The text's row runs across the stack, so it takes no clicks (the slide behind it still turns the deck); and while
      on, the slide sits above its later siblings, so nothing of theirs (unseen) can take the stack's clicks. */
@@ -1548,7 +1562,7 @@
   </section>
 
   <section class="slide sf-host" data-v="f">
-    <div class="sf" data-scatter-field aria-label="An orbiting field of open-source models, LoRAs, repos, workflows, threads and guides">
+    <div class="sf" data-scatter-field aria-label="An orbiting field of specialist upscalers, LoRAs, tools, LUTs, workflows, Q&A threads and practical guides">
       <div class="sf-stage"><canvas class="sf-dust" aria-hidden="true"></canvas></div>
       <div class="sf-whisper" aria-hidden="true"><span class="sf-where"></span><span class="sf-name"></span></div>
       <div class="sf-whisper" aria-hidden="true"><span class="sf-where"></span><span class="sf-name"></span></div>
@@ -1656,14 +1670,7 @@
 <div class="split">
       <div>
         <h1>As you create, you and your agent <em>build on top of Astrid and extend every layer</em>&nbsp;— so the editor grows into a <span class="st-nb">community-built</span> creative platform.</h1>
-    <div class="body">
-      <p>Every layer can be built on and extended: the renderer, the editing tools, the effects, the agent's tools, the models and workflows. One person's solution becomes someone else's starting point: work out a film-grain look, publish it, and the next artist's agent can reach for it, credited to you. Private projects stay private.</p>
-      <ul>
-        <li><b>Today</b> — a video editor with agents built in, that reshapes itself around each artist.</li>
-        <li><b>Next</b> — we open it up: anyone can add tools, models and workflows.</li>
-        <li><b>Then</b> — a platform for every medium, built by everyone who uses it.</li>
-      </ul>
-    </div>
+        <div class="body desktop-subtitle">Designed to be extended as you create—from quick changes through vibe coding to deep customisation, with clear entry points for developers at every layer.</div>
       </div>
       <div class="vis"><div class="m-stages">
   <div><span class="m-role">Today</span><div class="m-thumb"><div class="m-mini-prev"></div><div class="m-mini-tl"><i></i><i></i><i></i></div><div class="m-mini-chat"></div></div><b>Agent-powered video editor</b></div>
@@ -1680,7 +1687,7 @@
     <div class="split">
       <div>
         <h1>Nerds run Astrid locally and build on it; <em>the rest of the world pays for an accessible hosted version.</em></h1>
-        <div class="body">Builders push Astrid to its limits and publish what they make. That flows into a polished, hosted Astrid for the far larger audience who'd rather not set anything up. They pay for compute and convenience, and a share goes to the makers of the tools they use, which gives builders a reason to keep building. A competitor would have to copy the community, not just the product.</div>
+        <div class="body desktop-subtitle">Everything is built to run both locally and in the cloud.</div>
         <p class="e-note">from D: who pays, and the share back to toolmakers. Pricing and the split still to confirm.</p>
       </div>
       <div class="vis"><div class="d-cards">
@@ -1697,7 +1704,7 @@
     <div class="num">08<span class="act">A thousand flowers</span></div>
     <div class="split">
       <div>
-        <h1>And Astrid isn’t just one app: it’s the technical and inspirational foundation for <em>thousands more agent-driven creative tools, each focused on different niches.</em></h1>
+        <h1>And Astrid isn’t just one app: it’s the foundation for <em>thousands more agent-driven creative tools, each focused on different niches and modalities.</em></h1>
         <div class="body">With first-class forking, anyone can spin off their own version to focus the community's output on a particular niche: a style, a medium, an audience. Every fork draws from, and adds to, the same shared pool of tools, so each one makes all the others more valuable.</div>
       </div>
       <div class="vis"><svg viewBox="0 0 400 340" class="m-fill">

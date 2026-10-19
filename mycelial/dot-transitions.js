@@ -779,6 +779,7 @@
     s.classList.remove('dt-entering');
     const tw = [];
     for (const el of textOf(s)) {
+      el.style.visibility = '';
       mask(el, at, 0);
       const far = reach(el, at);
       const duration = clamp(far / 0.62, 1100, 1600);
@@ -791,10 +792,11 @@
       }
       const lit = flashes(el, at, far, duration);
       const run = tween(duration, seep, (k) => {
+        if (!s.classList.contains('on')) return;
         mask(el, at, k * far);
         for (const f of lit) if (!f.lit && k >= f.from) { f.lit = true; flash(f); }
       }, delay);
-      run.then((ok) => { if (ok) unmask(el); });
+      run.then((ok) => { if (ok) { if (s.classList.contains('on')) unmask(el); else hideText(s); } });
       tw.push(run);
     }
     return tw;
@@ -808,7 +810,9 @@
       for (const p of spots(el, 6)) {
         hypha(wander(p, at), { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38 });
       }
-      tw.push(tween(GATHER, easeIn, (k) => mask(el, at, (1 - k) * far)));
+      const run = tween(GATHER, easeIn, (k) => { if (!s.classList.contains('on')) mask(el, at, (1 - k) * far); });
+      run.then((ok) => { if (ok && !s.classList.contains('on')) hideText(s); });
+      tw.push(run);
     }
     return tw;
   };
@@ -849,8 +853,10 @@
   };
   let drift = { x: 0, y: 0 }, trail = { x: 0, y: 0 }, t = 0, last = 0;
   const put = { x: NaN, y: NaN }; // where the idle text was last put (none since it was last cleared)
-  const clearText = (s) => { put.x = NaN; return s && textOf(s).forEach((el) => { el.style.transform = ''; unmask(el); }); };
-  const hideText = (s) => s && textOf(s).forEach((el) => mask(el, anchorOf(s), 0));
+  const clearText = (s) => { put.x = NaN; return s && textOf(s).forEach((el) => { el.style.transform = ''; el.style.visibility = ''; unmask(el); }); };
+  // A retired heading stays hidden independently of its slide's fade/reverse picture.
+  // Only that slide's next clear/reveal restores it; a paced timer must never unmask it.
+  const hideText = (s) => s && textOf(s).forEach((el) => { el.style.visibility = 'hidden'; mask(el, anchorOf(s), 0); });
 
   // Idle: the node wanders a pixel or two; the text follows a beat behind.
   let idleRaf = 0;
@@ -1122,6 +1128,7 @@
         // Navigation aborts those timers too, so always retire its visual classes first.
         timers.forEach(window.deckCancelLater);
         prev.classList.remove('dt-leaving', 'dt-release');
+        if (!prev.classList.contains('on')) hideText(prev);
         if (done) return;
         done = true;
         tweens.forEach((tw) => tw.stop());
@@ -1168,7 +1175,7 @@
       if (z) zones.push(z);
       const shown = reveal(next, to);
       tweens.push(...shown);
-      Promise.all([...shown, reached]).then(() => { finish(); window.deckTurnDone?.(next); });
+      Promise.all([...shown, reached]).then(() => { if (done || !next.classList.contains('on')) return; finish(); window.deckTurnDone?.(next); });
     };
     const early = overlap(prev, from, to);
     timers.push(window.deckLater(() => { // by now the slides' own scripts have marked a picture coming back
@@ -1186,8 +1193,9 @@
       if (next === slides[0]) window.deckEntryDone?.(next);
       prev.classList.add('dt-release'); // the old slide may fade now; its parts stay hidden
       timers.push(window.deckLater(() => {
+        if (prev.classList.contains('on')) return;
         prev.classList.remove('dt-leaving', 'dt-release');
-        clearText(prev);
+        hideText(prev);
       }, 700));
       landed();
     };
