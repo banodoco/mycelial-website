@@ -366,23 +366,21 @@ export function createTransitionController({
   const heroField = createHeroFieldGate(sceneApi);
 
   /** Arm the DEPARTURE term (see heroExit above). Called from directJumpTo
-   *  BEFORE placeAt — the two dt = 0 placement passes inside placeAt are what
-   *  used to ship the snap, so arming afterwards (in armHeroEntry, where the
-   *  arrival is armed) is exactly one placement too late. `holdSnaps` lets
-   *  the term survive those two passes and nothing else: a REAL placement
-   *  (deep link, ?capture=, QA scrollTo) never has an exit armed, and one
-   *  that lands mid-fade spends the two held snaps and then kills it, which
-   *  is the snap a placement is owed. */
+   *  BEFORE placeAt — its two dt = 0 passes used to ship the snap, so arming
+   *  afterwards is one placement too late. A wrap also publishes one more
+   *  synthetic dt = 0 frame after armHeroEntry (journey.js, after the blend is
+   *  installed); reserve a third hold for that frame. Any later real
+   *  placement still spends the next zero-delta step and snaps. */
   function armHeroExit(wrap) {
     if (heroShownNow() <= 0.05) return;
     // Ordinary departures follow the same presented camera phase as copy.
     // The wrap keeps its own lap clock because it has no ordinary route
-    // coordinate to share.
+    // coordinate to share; let its lighting recede over three seconds.
     heroExit = {
       from: heroShownNow(),
       t: 0,
-      dur: wrap ? 0.6 : 0.35,
-      holdSnaps: 2,
+      dur: wrap ? 3.0 : 0.35,
+      holdSnaps: wrap ? 3 : 2,
       presentedFlight: !wrap,
     };
   }
@@ -432,9 +430,9 @@ export function createTransitionController({
    *  steered back into the hero (presence rising) takes over seamlessly. */
   function stepHeroExit(dt) {
     if (!heroExit) return 0;
-    // The jump's own two placement passes are held (see armHeroExit); any
-    // further dt === 0 is a real placement and snaps, exactly as the arrival
-    // term does.
+    // The jump's own placement passes are held (see armHeroExit), including
+    // the wrap's post-arm phase-zero publish. A later dt === 0 is a real
+    // placement and snaps, exactly as the arrival term does.
     if (dt === 0) {
       if (heroExit.holdSnaps > 0) { heroExit.holdSnaps--; return heroExit.from; }
       heroExit = null; return 0;

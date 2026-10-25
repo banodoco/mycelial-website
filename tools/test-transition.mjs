@@ -572,20 +572,25 @@ const SCENARIOS = {
     r.t.landWrapHome();
     return [r.log, `blend=${r.t.blend}/wrap=${r.t.railWrap}/disagree=${r.t.cameraStateDisagree}`];
   },
-  /* ENTRY — the hero's two travel terms: armed, held through the jump's own
-     placement passes, snapped by a real one, eased, reversed by a steered lap,
-     cleared by a cancellation, and relaxed back on COPY_IN_K. */
+  /* ENTRY — wraps hold three synthetic phase-zero publishes (placeAt's two
+     passes plus the post-arm frame); a later placement still snaps. */
   entry(factory) {
     const r = makeRig(factory, { heroShown: 0.8, presence: 1 });
-    r.t.armHeroExit(false);
+    r.t.armHeroExit(true);
     r.log.push(`exiting:${r.t.heroExiting}`);
-    r.log.push(`exit:${n3(r.t.stepHeroExit(0))}`);      // placeAt pass 1, held
-    r.log.push(`exit:${n3(r.t.stepHeroExit(0))}`);      // placeAt pass 2, held
-    r.log.push(`exit:${n3(r.t.stepHeroExit(0))}`);      // a REAL placement: snap
+    r.log.push(`exit:${n3(r.t.stepHeroExit(0))}`);      // placeAt pass 1
+    r.log.push(`exit:${n3(r.t.stepHeroExit(0))}`);      // placeAt pass 2
+    r.log.push(`exit:${n3(r.t.stepHeroExit(0))}`);      // post-arm phase-zero publish
     r.log.push(`exiting:${r.t.heroExiting}`);
+    r.log.push(`exit:${n3(r.t.stepHeroExit(0.15))}`);   // first real flight frame
+    r.t.clearHeroTerms();
     r.setShown(0.02); r.t.armHeroExit(true);            // nothing up to retire
     r.log.push(`exiting:${r.t.heroExiting}`);
-    r.setShown(0.8); r.t.armHeroExit(true);             // a wrap: the 0.6 s beat
+    r.setShown(0.8); r.t.armHeroExit(true);             // a wrap: the 3 s fade
+    r.t.stepHeroExit(0); r.t.stepHeroExit(0); r.t.stepHeroExit(0);
+    r.log.push(`exit:${n3(r.t.stepHeroExit(0))}`);      // a real placement snaps
+    r.log.push(`exiting:${r.t.heroExiting}`);
+    r.setShown(0.8); r.t.armHeroExit(true);
     r.log.push(`exit:${n3(r.t.stepHeroExit(0.15))}`);
     r.t.armHeroEntry('mission', 1);                     // arming clears the exit
     r.log.push(`exiting:${r.t.heroExiting}`);
@@ -674,17 +679,17 @@ pin('E4', 'REWIND AND LANDING HOME — a lap that never advanced off its own fir
     '>> blend=null/wrap=null/disagree=false'],
   'landWrapHome runs at the TOP of spineFrame, never inside stepCamBlend: placeAt composes a whole frame, and landing mid-applyFrame would re-drive every reader at the stale destination p');
 
-pin('E5', 'ENTRY — the departure term survives exactly the jump\'s own two placement passes and then snaps, refuses to arm over nothing, and is cleared by an arrival; the arrival term eases past its lead, reverses with a steered lap, and relaxes back when the visitor takes the wheel',
+pin('E5', 'ENTRY — the wrap departure term survives its two placeAt passes plus its post-arm phase-zero publish, then advances on the first real frame; an additional placement still snaps, and the arrival term eases, reverses and hands back cleanly',
   (i) => runScenario(i.f, 'entry'),
   { f: compileController(SRC.controller) },
-  ['exiting:true', 'exit:0.800', 'exit:0.800', 'exit:0.000', 'exiting:false',
-    'exiting:false',
-    'exit:0.717', 'paintHero(0.000)', 'exiting:false',
+  ['exiting:true', 'exit:0.800', 'exit:0.800', 'exit:0.800', 'exiting:true', 'exit:0.799',
+    'exiting:false', 'exit:0.000', 'exiting:false',
+    'exit:0.799', 'paintHero(0.000)', 'exiting:false',
     'entry:0.500', 'entry:0.210', 'entry:0.000',
     'paintHero(1.000)', 'paintHero(0.000)',
     'entry:0.240', 'entry:1.000',
     '>> exiting=false'],
-  'every number here is the authored law, not an observation blessed: holdSnaps is 2 because placeAt runs TWO dt = 0 applyFrame passes and the third is a REAL placement; 0.717 is 0.8 x (1 - smootherstep(0.15/0.6)); 0.500 and 0.210 are smootherstep past the 0.55 lead over the 1 + 0.15 - 0.55 body; 0.240 is COPY_IN_K x 0.1');
+  'the wrap reserves three zero-delta ticks for its two placeAt passes and the post-arm applyFrame(targetP, 0); the next zero tick remains a real placement snap. 0.799 is 0.8 x (1 - smootherstep(0.15/3.0)); 0.500 and 0.210 are smootherstep past the 0.55 lead over the 1 + 0.15 - 0.55 body; 0.240 is COPY_IN_K x 0.1');
 
 pin('E6', 'ORDINARY DEPARTURE — the non-wrap departure envelope survives both placement passes, fades across the authored 350 ms, and a Mission return leaves exit ownership clear',
   (i) => runScenario(i.f, 'ordinaryDeparture'),
@@ -814,9 +819,9 @@ let exitCode = L.report();
     M('E4', 'the rewind lands one frame early — rewoundHome fires while the lap is still travelling', null,
       bend('E4', 'camBlend.play < 0 && camBlend.t <= 0', 'camBlend.play < 0 && camBlend.t <= 1')),
     M('E5', 'the departure term is given one held snap instead of two — the jump\'s own second placement pass kills it', null,
-      bend('E5', 'holdSnaps: 2,', 'holdSnaps: 1,')),
+      bend('E5', 'holdSnaps: wrap ? 3 : 2,', 'holdSnaps: wrap ? 1 : 2,')),
     M('E6', 'the ordinary departure duration drifts off the authored 350 ms envelope', null,
-      bend('E6', 'dur: wrap ? 0.6 : 0.35,', 'dur: wrap ? 0.6 : 0.25,')),
+      bend('E6', 'dur: wrap ? 3.0 : 0.35,', 'dur: wrap ? 3.0 : 0.25,')),
     M('F1', 'the entry is filed away from its named neighbours', null,
       (i) => ({ ...i, src: i.src.replace('    "journey/transition/controller.js",\n', '') })),
     M('F2', 'a second transition entry appears in the manifest', null,
