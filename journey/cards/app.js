@@ -21,7 +21,9 @@ const CLIPS = [
   { label: 'Passing shapes' },
   { label: 'A quiet finish' },
 ];
-const TICKS = ['0:00', '0:05', '0:10'];
+// the sequence is 8 + 12 + 8 = 28 s; ticks sit at their own second
+const SEQUENCE_S = 28;
+const TICKS = [[0, '0:00'], [10, '0:10'], [20, '0:20']];
 
 let stageEl = null;
 
@@ -33,7 +35,7 @@ function node(tag, cls, text) {
 }
 
 export default {
-  build(stage) {
+  build(stage, content) {
     stageEl = stage;
     stage.classList.add('ap');
 
@@ -50,7 +52,11 @@ export default {
 
     const ruler = node('div', 'ap-ruler');
     const scale = node('div', 'ap-scale');
-    for (const t of TICKS) scale.append(node('span', 'ap-tick', t));
+    for (const [sec, text] of TICKS) {
+      const tick = node('span', 'ap-tick', text);
+      tick.style.setProperty('--t', (sec / SEQUENCE_S).toFixed(4));
+      scale.append(tick);
+    }
     ruler.append(scale);
 
     const track = node('div', 'ap-track');
@@ -64,7 +70,18 @@ export default {
 
     tl.append(ruler, track, sweep);
     panel.append(preview, tl);
-    stage.append(panel);
+
+    // the ending — the shared foot band, href and label from the content
+    const link = content.card.link;
+    const door = document.createElement('a');
+    door.className = 'ap-door card-door card-cta';
+    door.href = link.href;
+    door.target = '_blank';
+    door.rel = 'noopener noreferrer';
+    door.tabIndex = -1;   // ui.js promotes controls to tabbable on pin
+    door.textContent = `${link.label.toUpperCase()} →`;
+
+    stage.append(panel, door);
   },
 
   activate() {

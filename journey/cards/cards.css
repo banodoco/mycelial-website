@@ -405,7 +405,12 @@
 
 .j-pop-stage.ast {
   position: relative;
-  height: auto;
+  /* The live stage is 176px (the arca panels' 178 less the shell), measured in
+     real Chrome 2026-10-26; the tile was first built at 122px and left a dead
+     band. The chrome keeps its height and the window takes the rest. */
+  display: flex;
+  flex-direction: column;
+  height: 176px;
   container: ast / inline-size;   /* lets lines drop columns at phone width */
   background: #24211b;
   color: #f3eee4;
@@ -442,9 +447,11 @@
 /* the window: a fixed height, so a long session scrolls rather than grows */
 .ast-body {
   position: relative;
-  height: 9.6em;
+  flex: 1 1 auto;
+  min-height: 0;
   box-sizing: border-box;
-  padding: 0.75em 0.9em 0.6em;
+  font-size: 0.6rem;     /* six lines fit the window above the door when the script completes */
+  padding: 0.6em 0.9em 0.2em;
   overflow: hidden;
 }
 .ast-feed { transition: opacity 0.36s ease; }
@@ -523,6 +530,18 @@
 /* entry: the window lamps on, then its lines take the pane */
 .j-pop-enter .ast-chrome { animation: card-fade 0.32s ease both; }
 .j-pop-enter .ast-body   { animation: card-fade 0.4s steps(3, end) both; animation-delay: 0.12s; }
+
+/* the ending — Astrid ink on the terminal's hairline, orange when reached for;
+   geometry is .card-door's. flex: none keeps the band; the window takes the rest. */
+.ast-door {
+  line-height: 1.2;
+  flex: none;
+  border-top-color: #4a4337;
+  background: #24211b;
+  color: rgba(243, 238, 228, 0.62);
+}
+.ast-door:is(:hover, :focus-visible) { color: #ed6b23; background: rgba(237, 107, 35, 0.08); }
+.j-pop-enter .ast-door { animation: card-fade 0.4s ease both; animation-delay: 0.3s; }
 
 @media (prefers-reduced-motion: reduce) {
   .ast-cursor, .ast-glyph.ast-spin::before { animation: none; }
@@ -603,23 +622,24 @@
    motion the stage is a still frame, playhead over "Passing shapes". */
 
 .j-pop-stage.ap {
-  --ap-w: 272px;          /* the popover's own max width less its padding */
+  /* Fills the stage the shell gives it: full width, 176px tall (measured live
+     2026-10-26), the preview taking whatever the timeline leaves. Its width is
+     a container, so the sphere's travel (100cqw) follows the real stage. */
   --ap-pad: 6px;
-  --ap-gut: 54px;         /* track-label gutter */
-  --ap-pv: 104px;         /* preview height */
-  --ap-clip-h: 30px;
+  --ap-gut: 62px;         /* track-label gutter */
+  --ap-clip-h: 28px;
   --ap-loop: 9.6s;
   box-sizing: border-box;
-  width: var(--ap-w);
-  max-width: 100%;
+  width: 100%;
+  height: 176px;
+  display: flex;
+  flex-direction: column;
+  container: ap / inline-size;
   background: #24211b;
   color: #d8cdb8;
   font-family: system-ui, -apple-system, 'Helvetica Neue', sans-serif;
   font-size: 9px;
   line-height: 1.2;
-}
-@media (max-width: 480px) {
-  .j-pop-stage.ap { --ap-w: 208px; --ap-pad: 5px; --ap-gut: 46px; --ap-pv: 84px; --ap-clip-h: 28px; }
 }
 
 .j-pop-stage.ap .ap-panel {
@@ -627,6 +647,8 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex: 1 1 auto;
+  min-height: 0;
   padding: var(--ap-pad);
   border: 1px solid #4a4337;
   border-radius: 4px;
@@ -636,7 +658,8 @@
 /* preview — paper, with the hero's sphere */
 .j-pop-stage.ap .ap-preview {
   position: relative;
-  height: var(--ap-pv);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
   border-radius: 2px;
   background: #f7f4ed;
@@ -645,7 +668,7 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: calc(var(--ap-pv) * 0.58);
+  height: 58%;
   aspect-ratio: 1;
   border-radius: 50%;
   background: radial-gradient(circle at 36% 30%, #e0a06b 0, #c9772f 44%, #a94714 100%);
@@ -679,17 +702,28 @@
   color: #8f8470;
 }
 .j-pop-stage.ap .ap-scale {
+  position: relative;
   flex: 1 1 auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding-bottom: 0;
-  background:
-    linear-gradient(#4a4337, #4a4337) left bottom / 1px 4px no-repeat,
-    linear-gradient(#4a4337, #4a4337) 50% bottom / 1px 4px no-repeat,
-    linear-gradient(#4a4337, #4a4337) right bottom / 1px 4px no-repeat;
 }
-.j-pop-stage.ap .ap-tick:last-child { text-align: right; }
+/* the sequence is 8 + 12 + 8 = 28 s; each tick sits at its own second
+   (--t is that second's fraction of 28) with a hairline under its label */
+.j-pop-stage.ap .ap-tick {
+  position: absolute;
+  top: 0;
+  left: calc(var(--t) * 100%);
+  padding-left: 3px;
+  white-space: nowrap;
+}
+.j-pop-stage.ap .ap-tick::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: 1px;
+  height: 11px;
+  background: #4a4337;
+  z-index: -1;
+}
 
 .j-pop-stage.ap .ap-track {
   box-sizing: border-box;
@@ -705,7 +739,10 @@
   flex: none;
   box-sizing: border-box;
   width: var(--ap-gut);
-  padding: 0 5px 0 5px;
+  padding: 0 4px 0 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: #b9ad95;
   letter-spacing: 0.02em;
 }
@@ -720,6 +757,8 @@
   box-sizing: border-box;
   min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   padding: 3px 4px;
   border: 1px solid rgba(201, 119, 47, 0.45);
   border-radius: 2px;
@@ -757,6 +796,17 @@
   box-shadow: 0 0 5px rgba(56, 189, 248, 0.5);
 }
 
+/* the ending — Astrid ink on the editor's hairline, orange when reached for;
+   geometry is .card-door's */
+.j-pop-stage.ap .ap-door {
+  flex: none;
+  border-top-color: #4a4337;
+  background: #24211b;
+  color: rgba(243, 238, 228, 0.62);
+}
+.j-pop-stage.ap .ap-door:is(:hover, :focus-visible) { color: #ed6b23; background: rgba(237, 107, 35, 0.08); }
+.j-pop-enter .ap-door { animation: card-fade 0.4s ease both; animation-delay: 0.3s; }
+
 /* ---- loop: the playhead sweeps; the clip under it lights; the sphere
    answers. Keyed to one 9.6 s loop, runs only under .ap-live. */
 @keyframes ap-sweep { from { left: 0; } to { left: calc(100% - 2px); } }
@@ -779,11 +829,11 @@
    shapes", settles centred and brighter over "A quiet finish", then
    fades so the loop restarts from nothing */
 @keyframes ap-sphere {
-  0%   { transform: translate(calc(-50% - var(--ap-w) * 0.7), -50%); opacity: 0; filter: brightness(1); }
-  6%   { transform: translate(calc(-50% - var(--ap-w) * 0.62), -50%); opacity: 1; filter: brightness(1); }
-  27%  { transform: translate(calc(-50% - var(--ap-w) * 0.2), -50%); opacity: 1; filter: brightness(1); }
-  29%  { transform: translate(calc(-50% - var(--ap-w) * 0.2), -50%); opacity: 1; filter: brightness(1); }
-  71%  { transform: translate(calc(-50% + var(--ap-w) * 0.2), -50%); opacity: 1; filter: brightness(1); }
+  0%   { transform: translate(calc(-50% - 100cqw * 0.7), -50%); opacity: 0; filter: brightness(1); }
+  6%   { transform: translate(calc(-50% - 100cqw * 0.62), -50%); opacity: 1; filter: brightness(1); }
+  27%  { transform: translate(calc(-50% - 100cqw * 0.2), -50%); opacity: 1; filter: brightness(1); }
+  29%  { transform: translate(calc(-50% - 100cqw * 0.2), -50%); opacity: 1; filter: brightness(1); }
+  71%  { transform: translate(calc(-50% + 100cqw * 0.2), -50%); opacity: 1; filter: brightness(1); }
   74%  { transform: translate(-50%, -50%); opacity: 1; filter: brightness(1.12); }
   93%  { transform: translate(-50%, -50%); opacity: 1; filter: brightness(1.12); }
   100% { transform: translate(-50%, -50%); opacity: 0; filter: brightness(1.12); }

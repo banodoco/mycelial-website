@@ -169,11 +169,12 @@ function play(steps, i = 0) {
 }
 
 export default {
-  build(stage) {
+  build(stage, node) {
     stage.classList.add('ast');
 
     // the window chrome: three small dots and the one word
     const chrome = el('div', 'ast-chrome');
+    chrome.setAttribute('aria-hidden', 'true');   // decoration: the description above is the meaning
     const dots = el('span', 'ast-dots');
     for (let i = 0; i < 3; i++) dots.appendChild(el('span', 'ast-dot'));
     chrome.append(dots, el('span', 'ast-title', 'astrid'));
@@ -183,7 +184,17 @@ export default {
     feedEl = el('div', 'ast-feed');
     bodyEl.appendChild(feedEl);
 
-    stage.append(chrome, bodyEl);
+    // the ending — the shared foot band, href and label from the content
+    const link = node.card.link;
+    const door = document.createElement('a');
+    door.className = 'ast-door card-door card-cta';
+    door.href = link.href;
+    door.target = '_blank';
+    door.rel = 'noopener noreferrer';
+    door.tabIndex = -1;   // ui.js promotes controls to tabbable on pin
+    door.textContent = `${link.label.toUpperCase()} →`;
+
+    stage.append(chrome, bodyEl, door);
     settle();   // parked on the finished transcript
   },
 
