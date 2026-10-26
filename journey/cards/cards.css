@@ -396,6 +396,137 @@
 }
 .ag-door:is(:hover, :focus-visible) { color: #f5f0eb; }
 
+/* ---- agent — Astrid agent's terminal, miniaturized ---- */
+/* Astrid's own palette: panel #24211b, card #2c2822, hairline #4a4337,
+   ink #f3eee4, muted #aca395, orange #ed6b23 for the prompt and accents.
+   Monospace throughout. Every selector is scoped under .ast, the stage. */
+
+.j-pop-stage.ast {
+  position: relative;
+  height: auto;
+  container: ast / inline-size;   /* lets lines drop columns at phone width */
+  background: #24211b;
+  color: #f3eee4;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.66rem;
+  line-height: 1.5;
+  text-align: left;
+}
+
+/* window chrome: a thin bar, three small dots, the one word */
+.ast-chrome {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0.5em 0.8em;
+  background: #2c2822;
+  border-bottom: 1px solid #4a4337;
+  font-size: 0.6rem;
+  line-height: 1;
+}
+.ast-dots { display: inline-flex; gap: 0.36em; }
+.ast-dot {
+  width: 0.52em;
+  height: 0.52em;
+  border-radius: 50%;
+  border: 1px solid #4a4337;
+  box-sizing: border-box;
+}
+.ast-title {
+  color: #aca395;
+  letter-spacing: 0.06em;
+}
+
+/* the window: a fixed height, so a long session scrolls rather than grows */
+.ast-body {
+  position: relative;
+  height: 9.6em;
+  box-sizing: border-box;
+  padding: 0.75em 0.9em 0.6em;
+  overflow: hidden;
+}
+.ast-feed { transition: opacity 0.36s ease; }
+.ast-feed.ast-out { opacity: 0; }
+
+.ast-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+  margin: 0 0 0.22em;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+.ast-line.on { opacity: 1; }
+
+/* one gutter for prompts and marks, so every line's text starts together */
+.ast-gutter {
+  flex: none;
+  width: 1.1em;
+  color: #ed6b23;
+  font-weight: 700;
+}
+.ast-user .ast-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #f3eee4;
+}
+.ast-agent .ast-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: rgba(243, 238, 228, 0.9);
+}
+.ast-tool {
+  flex: none;
+  margin-left: auto;
+  padding-left: 0.6em;
+  color: #aca395;
+  white-space: nowrap;
+}
+
+/* the spinner: a small orange ring that stands in for the mark for a beat */
+.ast-glyph.ast-spin { position: relative; }
+.ast-glyph.ast-spin::before {
+  content: "";
+  position: absolute;
+  left: 0.15em;
+  top: 0.42em;
+  width: 0.5em;
+  height: 0.5em;
+  box-sizing: border-box;
+  border: 1px solid rgba(237, 107, 35, 0.3);
+  border-top-color: #ed6b23;
+  border-radius: 50%;
+  animation: ast-spin 0.7s linear infinite;
+}
+@keyframes ast-spin { to { transform: rotate(360deg); } }
+
+/* the block cursor: steps, so it blinks hard rather than fading */
+.ast-cursor {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.02em;
+  margin-left: 0.1em;
+  vertical-align: -0.16em;
+  background: #f3eee4;
+  animation: ast-blink 1.05s steps(1, end) infinite;
+}
+@keyframes ast-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+/* phone width: the tool column goes first, the words keep the room */
+@container ast (max-width: 322px) {
+  .ast-tool { display: none; }
+}
+
+/* entry: the window lamps on, then its lines take the pane */
+.j-pop-enter .ast-chrome { animation: card-fade 0.32s ease both; }
+.j-pop-enter .ast-body   { animation: card-fade 0.4s steps(3, end) both; animation-delay: 0.12s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ast-cursor, .ast-glyph.ast-spin::before { animation: none; }
+  .ast-feed, .ast-line { transition: none; }
+}
+
 /* ---- entry choreography (Hannah, 2026-08-17: "make sure every card has a
    nice little entry animation") ----------------------------------------
    Each stage's internals arrive in that card's own vocabulary, keyed to the
