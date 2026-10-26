@@ -1,9 +1,10 @@
 // agent — "the Astrid agent, typing an instruction".
 //
 // Astrid's own terminal, miniaturized: a near-black window with a thin
-// chrome bar reading `astrid`, a user line that types at ~30 chars/s with a
-// blinking block cursor, then the agent answering line by line (each line
-// spins briefly, then settles to ✓ or ·). The palette is Astrid's own:
+// chrome bar reading `astrid`, a user line that types at ~48 chars/s (the
+// family's typing rate) with a blinking block cursor, then the agent
+// answering line by line (each line spins briefly, then settles to ✓ or ·).
+// The palette is Astrid's own:
 //   panel #24211b · card #2c2822 · hairline #4a4337 · ink #f3eee4 ·
 //   muted #aca395 · Astrid orange #ed6b23 (prompt and accents).
 // The transcript is the install-and-first-request story in one breath.
@@ -15,20 +16,22 @@
 import { REDUCE } from './runtime.js';
 
 // The script. `glyph` is the settled mark; `tool` is the muted right-hand
-// column (dropped by CSS at phone widths, where the line needs the room).
+// column (dropped by CSS only on the narrowest phones); `spin` is how long
+// that line's spinner runs: the install takes longest, the hand-off is quick.
+// The install line is the real one (astrid.haus's macOS/Linux command).
 const SCRIPT = [
   { kind: 'user',  prompt: '$', text: 'curl -fsSL https://astrid.haus/install | sh' },
-  { kind: 'agent', glyph: '✓', text: 'Astrid is ready' },
+  { kind: 'agent', glyph: '✓', text: 'Astrid is ready', spin: 760 },
   { kind: 'user',  prompt: '›', text: 'make a quiet 28-second light study' },
-  { kind: 'agent', glyph: '·', text: 'generating three anchor images', tool: 'qwen_image × 3' },
-  { kind: 'agent', glyph: '·', text: 'animating the anchors', tool: 'animated_video × 3' },
-  { kind: 'agent', glyph: '✓', text: 'timeline ready on astrid.haus' },
+  { kind: 'agent', glyph: '·', text: 'generating anchor images', tool: 'qwen_image × 3', spin: 620 },
+  { kind: 'agent', glyph: '·', text: 'animating the anchors', tool: 'animated_video × 3', spin: 620 },
+  { kind: 'agent', glyph: '✓', text: 'timeline ready on astrid.haus', spin: 380 },
 ];
 
-const CHAR_MS = 33;       // ~30 chars/s typing
+const CHAR_MS = 21;       // ~48 chars/s: Hivemind's rate (32 ms read as "painfully slow")
 const LINE_GAP_MS = 260;  // pause before each new line
 const TYPED_HOLD_MS = 240; // beat after a user line is typed, before the answer
-const SPIN_MS = 420;      // the brief spinner on each agent line
+const SPIN_MS = 420;      // default spinner beat when a line names no `spin`
 const HOLD_MS = 2500;     // the finished state, held
 const FADE_MS = 360;      // the window fades before it clears
 
@@ -147,7 +150,7 @@ function buildScript() {
       steps.push([TYPED_HOLD_MS, endUser]);
     } else {
       steps.push([LINE_GAP_MS, () => addAgent(item)]);
-      steps.push([SPIN_MS, () => settleAgent(item)]);
+      steps.push([item.spin ?? SPIN_MS, () => settleAgent(item)]);
     }
   }
   steps.push([LINE_GAP_MS, addIdlePrompt]);

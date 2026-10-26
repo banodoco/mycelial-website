@@ -405,12 +405,12 @@
 
 .j-pop-stage.ast {
   position: relative;
-  /* The live stage is 176px (the arca panels' 178 less the shell), measured in
-     real Chrome 2026-10-26; the tile was first built at 122px and left a dead
-     band. The chrome keeps its height and the window takes the rest. */
+  /* The stage's height is its content's: the chrome, a window sized to the
+     finished transcript (.ast-body) and the door, which lands at 200px, the
+     app tile's height, with no blank band under the last line. */
   display: flex;
   flex-direction: column;
-  height: 176px;
+  height: auto;
   container: ast / inline-size;   /* lets lines drop columns at phone width */
   background: #24211b;
   color: #f3eee4;
@@ -444,14 +444,20 @@
   letter-spacing: 0.06em;
 }
 
-/* the window: a fixed height, so a long session scrolls rather than grows */
+/* the window: exactly the finished transcript (seven lines of 1.62 line
+   height plus each line's 0.22em margin, plus padding), so the last line
+   sits a breath above the door. 10.5px reads beside Hivemind's 11.5px
+   console and still keeps the real install line (43 chars) on one row;
+   on narrower phones the type scales down rather than wrap. A long
+   session still scrolls rather than grows. */
 .ast-body {
   position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: none;
   box-sizing: border-box;
-  font-size: 0.6rem;     /* six lines fit the window above the door when the script completes */
-  padding: 0.6em 0.9em 0.2em;
+  font-size: clamp(9px, calc(100cqw / 29.6), 10.5px);
+  line-height: 1.62;
+  height: calc(7 * 1.84em + 1.44em);
+  padding: 0.8em 0.9em 0.64em;
   overflow: hidden;
 }
 .ast-feed { transition: opacity 0.36s ease; }
@@ -499,7 +505,7 @@
   content: "";
   position: absolute;
   left: 0.15em;
-  top: 0.42em;
+  top: 0.48em;
   width: 0.5em;
   height: 0.5em;
   box-sizing: border-box;
@@ -522,8 +528,8 @@
 }
 @keyframes ast-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
 
-/* phone width: the tool column goes first, the words keep the room */
-@container ast (max-width: 322px) {
+/* the narrowest phones: the tool column goes first, the words keep the room */
+@container ast (max-width: 280px) {
   .ast-tool { display: none; }
 }
 
@@ -614,27 +620,28 @@
 .j-pop-exit .j-pop-link { animation: card-fade 0.12s ease-in reverse both; }
 
 /* ---- app — astrid.haus's editor, miniaturized ---- */
-/* Its own palette, from the live editor: panel #24211b, hairline #4a4337,
-   timeline well #1b1915, paper #f7f4ed, sphere #c9772f -> #a94714, playhead
-   sky #38bdf8. One 9.6 s loop: the playhead sweeps the clips (8 : 12 : 8),
-   the clip under it lights, and the sphere answers that clip. Every motion
-   is gated on .ap-live (activate/deactivate); at rest and under reduced
-   motion the stage is a still frame, playhead over "Passing shapes". */
+/* Its own palette, from the live editor and the light study's own anchor
+   frames: panel #24211b, hairline #4a4337, player well #1b1915, paper
+   #f4f1e9, sphere ochre #c27e3b, slate block #7b939a, playhead sky #38bdf8.
+   One 9.6 s loop: the playhead sweeps the clips (8 : 12 : 8), the clip under
+   it lights, and the frame CUTS to that clip's shot as the playhead crosses
+   each boundary (28.57% and 71.43% of the loop). Every motion is gated on
+   .ap-live (activate/deactivate); at rest and under reduced motion the stage
+   is a still frame, playhead over "Passing shapes", the frame on that shot. */
 
 .j-pop-stage.ap {
-  /* Fills the stage the shell gives it: full width, 176px tall (measured live
-     2026-10-26), the preview taking whatever the timeline leaves. Its width is
-     a container, so the sphere's travel (100cqw) follows the real stage. */
+  /* 200px tall: the player keeps a 16:9 frame big enough to read, and the
+     card lands at ADOS's height. The frame (.ap-paper) is the container the
+     shot's offsets (cqw) are measured against. */
   --ap-pad: 6px;
   --ap-gut: 62px;         /* track-label gutter */
-  --ap-clip-h: 28px;
+  --ap-clip-h: 24px;
   --ap-loop: 9.6s;
   box-sizing: border-box;
   width: 100%;
-  height: 176px;
+  height: 200px;
   display: flex;
   flex-direction: column;
-  container: ap / inline-size;
   background: #24211b;
   color: #d8cdb8;
   font-family: system-ui, -apple-system, 'Helvetica Neue', sans-serif;
@@ -655,37 +662,73 @@
   background: #24211b;
 }
 
-/* preview — paper, with the hero's sphere */
+/* preview — the editor's player: a dark well, one 16:9 frame centred in it */
 .j-pop-stage.ap .ap-preview {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  border-radius: 3px;
+  background: #1b1915;
+}
+.j-pop-stage.ap .ap-paper {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  height: calc(100% - 10px);
+  aspect-ratio: 16 / 9;
+  transform: translateX(-50%);
   overflow: hidden;
   border-radius: 2px;
-  background: #f7f4ed;
+  background: #f4f1e9;
+  container-type: inline-size;
 }
+/* the study's soft diagonal light across the paper */
+.j-pop-stage.ap .ap-paper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(118deg, rgba(255, 255, 255, 0) 20%, rgba(255, 255, 255, 0.8) 36%, rgba(255, 255, 255, 0) 52%);
+}
+
+/* the sphere — sized for "First light" (58% of the frame's height) and
+   scaled to 0.69 for the two later shots, as the anchors have it. The
+   still is the "Passing shapes" shot. */
 .j-pop-stage.ap .ap-sphere {
   position: absolute;
+  z-index: 1;
   top: 50%;
   left: 50%;
   height: 58%;
   aspect-ratio: 1;
   border-radius: 50%;
-  background: radial-gradient(circle at 36% 30%, #e0a06b 0, #c9772f 44%, #a94714 100%);
-  box-shadow: 0 5px 10px -3px rgba(60, 30, 10, 0.35), inset 0 -2px 4px rgba(120, 50, 10, 0.25);
-  transform: translate(-50%, -50%);
-  filter: brightness(1);
+  background: radial-gradient(circle at 50% 30%, #cf8f4c 0, #c27e3b 50%, #a9652a 100%);
+  box-shadow: 0 6px 10px -4px rgba(60, 30, 10, 0.32);
+  transform: translate(-50%, -50%) translate(-5cqw, 1.7cqw) scale(0.69);
 }
 .j-pop-stage.ap .ap-sphere::after {
   content: '';
   position: absolute;
-  left: 22%;
-  top: 14%;
-  width: 34%;
-  height: 18%;
+  left: 30%;
+  top: 9%;
+  width: 40%;
+  height: 13%;
   border-radius: 50%;
-  background: rgba(255, 240, 220, 0.45);
+  background: rgba(255, 236, 214, 0.38);
   filter: blur(1px);
+}
+
+/* the slate block — absent from "First light", passing in "Passing
+   shapes", tucked behind the sphere in "A quiet finish" */
+.j-pop-stage.ap .ap-block {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 25%;
+  height: 27.5%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #7b939a 0 88%, #cdd5d4 88% 100%);
+  box-shadow: 0 5px 9px -4px rgba(40, 50, 55, 0.35);
+  transform: translate(-50%, -50%) translate(30cqw, 2.8cqw);
 }
 
 /* timeline — ruler over one track, the playhead across both */
@@ -697,7 +740,7 @@
 }
 .j-pop-stage.ap .ap-ruler {
   display: flex;
-  height: 14px;
+  height: 12px;
   padding-left: var(--ap-gut);
   color: #8f8470;
 }
@@ -706,7 +749,9 @@
   flex: 1 1 auto;
 }
 /* the sequence is 8 + 12 + 8 = 28 s; each tick sits at its own second
-   (--t is that second's fraction of 28) with a hairline under its label */
+   (--t is that second's fraction of 28) with a hairline beside its label.
+   No negative z-index on the hairline: it would drop behind the panel
+   once the entry animation's stacking context ends. */
 .j-pop-stage.ap .ap-tick {
   position: absolute;
   top: 0;
@@ -720,9 +765,8 @@
   left: 0;
   bottom: -3px;
   width: 1px;
-  height: 11px;
+  height: 9px;
   background: #4a4337;
-  z-index: -1;
 }
 
 .j-pop-stage.ap .ap-track {
@@ -753,13 +797,15 @@
   min-width: 0;
   height: var(--ap-clip-h);
 }
+/* clip names sit on the clip's centre line, as the editor's tags do */
 .j-pop-stage.ap .ap-clip {
   box-sizing: border-box;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  padding: 3px 4px;
+  padding: 0 4px;
+  line-height: calc(var(--ap-clip-h) - 2px);
   border: 1px solid rgba(201, 119, 47, 0.45);
   border-radius: 2px;
   background: rgba(201, 119, 47, 0.22);
@@ -795,6 +841,18 @@
   background: #38bdf8;
   box-shadow: 0 0 5px rgba(56, 189, 248, 0.5);
 }
+/* its handle, as the editor's: a small sky tab over the ruler */
+.j-pop-stage.ap .ap-head::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 7px;
+  height: 5px;
+  margin-left: -3.5px;
+  border-radius: 1.5px 1.5px 3.5px 3.5px;
+  background: #38bdf8;
+}
 
 /* the ending — Astrid ink on the editor's hairline, orange when reached for;
    geometry is .card-door's */
@@ -807,45 +865,61 @@
 .j-pop-stage.ap .ap-door:is(:hover, :focus-visible) { color: #ed6b23; background: rgba(237, 107, 35, 0.08); }
 .j-pop-enter .ap-door { animation: card-fade 0.4s ease both; animation-delay: 0.3s; }
 
-/* ---- loop: the playhead sweeps; the clip under it lights; the sphere
-   answers. Keyed to one 9.6 s loop, runs only under .ap-live. */
+/* ---- loop: the playhead sweeps; the clip under it lights; the frame cuts
+   to that clip's shot at each boundary. Keyed to one 9.6 s loop, runs only
+   under .ap-live. Each keyframe pair 28.5/28.6% and 71.4/71.5% is a cut;
+   between cuts the motion is slow and carries its own easing. */
 @keyframes ap-sweep { from { left: 0; } to { left: calc(100% - 2px); } }
 
 @keyframes ap-hi-1 {
-  0%, 26%  { box-shadow: inset 0 0 0 1px #38bdf8; background-color: rgba(201, 119, 47, 0.5); }
-  29%, 100% { box-shadow: inset 0 0 0 1px transparent; background-color: rgba(201, 119, 47, 0.22); }
+  0%, 28.5%   { box-shadow: inset 0 0 0 1px #38bdf8; background-color: rgba(201, 119, 47, 0.5); }
+  28.6%, 100% { box-shadow: inset 0 0 0 1px transparent; background-color: rgba(201, 119, 47, 0.22); }
 }
 @keyframes ap-hi-2 {
-  0%, 27%  { box-shadow: inset 0 0 0 1px transparent; background-color: rgba(201, 119, 47, 0.22); }
-  30%, 70% { box-shadow: inset 0 0 0 1px #38bdf8; background-color: rgba(201, 119, 47, 0.5); }
-  73%, 100% { box-shadow: inset 0 0 0 1px transparent; background-color: rgba(201, 119, 47, 0.22); }
+  0%, 28.5%   { box-shadow: inset 0 0 0 1px transparent; background-color: rgba(201, 119, 47, 0.22); }
+  28.6%, 71.4% { box-shadow: inset 0 0 0 1px #38bdf8; background-color: rgba(201, 119, 47, 0.5); }
+  71.5%, 100% { box-shadow: inset 0 0 0 1px transparent; background-color: rgba(201, 119, 47, 0.22); }
 }
 @keyframes ap-hi-3 {
-  0%, 72%  { box-shadow: inset 0 0 0 1px transparent; background-color: rgba(201, 119, 47, 0.22); }
-  75%, 100% { box-shadow: inset 0 0 0 1px #38bdf8; background-color: rgba(201, 119, 47, 0.5); }
+  0%, 71.4%   { box-shadow: inset 0 0 0 1px transparent; background-color: rgba(201, 119, 47, 0.22); }
+  71.5%, 100% { box-shadow: inset 0 0 0 1px #38bdf8; background-color: rgba(201, 119, 47, 0.5); }
 }
 
-/* the sphere: drifts in over "First light", crosses during "Passing
-   shapes", settles centred and brighter over "A quiet finish", then
-   fades so the loop restarts from nothing */
+/* First light: the sphere alone, large, rising as the light comes up.
+   Passing shapes: smaller, left of centre, drifting right as the block
+   passes. A quiet finish: the pair at rest, the sphere a touch brighter. */
 @keyframes ap-sphere {
-  0%   { transform: translate(calc(-50% - 100cqw * 0.7), -50%); opacity: 0; filter: brightness(1); }
-  6%   { transform: translate(calc(-50% - 100cqw * 0.62), -50%); opacity: 1; filter: brightness(1); }
-  27%  { transform: translate(calc(-50% - 100cqw * 0.2), -50%); opacity: 1; filter: brightness(1); }
-  29%  { transform: translate(calc(-50% - 100cqw * 0.2), -50%); opacity: 1; filter: brightness(1); }
-  71%  { transform: translate(calc(-50% + 100cqw * 0.2), -50%); opacity: 1; filter: brightness(1); }
-  74%  { transform: translate(-50%, -50%); opacity: 1; filter: brightness(1.12); }
-  93%  { transform: translate(-50%, -50%); opacity: 1; filter: brightness(1.12); }
-  100% { transform: translate(-50%, -50%); opacity: 0; filter: brightness(1.12); }
+  0%     { transform: translate(-50%, -50%) translate(0, 2.5cqw) scale(0.94); filter: brightness(0.8); animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1); }
+  28.5%  { transform: translate(-50%, -50%) translate(0, 0) scale(1); filter: brightness(1); }
+  28.6%  { transform: translate(-50%, -50%) translate(-7cqw, 1.7cqw) scale(0.69); filter: brightness(1); animation-timing-function: ease-in-out; }
+  71.4%  { transform: translate(-50%, -50%) translate(-3cqw, 1.7cqw) scale(0.69); filter: brightness(1); }
+  71.5%  { transform: translate(-50%, -50%) translate(-5cqw, 1.7cqw) scale(0.69); filter: brightness(1); animation-timing-function: ease-out; }
+  84%    { transform: translate(-50%, -50%) translate(-5cqw, 1.7cqw) scale(0.69); filter: brightness(1.05); }
+  100%   { transform: translate(-50%, -50%) translate(-5cqw, 1.7cqw) scale(0.69); filter: brightness(1.05); }
+}
+@keyframes ap-block {
+  0%, 28.5% { opacity: 0; transform: translate(-50%, -50%) translate(36cqw, 2.8cqw); }
+  28.6%     { opacity: 1; transform: translate(-50%, -50%) translate(36cqw, 2.8cqw); animation-timing-function: ease-in-out; }
+  71.4%     { opacity: 1; transform: translate(-50%, -50%) translate(24cqw, 2.8cqw); }
+  71.5%     { opacity: 1; transform: translate(-50%, -50%) translate(14cqw, 2.8cqw); animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+  84%, 100% { opacity: 1; transform: translate(-50%, -50%) translate(10cqw, 2.8cqw); }
+}
+/* the paper's light comes up with "First light" and then holds */
+@keyframes ap-light {
+  0%        { opacity: 0.1; animation-timing-function: ease-out; }
+  24%, 100% { opacity: 1; }
 }
 
 .j-pop-stage.ap.ap-live .ap-head   { animation: ap-sweep var(--ap-loop) linear infinite; }
 .j-pop-stage.ap.ap-live .ap-clip-1 { animation: ap-hi-1 var(--ap-loop) linear infinite; }
 .j-pop-stage.ap.ap-live .ap-clip-2 { animation: ap-hi-2 var(--ap-loop) linear infinite; }
 .j-pop-stage.ap.ap-live .ap-clip-3 { animation: ap-hi-3 var(--ap-loop) linear infinite; }
-.j-pop-stage.ap.ap-live .ap-sphere { animation: ap-sphere var(--ap-loop) ease-in-out infinite; }
+.j-pop-stage.ap.ap-live .ap-sphere { animation: ap-sphere var(--ap-loop) linear infinite; }
+.j-pop-stage.ap.ap-live .ap-block  { animation: ap-block var(--ap-loop) linear infinite; }
+.j-pop-stage.ap.ap-live .ap-paper::before { animation: ap-light var(--ap-loop) linear infinite; }
 
-/* entry — the panel rises, the timeline settles in after it */
+/* entry — the panel rises, the timeline settles in after it; the loop
+   itself opens on "First light", the light coming up on the sphere */
 .j-pop-enter .ap .ap-panel { animation: card-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .j-pop-enter .ap .ap-ruler,
 .j-pop-enter .ap .ap-track { animation: card-fade 0.4s ease both; animation-delay: 0.16s; }
@@ -853,7 +927,9 @@
 @media (prefers-reduced-motion: reduce) {
   .j-pop-stage.ap .ap-head,
   .j-pop-stage.ap .ap-clip,
-  .j-pop-stage.ap .ap-sphere { animation: none !important; }
+  .j-pop-stage.ap .ap-sphere,
+  .j-pop-stage.ap .ap-block,
+  .j-pop-stage.ap .ap-paper::before { animation: none !important; }
 }
 
 /* ---- artcompute — artcompute.org's terminal ledger, miniaturized ----- */
