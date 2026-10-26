@@ -116,7 +116,7 @@ const BUILDER_FILES = ['arca.js', 'artcompute.js', 'tworp.js', 'ados.js', 'hivem
 const HAND_DERIVED = {
   // The CARD_ICONS object literal's field order, top to bottom.
   // 2026-10-26: `agent` and `app` were appended (the Equip pair's glyphs, moved
-  // from the retired soon-icons.js). The U01c MOVE is still proven on the six
+  // from soon-icons.js, since deleted). The U01c MOVE is still proven on the six
   // that existed then (`movedKeys`, against the pinned pre-move fixture); the
   // shipped table is those six followed by the two additions, in that order.
   iconKeys: ['arca', 'artcompute', 'tworp', 'ados', 'hivemind', 'discord', 'agent', 'app'],

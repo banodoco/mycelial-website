@@ -420,13 +420,13 @@ async function main() {
   );
   check(realIndex.CARD_ASSETS === realRuntime.CARD_ASSETS, 'index.CARD_ASSETS is the runtime leaf\'s binding');
   check(realIndex.REDUCE === realRuntime.REDUCE, 'index.REDUCE is the runtime leaf\'s binding');
-  /* The shipped order is the six, then agent and app for whichever of the two
-     has a real (non-null) default export yet — read from the modules, not
-     retyped, so the tiles landing does not touch this suite. */
-  const SHIPPED_KEYS = HAND_DERIVED.builderKeys.slice();
-  for (const f of ADDED_BUILDER_FILES) {
-    const mod = await import(pathToFileURL(path.join(REPO_ROOT, `journey/cards/${f}`)).href);
-    if (mod.default) SHIPPED_KEYS.push(f.replace(/\.js$/, ''));
+  /* The shipped order is the six, then agent and app. Both Equip tiles are
+     required: every one of the eight keys must map to a non-null builder, so
+     a tile silently falling back to null fails here rather than vanishing
+     from the map. */
+  const SHIPPED_KEYS = HAND_DERIVED.builderKeys.concat(ADDED_BUILDER_FILES.map((f) => f.replace(/\.js$/, '')));
+  for (const k of SHIPPED_KEYS) {
+    check(realIndex.CARD_BUILDERS[k] != null, `CARD_BUILDERS.${k} is a non-null builder in the shipped tree`);
   }
   assert.deepEqual(
     Object.keys(realIndex.CARD_BUILDERS),

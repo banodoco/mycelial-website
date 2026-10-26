@@ -215,7 +215,7 @@ export function createEquip(sceneApi) {
   // re-introduce the subject.
   const revealAt = { agent: null, app: null };
   // Seconds a label takes to stand up after its ring — the chip's rise
-  // (hotspot-frame paintSoonRise reads the same clock through h.a). Matches
+  // (hotspot-frame reads the same clock through h.a). Matches
   // HOTSPOT_ARRIVAL.formMs, the site's marker-formation tempo.
   const RISE_S = 0.7;
 
