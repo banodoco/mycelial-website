@@ -461,6 +461,218 @@
 .j-pop-exit .j-pop-s   { animation: card-fade 0.16s ease-in reverse both; }
 .j-pop-exit .j-pop-link { animation: card-fade 0.12s ease-in reverse both; }
 
+/* ---- app — astrid.haus's editor, miniaturized ---- */
+/* Its own palette, from the live editor: panel #24211b, hairline #4a4337,
+   timeline well #1b1915, paper #f7f4ed, sphere #c9772f -> #a94714, playhead
+   sky #38bdf8. One 9.6 s loop: the playhead sweeps the clips (8 : 12 : 8),
+   the clip under it lights, and the sphere answers that clip. Every motion
+   is gated on .ap-live (activate/deactivate); at rest and under reduced
+   motion the stage is a still frame, playhead over "Passing shapes". */
+
+.j-pop-stage.ap {
+  --ap-w: 272px;          /* the popover's own max width less its padding */
+  --ap-pad: 6px;
+  --ap-gut: 54px;         /* track-label gutter */
+  --ap-pv: 104px;         /* preview height */
+  --ap-clip-h: 30px;
+  --ap-loop: 9.6s;
+  box-sizing: border-box;
+  width: var(--ap-w);
+  max-width: 100%;
+  background: #24211b;
+  color: #d8cdb8;
+  font-family: system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  font-size: 9px;
+  line-height: 1.2;
+}
+@media (max-width: 480px) {
+  .j-pop-stage.ap { --ap-w: 208px; --ap-pad: 5px; --ap-gut: 46px; --ap-pv: 84px; --ap-clip-h: 28px; }
+}
+
+.j-pop-stage.ap .ap-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--ap-pad);
+  border: 1px solid #4a4337;
+  border-radius: 4px;
+  background: #24211b;
+}
+
+/* preview — paper, with the hero's sphere */
+.j-pop-stage.ap .ap-preview {
+  position: relative;
+  height: var(--ap-pv);
+  overflow: hidden;
+  border-radius: 2px;
+  background: #f7f4ed;
+}
+.j-pop-stage.ap .ap-sphere {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(var(--ap-pv) * 0.58);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 30%, #e0a06b 0, #c9772f 44%, #a94714 100%);
+  box-shadow: 0 5px 10px -3px rgba(60, 30, 10, 0.35), inset 0 -2px 4px rgba(120, 50, 10, 0.25);
+  transform: translate(-50%, -50%);
+  filter: brightness(1);
+}
+.j-pop-stage.ap .ap-sphere::after {
+  content: '';
+  position: absolute;
+  left: 22%;
+  top: 14%;
+  width: 34%;
+  height: 18%;
+  border-radius: 50%;
+  background: rgba(255, 240, 220, 0.45);
+  filter: blur(1px);
+}
+
+/* timeline — ruler over one track, the playhead across both */
+.j-pop-stage.ap .ap-tl {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.j-pop-stage.ap .ap-ruler {
+  display: flex;
+  height: 14px;
+  padding-left: var(--ap-gut);
+  color: #8f8470;
+}
+.j-pop-stage.ap .ap-scale {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 0;
+  background:
+    linear-gradient(#4a4337, #4a4337) left bottom / 1px 4px no-repeat,
+    linear-gradient(#4a4337, #4a4337) 50% bottom / 1px 4px no-repeat,
+    linear-gradient(#4a4337, #4a4337) right bottom / 1px 4px no-repeat;
+}
+.j-pop-stage.ap .ap-tick:last-child { text-align: right; }
+
+.j-pop-stage.ap .ap-track {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  height: calc(var(--ap-clip-h) + 6px);
+  padding: 3px 3px 3px 0;
+  border: 1px solid #4a4337;
+  border-radius: 2px;
+  background: #1b1915;
+}
+.j-pop-stage.ap .ap-track-label {
+  flex: none;
+  box-sizing: border-box;
+  width: var(--ap-gut);
+  padding: 0 5px 0 5px;
+  color: #b9ad95;
+  letter-spacing: 0.02em;
+}
+.j-pop-stage.ap .ap-clips {
+  display: flex;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--ap-clip-h);
+}
+.j-pop-stage.ap .ap-clip {
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+  padding: 3px 4px;
+  border: 1px solid rgba(201, 119, 47, 0.45);
+  border-radius: 2px;
+  background: rgba(201, 119, 47, 0.22);
+  color: #f3e3cc;
+  box-shadow: inset 0 0 0 1px transparent;
+}
+.j-pop-stage.ap .ap-clip-1 { flex: 8 1 0; }
+.j-pop-stage.ap .ap-clip-2 { flex: 12 1 0; }
+.j-pop-stage.ap .ap-clip-3 { flex: 8 1 0; }
+/* still frame: the playhead rests over the middle clip */
+.j-pop-stage.ap .ap-clip-2 {
+  background: rgba(201, 119, 47, 0.5);
+  box-shadow: inset 0 0 0 1px #38bdf8;
+}
+
+/* the playhead — sits over the clip area, across ruler and track */
+.j-pop-stage.ap .ap-sweep {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: calc(var(--ap-gut) + 1px);
+  right: 4px;
+  pointer-events: none;
+}
+.j-pop-stage.ap .ap-head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: #38bdf8;
+  box-shadow: 0 0 5px rgba(56, 189, 248, 0.5);
+}
+
+/* ---- loop: the playhead sweeps; the clip under it lights; the sphere
+   answers. Keyed to one 9.6 s loop, runs only under .ap-live. */
+@keyframes ap-sweep { from { left: 0; } to { left: calc(100% - 2px); } }
+
+@keyframes ap-hi-1 {
+  0%, 26%  { box-shadow: inset 0 0 0 1px #38bdf8; background-color: rgba(201, 119, 47, 0.5); }
+  29%, 100% { box-shadow: inset 0 0 0 1px transparent; background-color: rgba(201, 119, 47, 0.22); }
+}
+@keyframes ap-hi-2 {
+  0%, 27%  { box-shadow: inset 0 0 0 1px transparent; background-color: rgba(201, 119, 47, 0.22); }
+  30%, 70% { box-shadow: inset 0 0 0 1px #38bdf8; background-color: rgba(201, 119, 47, 0.5); }
+  73%, 100% { box-shadow: inset 0 0 0 1px transparent; background-color: rgba(201, 119, 47, 0.22); }
+}
+@keyframes ap-hi-3 {
+  0%, 72%  { box-shadow: inset 0 0 0 1px transparent; background-color: rgba(201, 119, 47, 0.22); }
+  75%, 100% { box-shadow: inset 0 0 0 1px #38bdf8; background-color: rgba(201, 119, 47, 0.5); }
+}
+
+/* the sphere: drifts in over "First light", crosses during "Passing
+   shapes", settles centred and brighter over "A quiet finish", then
+   fades so the loop restarts from nothing */
+@keyframes ap-sphere {
+  0%   { transform: translate(calc(-50% - var(--ap-w) * 0.7), -50%); opacity: 0; filter: brightness(1); }
+  6%   { transform: translate(calc(-50% - var(--ap-w) * 0.62), -50%); opacity: 1; filter: brightness(1); }
+  27%  { transform: translate(calc(-50% - var(--ap-w) * 0.2), -50%); opacity: 1; filter: brightness(1); }
+  29%  { transform: translate(calc(-50% - var(--ap-w) * 0.2), -50%); opacity: 1; filter: brightness(1); }
+  71%  { transform: translate(calc(-50% + var(--ap-w) * 0.2), -50%); opacity: 1; filter: brightness(1); }
+  74%  { transform: translate(-50%, -50%); opacity: 1; filter: brightness(1.12); }
+  93%  { transform: translate(-50%, -50%); opacity: 1; filter: brightness(1.12); }
+  100% { transform: translate(-50%, -50%); opacity: 0; filter: brightness(1.12); }
+}
+
+.j-pop-stage.ap.ap-live .ap-head   { animation: ap-sweep var(--ap-loop) linear infinite; }
+.j-pop-stage.ap.ap-live .ap-clip-1 { animation: ap-hi-1 var(--ap-loop) linear infinite; }
+.j-pop-stage.ap.ap-live .ap-clip-2 { animation: ap-hi-2 var(--ap-loop) linear infinite; }
+.j-pop-stage.ap.ap-live .ap-clip-3 { animation: ap-hi-3 var(--ap-loop) linear infinite; }
+.j-pop-stage.ap.ap-live .ap-sphere { animation: ap-sphere var(--ap-loop) ease-in-out infinite; }
+
+/* entry — the panel rises, the timeline settles in after it */
+.j-pop-enter .ap .ap-panel { animation: card-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.j-pop-enter .ap .ap-ruler,
+.j-pop-enter .ap .ap-track { animation: card-fade 0.4s ease both; animation-delay: 0.16s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .j-pop-stage.ap .ap-head,
+  .j-pop-stage.ap .ap-clip,
+  .j-pop-stage.ap .ap-sphere { animation: none !important; }
+}
+
 /* ---- artcompute — artcompute.org's terminal ledger, miniaturized ----- */
 /* Its own language: a hard-edged monospace terminal under scanlines. System
    mono matches their JetBrains Mono at card scale, so no webfont is loaded.
