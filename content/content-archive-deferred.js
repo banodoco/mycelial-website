@@ -5,8 +5,8 @@
 // its two strings are the two that moved: they are now in content/content.js
 // under the same key, verbatim, which is what the instruction at the foot of
 // this header asked for. The three NODES are a different matter and have NOT
-// moved: Equip shipped with two initiatives of its own (Quark and Brötchen),
-// so PYPE, Arnold and Astrid are still deferred and still only here. Do not
+// moved: Equip shipped with two initiatives of its own (Quark and Brötchen, since
+// 2026-10-26 the Astrid agent and Astrid app — not these archived Astrid), so PYPE, Arnold and Astrid are still deferred and still only here. Do not
 // read this file as the live Equip; read it as the three tools that are not
 // built yet.
 //

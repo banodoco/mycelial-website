@@ -51,7 +51,9 @@ assert.match(html, /history\.replaceState\(null, '', '#\/mission'\)/);
 assert.doesNotMatch(html, /\bid="\/unknown"/);
 
 // 145 -> 139: the menu's Who/What/Why primer (six bindings) removed 2026-10-04
-assert.equal((html.match(/<[a-z][^>]*\bdata-src="/gi) ?? []).length, 139);
+// 139 -> 145: Equip's two nodes gained a body (two paragraphs) and a link label
+// each when they became the Astrid agent and app, 2026-10-26
+assert.equal((html.match(/<[a-z][^>]*\bdata-src="/gi) ?? []).length, 145);
 assert.equal((html.match(/<[a-z][^>]*\bdata-sym="/gi) ?? []).length, 11);
 assert.match(html, /data-src="chapters\.final\.nav">Purpose<\/span>/);
 assert.match(html, /class="menu-no">1\.<\/span><span class="menu-name">Inspiring<\/span>/);
@@ -60,21 +62,12 @@ assert.match(html, /class="menu-no">3\.<\/span><span class="menu-name">Connectin
 assert.match(html, /We’re working to help the open-source AI art ecosystem thrive<\/span>/);
 assert.match(html, /The open source ecosystem can accelerate a second renaissance<\/span>/);
 assert.doesNotMatch(html, /We’re creating a platform that help the community and agents accomplish together/);
-/* ACCOUNTING — 2026-09-01, "remove 'Soon' from the visible Equip labels"
-   (owner, written brief). Both pins below moved BECAUSE OF THAT CHANGE and
-   for no other reason; neither was widened to reach green.
-     · the teaser pin lost `aria-label="Coming soon"`. That override existed
-       only to voice the word to AT in place of the row's blurred name; with
-       the word gone the row reads its own name and line, so the property the
-       pin protects — Equipping exposes exactly two CONCEALED rows — is now
-       carried by the `menu-teaser` class alone (the blur), which is what is
-       pinned. The two `doesNotMatch`es below are the other half: the word may
-       not come back on these rows in either the visible or the accessible
-       layer.
-     · the badge count went 4 -> 1. The two Equipping teasers and the shipped
-       Manifesto control all became available. 2RP remains the only Soon item. */
-assert.equal((html.match(/class="menu-row-link menu-teaser"/g) ?? []).length, 2,
-  'Equipping exposes exactly two concealed initiative teasers');
+/* 2026-10-26: Equipping's two rows stopped being concealed teasers when the
+   initiatives became the Astrid agent and Astrid app. They are ordinary links
+   now (no `menu-teaser` class, no blur); what stays pinned is that the word
+   Soon is not on them and that 2RP alone keeps its badge. */
+assert.equal((html.match(/menu-teaser/g) ?? []).length, 0,
+  'no concealed teaser rows remain; Equipping rows are ordinary links');
 /* Anchored on the menu ANCHOR, not on `data-menu-section="equip"` alone —
    that attribute selector also appears in this file's own <style> block, and
    matching there would hand the following `menu-sub` (Inspire's) to the
@@ -82,8 +75,8 @@ assert.equal((html.match(/class="menu-row-link menu-teaser"/g) ?? []).length, 2,
 const equipMenu = html.match(/<a class="menu-item" href="#\/equip"[\s\S]*?<ul class="menu-sub">([\s\S]*?)<\/ul>/)?.[1];
 assert.ok(equipMenu, 'the static Equipping menu exists');
 assert.doesNotMatch(equipMenu, /Soon/i, 'no Equipping row says Soon in any form');
-assert.doesNotMatch(equipMenu, /aria-label=/i,
-  'a concealed Equipping row states its own name rather than an overriding status');
+assert.match(equipMenu, /href="https:\/\/github\.com\/banodoco\/astrid-agent"[\s\S]*nodes\.agent\.label">Astrid agent[\s\S]*href="https:\/\/astrid\.haus"[\s\S]*nodes\.app\.label">Astrid app/,
+  'Equipping lists Astrid agent then Astrid app as outbound links');
 assert.equal((html.match(/<span class="menu-badge"[^>]*>Soon<\/span>/g) ?? []).length, 1,
   '2RP alone keeps its Soon badge after Manifesto ships');
 assert.match(html, /href="#manifesto"[\s\S]*>Manifesto<\/span><span class="menu-is">Action at a pivotal moment<\/span>/);

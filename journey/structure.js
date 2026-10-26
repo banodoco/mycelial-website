@@ -49,7 +49,7 @@ const chapters = [
     segVh: [2.6, 3.4], symbol: 'equip', copyPosition: 'pos-bottomleft',
     copyBand: { lo: -0.012, hi: 0.058 }, runtime: true,
     copySurface: { host: 'block', deferred: false, flightLead: 'standard' },
-    hotspots: { kind: 'fixed', cardinality: 2, ids: ['quark', 'brotchen'] },
+    hotspots: { kind: 'fixed', cardinality: 2, ids: ['agent', 'app'] },
   },
   {
     id: 'connect', span: 22, nav: 'Connect', stops: [0.65], scrollVh: 15.85,

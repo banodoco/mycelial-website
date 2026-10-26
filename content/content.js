@@ -48,8 +48,9 @@
 // their donor copy is still preserved in ./content-archive-deferred.js, not
 // imported here — but Equip's own chapter copy has moved OUT of that archive
 // and into `chapters.equip` below, verbatim, exactly as the archive's header
-// instructed. Its two initiatives are Quark and Brötchen (`nodes` below), not
-// the archived three. Do not rename this export or any node id: chapters and
+// instructed. Its two initiatives are the Astrid agent and the Astrid app
+// (`nodes` below; they were Quark and Brötchen until 2026-10-26), not the
+// archived three. Do not rename this export or any node id: chapters and
 // core read this object directly (per donor journey/core/content.js).
 //
 // NO LIVE MODULES, and this rule SURVIVES D10's discharge (13-content-ops.md
@@ -657,45 +658,43 @@ export const CONTENT = {
 
     // --- Equip chapter: the two points of interest on the specimen's
     // underside. They are ANATOMY, not scenery: the chapter puts the camera
-    // beneath the cap and names the two things that are actually there.
+    // beneath the cap and names the two things that are actually there. The
+    // stalk carries the Astrid agent and the gills carry the Astrid app
+    // (journey/chapters/equip/index.js owns which marker sits where).
     //
-    // NEITHER NODE CARRIES A `card` OR A `spotlight`, and that is the whole
-    // preview design rather than an omission. `previewFor` (journey/ui/
-    // popover-tier.js) reads `d.link || null`, so a node with no card block
-    // gets NO DOOR — the shell's link is hidden and there is nothing in the
-    // accessible tree pretending to lead somewhere. What a visitor sees
-    // instead is the card shell with its stage under construction: the
-    // `preview` field below puts it there, journey/ui/popover-tier.js reads
-    // that field and nothing else, and the interior is journey/cards/
-    // cards.css's — an abstract field where the artwork will be, with the
-    // short line below it blurred rather than absent. There is NO builder
-    // module for either node, deliberately; the popover tier's own
-    // third-state note says why. The words below are therefore doing
-    // double duty — they
-    // are the chip's accessible description, read in full by AT, and the
-    // blurred shape a sighted visitor reads as "not yet".
-    //
-    // The names and one-liners are the same two the site-map panel already
-    // shows under "Equipping" (journey/rail.js menuSections) and the same two
-    // the no-JS tier prints. Same two initiatives, same two sentences,
-    // WORD FOR WORD across three surfaces — which is why the shorts say what
-    // the initiative IS and not that it is unfinished. "Not yet" is a STATE,
-    // and each surface says it in its own vocabulary: the panel with its Soon
-    // badge, the live preview with a card that is deliberately unreadable and
-    // one legible caption, the static tier with the same badge. Putting it in
-    // the sentence would have said it twice everywhere and made the three
-    // copies diverge the first time one of them shipped.
-    quark: {
+    // Both were Quark and Brötchen — named, described and withheld behind a
+    // blur, with no card and no link — until 2026-10-26, when the initiatives
+    // became Astrid agent and Astrid app and gained cards like every other
+    // node. The ids changed with them (`agent`, `app`; URLs are
+    // #/equip/agent and #/equip/app) and the old ids have no alias: they were
+    // unlinked teasers. The names and one-liners are the same across the
+    // site-map panel (journey/rail.js, via itemsFor), the live chips and the
+    // no-JS tier.
+    agent: {
       chapter: 'equip',
-      label: 'Quark',
-      short: 'Creative tools for everyone',
-      preview: 'under-construction',
+      label: 'Astrid agent',
+      short: 'A creative agent for open models',
+      card: {
+        title: 'Astrid agent',
+        body: [
+          'An editor-powered creative agent built to unlock the artistic potential of open models.',
+          'It draws on the workflows and tools the community has built, and gets your local models running for you.',
+        ],
+        link: { label: 'View on GitHub', href: 'https://github.com/banodoco/astrid-agent' },
+      },
     },
-    brotchen: {
+    app: {
       chapter: 'equip',
-      label: 'Brötchen',
-      short: 'Shared workflows for agents',
-      preview: 'under-construction',
+      label: 'Astrid app',
+      short: 'An agent-powered video editor',
+      card: {
+        title: 'Astrid app',
+        body: [
+          'An agent-powered video editor built to unlock the artistic potential of open models.',
+          'Edit by hand or with your agent, and vibe code effects and visuals live.',
+        ],
+        link: { label: 'Open Astrid', href: 'https://astrid.haus' },
+      },
     },
 
     // --- Connect chapter: the three ground-network hubs (16-connect-ground-

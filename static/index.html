@@ -875,11 +875,6 @@
     margin-left: 0.42em;
     vertical-align: middle;
   }
-  .menu-teaser > :is(.menu-il, .menu-is) {
-    opacity: 0.42;
-    filter: blur(3.5px);
-    user-select: none;
-  }
 
   /* Desktop keeps one quiet icon spine: initiative marks sit directly below
      their chapter mark, while text continues in the shared content column. */
@@ -897,14 +892,6 @@
     .menu-pict svg { width: 13px; }
     .menu-pict-dots { height: 17px; }
     .menu-pict-dots svg { width: 17px; }
-    .menu-teaser {
-      min-height: 28px;
-      white-space: nowrap;
-    }
-    .menu-teaser > :is(.menu-il, .menu-is) {
-      opacity: 0.36;
-      filter: blur(2.25px);
-    }
   }
 
   .menu-owned {
@@ -1474,8 +1461,8 @@
             <span class="menu-txt"><span class="menu-no">2.</span><span class="menu-name">Equipping</span></span>
           </a>
           <ul class="menu-sub">
-            <li class="menu-row"><span class="menu-row-link menu-teaser"><span class="menu-il"><span class="menu-pict" aria-hidden="true"><svg viewBox="0 0 22 22" focusable="false"><path d="M3.6 14.2 Q11 5.2 18.4 14.2"/><path d="M3.6 14.2 H18.4"/><path d="M5 16.4 Q11 11.2 17 16.4"/><path d="M5 16.4 H17"/></svg></span><span data-src="nodes.quark.label">Quark</span></span><span class="menu-is" data-src="nodes.quark.short">Creative tools for everyone</span></span></li>
-            <li class="menu-row"><span class="menu-row-link menu-teaser"><span class="menu-il"><span class="menu-pict" aria-hidden="true"><svg viewBox="0 0 22 22" focusable="false"><path d="M2.4 9.2 H7.2 L9.8 12.4 H12.2 L14.8 9.2 H19.6"/><circle cx="2.4" cy="9.2" r="1"/><circle cx="19.6" cy="9.2" r="1"/><path d="M9.8 12.4 V16.8 M12.2 12.4 V16.8"/></svg></span><span data-src="nodes.brotchen.label">Brötchen</span></span><span class="menu-is" data-src="nodes.brotchen.short">Shared workflows for agents</span></span></li>
+            <li class="menu-row"><a class="menu-row-link" href="https://github.com/banodoco/astrid-agent" target="_blank" rel="noopener noreferrer"><span class="menu-il"><span class="menu-pict" aria-hidden="true"><svg viewBox="0 0 12 12" focusable="false"><path d="M6 1.25v1.6"/><rect x="2.5" y="2.85" width="7" height="6.1" rx="1.5"/><circle cx="4.55" cy="5.6" r="0.6"/><circle cx="7.45" cy="5.6" r="0.6"/><path d="M4.85 7.45h2.3M1.35 5.05v1.75M10.65 5.05v1.75"/></svg></span><span data-src="nodes.agent.label">Astrid agent</span></span><span class="menu-is" data-src="nodes.agent.short">A creative agent for open models</span><span class="menu-ia" aria-hidden="true">↗</span></a></li>
+            <li class="menu-row"><a class="menu-row-link" href="https://astrid.haus" target="_blank" rel="noopener noreferrer"><span class="menu-il"><span class="menu-pict" aria-hidden="true"><svg viewBox="0 0 12 12" focusable="false"><path d="M4.45 4.1V2.95c0-.4.3-.7.7-.7h1.7c.4 0 .7.3.7.7V4.1"/><rect x="1.7" y="4.1" width="8.6" height="5.75" rx="1"/><path d="M1.7 6.75h3.35M6.95 6.75h3.35"/><rect x="5.05" y="6.05" width="1.9" height="1.4" rx="0.35"/></svg></span><span data-src="nodes.app.label">Astrid app</span></span><span class="menu-is" data-src="nodes.app.short">An agent-powered video editor</span><span class="menu-ia" aria-hidden="true">↗</span></a></li>
           </ul></li>
           <li><a class="menu-item" href="#/connect" data-menu="connect" data-menu-section="connect">
             <span class="menu-mark"><svg class="sym" data-sym="connect" viewBox="0 0 22 22" aria-hidden="true" focusable="false"><path d="M1.8 8.4 H20.2"/><path d="M1.6 14.2 L4.2 13.2 L9.6 17.2 L15.8 14.8 L20.4 17.6"/><path d="M15.8 14.8 L12.6 10.0"/><path d="M4.2 13.2 L6.8 9.6"/><circle cx="15.8" cy="14.8" r="1.2"/><circle cx="9.6" cy="17.2" r="1"/><circle cx="4.2" cy="13.2" r="1.15"/></svg></span>
@@ -1573,12 +1560,8 @@
   </section>
 
   <!-- ========================== EQUIP ========================== -->
-  <!-- Two initiatives, both unbuilt, and this tier says so the way a page
-       with no JavaScript can: the names and their one-liners, each with the
-       same Soon badge the site-map panel carries, and NO disclosure body —
-       there is nothing behind them to disclose yet. Tier 1 answers the same
-       fact with a preview card that is deliberately unreadable; this is that
-       statement in plain HTML. -->
+  <!-- Two initiatives, each a disclosure open by default like every other
+       node in this tier: name, one-liner, body, one outbound link. -->
   <section class="chapter" id="/equip" data-chapter="equip" aria-labelledby="h-equip" tabindex="-1">
     <div class="inner">
       <p class="eyebrow">Chapter 03 — Equip</p>
@@ -1586,16 +1569,32 @@
       <p class="sub" data-src="chapters.equip.sub">We build extendable tools that help the community collectively push open models further.</p>
 
       <ul class="nodes">
-        <li class="node" id="node-quark">
-          <h3 class="node-h"><span data-src="nodes.quark.label">Quark</span></h3>
-          <p class="node-short" data-src="nodes.quark.short">Creative tools for everyone</p>
-          <p class="status">In development.</p>
+        <li class="node" id="node-agent">
+          <h3 class="node-h">
+            <button class="node-t" type="button" id="t-agent" aria-expanded="true" aria-controls="d-agent">
+              <span data-src="nodes.agent.label">Astrid agent</span><span class="chev" aria-hidden="true">▾</span>
+            </button>
+          </h3>
+          <p class="node-short" data-src="nodes.agent.short">A creative agent for open models</p>
+          <div class="node-d" id="d-agent" role="region" aria-labelledby="t-agent" tabindex="-1">
+            <p data-src="nodes.agent.card.body.0">An editor-powered creative agent built to unlock the artistic potential of open models.</p>
+            <p data-src="nodes.agent.card.body.1">It draws on the workflows and tools the community has built, and gets your local models running for you.</p>
+            <a class="go" href="https://github.com/banodoco/astrid-agent" target="_blank" rel="noopener noreferrer" data-src="nodes.agent.card.link.label">View on GitHub</a>
+          </div>
         </li>
 
-        <li class="node" id="node-brotchen">
-          <h3 class="node-h"><span data-src="nodes.brotchen.label">Brötchen</span></h3>
-          <p class="node-short" data-src="nodes.brotchen.short">Shared workflows for agents</p>
-          <p class="status">In development.</p>
+        <li class="node" id="node-app">
+          <h3 class="node-h">
+            <button class="node-t" type="button" id="t-app" aria-expanded="true" aria-controls="d-app">
+              <span data-src="nodes.app.label">Astrid app</span><span class="chev" aria-hidden="true">▾</span>
+            </button>
+          </h3>
+          <p class="node-short" data-src="nodes.app.short">An agent-powered video editor</p>
+          <div class="node-d" id="d-app" role="region" aria-labelledby="t-app" tabindex="-1">
+            <p data-src="nodes.app.card.body.0">An agent-powered video editor built to unlock the artistic potential of open models.</p>
+            <p data-src="nodes.app.card.body.1">Edit by hand or with your agent, and vibe code effects and visuals live.</p>
+            <a class="go" href="https://astrid.haus" target="_blank" rel="noopener noreferrer" data-src="nodes.app.card.link.label">Open Astrid</a>
+          </div>
         </li>
       </ul>
     </div>

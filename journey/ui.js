@@ -11,7 +11,6 @@
 
 import { CONTENT } from '../content/content.js';
 import { CARD_ICONS } from './cards/index.js';
-import { SOON_ICONS } from './cards/soon-icons.js';
 import { createRail } from './rail.js';
 import { createRailExclusion, railBox } from './layout/rail-geometry.js';
 import { createPurposeCopyFit } from './layout/purpose-copy-fit.js';
@@ -442,9 +441,7 @@ export function createUI({ onNav, onOpen, onClose, isDetailOpen, project,
     // exists from the first render, not only after the first open.
     btn.setAttribute('aria-expanded', 'false');
     const dotEl = el('i', 'j-hot-dot');
-    // Built and withheld initiatives share one marker, including its housing
-    // and arrival. Only the withheld label's blur distinguishes Equip.
-    const icon = CARD_ICONS[id] || SOON_ICONS[id];
+    const icon = CARD_ICONS[id];
     const iconTab = !!icon;
     if (iconTab) {
       btn.classList.add('j-hot--icon-tab');
@@ -454,9 +451,6 @@ export function createUI({ onNav, onOpen, onClose, isDetailOpen, project,
     btn.appendChild(dotEl);
     const labelEl = el('span', 'j-hot-label', label);
     btn.appendChild(labelEl);
-    const soon = popover.unbuiltFor(id);
-    if (soon) btn.classList.add('j-hot--soon');
-    const stacked = iconTab || soon;
     // THE HIT PAD (2026-08-06, report A). A round hit surface the size of the
     // thing the node draws, pinned to the node itself rather than to the pill
     // — the pill flips and nudges to keep a label on frame, and the target you
@@ -471,7 +465,6 @@ export function createUI({ onNav, onOpen, onClose, isDetailOpen, project,
 
     const h = {
       id, chapter, btn, world, stagger, a: 0, armAt: null, sup: false, iconTab,
-      soon, stacked,
       // The tempo floor's per-chip state (DEFECT-01 #3). Written only by
       // journey/ui/hotspot-frame.js; initialised here for the same reason
       // `a`, `armAt` and `sup` are — the record states its whole shape at

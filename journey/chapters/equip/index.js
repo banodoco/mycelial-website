@@ -74,7 +74,7 @@ const STALK_LOCAL = new THREE.Vector3(0, 2.85, 0);
 // lit ceiling on every frame, clear of the copy block on every frame.
 const GILL_LOCAL = new THREE.Vector3(-0.9, 3.18, -1.2);
 
-// QUARK ON A PORTRAIT PHONE (2026-10-05, Hannah: "In equip the lower one
+// THE AGENT MARKER ON A PORTRAIT PHONE (2026-10-05, Hannah: "In equip the lower one
 // disappears on mobile too"). The phone copy block wraps tall and climbs the
 // frame — its top at 634 px of 932 (430 wide), 520 of 844 (390), 343 of 667
 // (375) — and STALK_LOCAL's mid-column point projects inside it below 430
@@ -174,7 +174,7 @@ export function createEquip(sceneApi) {
   });
 
   function localOf(id) {
-    return id === 'quark' && stalkHigh() ? STALK_LOCAL_HIGH : LOCAL_OF[id];
+    return id === 'agent' && stalkHigh() ? STALK_LOCAL_HIGH : LOCAL_OF[id];
   }
 
   function worldOf(local) {
@@ -182,10 +182,10 @@ export function createEquip(sceneApi) {
     return swayGroup ? swayGroup.localToWorld(_w) : _w;
   }
 
-  const NODES = FIXED_HOTSPOTS.equip;          // ['quark', 'brotchen']
-  const LOCAL_OF = { quark: STALK_LOCAL, brotchen: GILL_LOCAL };
-  const PROFILE_OF = { quark: RIPPLE_STALK, brotchen: RIPPLE_GILLS };
-  const HOVER_PROFILE_OF = { quark: [1.4, 1.5, 1.2], brotchen: [1.5, 1.9, 0.85] };
+  const NODES = FIXED_HOTSPOTS.equip;          // ['agent', 'app']
+  const LOCAL_OF = { agent: STALK_LOCAL, app: GILL_LOCAL };
+  const PROFILE_OF = { agent: RIPPLE_STALK, app: RIPPLE_GILLS };
+  const HOVER_PROFILE_OF = { agent: [1.4, 1.5, 1.2], app: [1.5, 1.9, 0.85] };
 
   let armed = false;
   // NOT `blending`. tools/render-report-lib.mjs's material-flag census greps
@@ -213,7 +213,7 @@ export function createEquip(sceneApi) {
   // -Infinity = settled by a dt = 0 placement (label standing, no replay).
   // A hover ring never writes these: it re-sounds the wave, it does not
   // re-introduce the subject.
-  const revealAt = { quark: null, brotchen: null };
+  const revealAt = { agent: null, app: null };
   // Seconds a label takes to stand up after its ring — the chip's rise
   // (hotspot-frame paintSoonRise reads the same clock through h.a). Matches
   // HOTSPOT_ARRIVAL.formMs, the site's marker-formation tempo.
@@ -231,7 +231,7 @@ export function createEquip(sceneApi) {
     const world = worldOf(local);
     // Let the marker begin condensing before its light breathes through
     // the anatomy; delaying only the wave preserves the label cadence.
-    if (authored && sceneApi.welcomeFrom) sceneApi.welcomeFrom(world, PROFILE_OF[id], id === 'quark' ? 0 : 1, 0.22);
+    if (authored && sceneApi.welcomeFrom) sceneApi.welcomeFrom(world, PROFILE_OF[id], id === 'agent' ? 0 : 1, 0.22);
     else sceneApi.pulseFrom(world, (authored ? PROFILE_OF : HOVER_PROFILE_OF)[id]);
     return true;
   }
@@ -252,14 +252,14 @@ export function createEquip(sceneApi) {
       // Half the onset, not the onset itself, so a gate hovering on the
       // threshold cannot ring-reset-ring.
       stage = 0;
-      revealAt.quark = revealAt.brotchen = null;
+      revealAt.agent = revealAt.app = null;
       return;
     }
     if (stage === 0) {
       if (gate < onset) return;
       stage = 1;
       stalkRangAt = seconds();
-      ring('quark', true);
+      ring('agent', true);
       return;
     }
     if (stage === 1 && seconds() - stalkRangAt >= RIPPLE_GAP_S) {
@@ -268,7 +268,7 @@ export function createEquip(sceneApi) {
       // 1.1 s late — and it is never dropped, because an arrival that spent
       // its first ring is still mid-introduction, and losing the gills beat
       // would leave the chapter introducing one of its two subjects.
-      if (ring('brotchen', true)) stage = 2;
+      if (ring('app', true)) stage = 2;
     }
   }
 
@@ -281,7 +281,7 @@ export function createEquip(sceneApi) {
       on = !!on;
       if (on === armed) return;
       armed = on;
-      if (!on) { stage = 0; revealAt.quark = revealAt.brotchen = null; }
+      if (!on) { stage = 0; revealAt.agent = revealAt.app = null; }
     },
     get armed() { return armed; },
 
@@ -317,7 +317,7 @@ export function createEquip(sceneApi) {
       const arrived = copyEase() >= RIPPLE_GATE_ON;
       stage = arrived ? 2 : 0;
       stalkRangAt = -Infinity;
-      revealAt.quark = revealAt.brotchen = arrived ? -Infinity : null;
+      revealAt.agent = revealAt.app = arrived ? -Infinity : null;
     },
 
     /** NO LANDING SETTLE, AND IT MUST STAY null.
@@ -343,7 +343,7 @@ export function createEquip(sceneApi) {
 
     /** A nav landing replays the introduction from the top — labels included:
      *  they sit back down so each can rise again on its own ring. */
-    beginEntry() { stage = 0; revealAt.quark = revealAt.brotchen = null; plumeFade.enter(); },
+    beginEntry() { stage = 0; revealAt.agent = revealAt.app = null; plumeFade.enter(); },
     /** The nav entry's own 0..1 clock, smootherstepped by frame-application. */
     driveEntry(f) { advanceIntro(f, true); },
     /** CAMERA-PURE, and it has to be: the entry clock must not start while the

@@ -35,22 +35,22 @@ try {
   // Real ink remains protected: this is a smaller exclusion rectangle, not
   // a bypass for Equip. Move a QA anchor into the heading, then restore it.
   await page.evaluate(() => {
-    const h = window.journey.ui.hotspots.find(h => h.id === 'quark');
+    const h = window.journey.ui.hotspots.find(h => h.id === 'agent');
     const r = document.querySelector('.j-block[data-chapter="equip"] .j-h').getBoundingClientRect();
     const point = h.world().set(((r.left + r.right) / innerWidth) - 1,
       1 - ((r.top + r.bottom) / innerHeight), 0).unproject(window.journey.hero.camera);
-    window.restoreQuarkWorld = h.world;
+    window.restoreAgentWorld = h.world;
     h.world = () => point.clone();
   });
   await page.waitForTimeout(350);
-  assert.equal(await page.evaluate(() => window.journey.ui.hotspots.find(h => h.id === 'quark').sup), true,
+  assert.equal(await page.evaluate(() => window.journey.ui.hotspots.find(h => h.id === 'agent').sup), true,
     'an anchor inside actual heading text is still suppressed');
   await page.evaluate(() => {
-    window.journey.ui.hotspots.find(h => h.id === 'quark').world = window.restoreQuarkWorld;
-    delete window.restoreQuarkWorld;
+    window.journey.ui.hotspots.find(h => h.id === 'agent').world = window.restoreAgentWorld;
+    delete window.restoreAgentWorld;
   });
   await page.waitForTimeout(900);
-  assert.ok(await page.evaluate(() => window.journey.ui.hotspots.find(h => h.id === 'quark').a > .99),
+  assert.ok(await page.evaluate(() => window.journey.ui.hotspots.find(h => h.id === 'agent').a > .99),
     'clear stalk recovers even after genuine content suppression');
   // Browser chrome expanding/collapsing changes the same live composition;
   // suppression must recover when content and the stalk have room again.

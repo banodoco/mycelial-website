@@ -95,6 +95,13 @@ const FIXTURE_SHA256 = 'd574accf3ced25db4c0779f605e0d526d60bc0711075342128e58c7f
 const FIXTURE_BYTES = 10264;
 
 const BUILDER_FILES = ['arca.js', 'artcompute.js', 'tworp.js', 'ados.js', 'hivemind.js', 'discord.js'];
+/* 2026-10-26: registry.js also imports agent.js and app.js (the Equip pair).
+   They post-date the U01b move, so the move proof stays about the six above:
+   both staged trees get these two as NULL stubs (filtered out, exactly as a
+   module still under construction is), and the shipped-module section below
+   checks them against the real files. */
+const ADDED_BUILDER_FILES = ['agent.js', 'app.js'];
+const ALL_BUILDER_FILES = BUILDER_FILES.concat(ADDED_BUILDER_FILES);
 
 /* ------------------------------------------------------------------ *
  * HAND-DERIVED EXPECTATIONS.                                         *
@@ -236,6 +243,8 @@ async function materialise(shape, nullBuilders, mutate) {
   for (const f of BUILDER_FILES) {
     files[f] = builderStub(f.replace(/\.js$/, ''), nullBuilders.includes(f.replace(/\.js$/, '')));
   }
+  // No order probe in these two: they are not part of the evaluation order the move proof pins.
+  for (const f of ADDED_BUILDER_FILES) files[f] = 'export default null;\n';
   if (shape === 'pre') {
     files['index.js'] = read(FIXTURE_REL);
   } else {
@@ -370,7 +379,7 @@ async function main() {
   console.log('\n-- 2. acyclicity of the new owner --');
   // The point of "one ACYCLIC registry owner": nothing below the registry
   // reaches back up into it or into the package face.
-  for (const f of BUILDER_FILES.concat(['runtime.js'])) {
+  for (const f of ALL_BUILDER_FILES.concat(['runtime.js'])) {
     const src = read(`journey/cards/${f}`);
     check(
       !src.includes("from './index.js'") && !src.includes("from './registry.js'"),
@@ -411,9 +420,17 @@ async function main() {
   );
   check(realIndex.CARD_ASSETS === realRuntime.CARD_ASSETS, 'index.CARD_ASSETS is the runtime leaf\'s binding');
   check(realIndex.REDUCE === realRuntime.REDUCE, 'index.REDUCE is the runtime leaf\'s binding');
+  /* The shipped order is the six, then agent and app for whichever of the two
+     has a real (non-null) default export yet — read from the modules, not
+     retyped, so the tiles landing does not touch this suite. */
+  const SHIPPED_KEYS = HAND_DERIVED.builderKeys.slice();
+  for (const f of ADDED_BUILDER_FILES) {
+    const mod = await import(pathToFileURL(path.join(REPO_ROOT, `journey/cards/${f}`)).href);
+    if (mod.default) SHIPPED_KEYS.push(f.replace(/\.js$/, ''));
+  }
   assert.deepEqual(
     Object.keys(realIndex.CARD_BUILDERS),
-    HAND_DERIVED.builderKeys,
+    SHIPPED_KEYS,
     'the shipped CARD_BUILDERS key order equals the hand-derived order',
   );
   /* U01c, 2026-08-22: this was `check(true, ...)` — a literal predicate whose
@@ -424,13 +441,13 @@ async function main() {
      SHIPPED key order and the message reports what was READ, not what was
      expected. */
   const shippedBuilderKeys = Object.keys(realIndex.CARD_BUILDERS);
-  check(deepEq(shippedBuilderKeys, HAND_DERIVED.builderKeys),
+  check(deepEq(shippedBuilderKeys, SHIPPED_KEYS),
     `the shipped CARD_BUILDERS key order is ${JSON.stringify(shippedBuilderKeys)}`);
-  for (const f of BUILDER_FILES) {
+  for (const f of ALL_BUILDER_FILES) {
     const id = f.replace(/\.js$/, '');
     const mod = await import(pathToFileURL(path.join(REPO_ROOT, `journey/cards/${f}`)).href);
     check(
-      realIndex.CARD_BUILDERS[id] === mod.default,
+      realIndex.CARD_BUILDERS[id] === (mod.default || undefined),
       `CARD_BUILDERS.${id} IS journey/cards/${f}'s default export (identity, not shape)`,
     );
   }
@@ -464,8 +481,8 @@ async function main() {
       id: 'M2-key-order',
       what: 'swap two fields in the OBJECT LITERAL (key order changes; evaluation order does not)',
       mutate: (files) => {
-        const a = '{ arca, artcompute, tworp, ados, hivemind, discord }';
-        const b = '{ arca, artcompute, ados, tworp, hivemind, discord }';
+        const a = '{ arca, artcompute, tworp, ados, hivemind, discord, agent, app }';
+        const b = '{ arca, artcompute, ados, tworp, hivemind, discord, agent, app }';
         if (!files['registry.js'].includes(a)) throw new Error('M2 anchor missing');
         files['registry.js'] = files['registry.js'].replace(a, b);
       },
@@ -550,6 +567,10 @@ async function main() {
   );
   const registryTail = from(registrySrc, REGISTRY_REL, "// Preserve the registry's public configuration exports while builders depend\n");
   if (!registryTail.endsWith(');\n')) throw new Error('reverse application refused: registry.js does not end with the CARD_BUILDERS close');
+  // The 2026-10-26 additions are not part of the move: cut them back out.
+  const ADDED_ENTRIES = ', discord, agent, app })';
+  if (registryTail.split(ADDED_ENTRIES).length !== 2) throw new Error('reverse application refused: the agent/app entries are not in the CARD_BUILDERS literal exactly once');
+  const registryTailSix = registryTail.replace(ADDED_ENTRIES, ', discord })');
 
   const runtimeImportLine = "import { CARD_ASSETS } from './runtime.js';\n";
   if ((indexSrc.split(runtimeImportLine).length - 1) !== 1) {
@@ -587,7 +608,14 @@ async function main() {
     warmingTail, INDEX_REL,
     '/* Chip glyphs — the `I()` helper and the CARD_ICONS table.\n',
   );
-  const iconsBlock = from(iconsSrc, ICONS_REL, '/* Chip glyphs (Hannah, 2026-08-18:');
+  const iconsBlockShipped = from(iconsSrc, ICONS_REL, '/* Chip glyphs (Hannah, 2026-08-18:');
+  // The 2026-10-26 agent/app glyphs are not part of the move: cut them back out
+  // (the same cut tools/test-card-icons.mjs makes).
+  const ADDED_AT = '  // a small robot head — the Astrid agent';
+  if (iconsBlockShipped.split(ADDED_AT).length !== 2 || !iconsBlockShipped.endsWith('};\n')) {
+    throw new Error('reverse application refused: the agent/app additions are not one block at the foot of icons.js');
+  }
+  const iconsBlock = iconsBlockShipped.slice(0, iconsBlockShipped.indexOf(ADDED_AT)) + '};\n';
 
   const reconstructed =
     head +
@@ -596,7 +624,7 @@ async function main() {
     sixImports +
     runtimeImportLine +
     '\n' +
-    registryTail +
+    registryTailSix +
     '\n' +
     warmingCore +
     iconsBlock;

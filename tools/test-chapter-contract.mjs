@@ -566,7 +566,7 @@ function materialiseFocusPick() {
  *  every use (D45). */
 const SCHEMA_NODES = {
   inspire: ['artcompute', 'arca', 'tworp'],
-  equip: ['quark', 'brotchen'],
+  equip: ['agent', 'app'],
   connect: ['ados', 'hivemind', 'discord'],
   owned: Array.from({ length: 16 }, (_, i) => `contributor-${i}`),
 };
@@ -694,7 +694,7 @@ function i4Body(reg) {
   // RUNTIME_CHAPTER_IDS; within a chapter it is visibility.nodeIds order.
   assert.deepEqual(A(log), [
     'hotspot:inspire/artcompute', 'hotspot:inspire/arca', 'hotspot:inspire/tworp',
-    'hotspot:equip/quark', 'hotspot:equip/brotchen',
+    'hotspot:equip/agent', 'hotspot:equip/app',
     'hotspot:connect/ados', 'hotspot:connect/hivemind', 'hotspot:connect/discord',
     'hotspot:owned/contributor-0', 'hotspot:owned/contributor-1', 'hotspot:owned/contributor-2',
     'hotspot:owned/contributor-3', 'hotspot:owned/contributor-4', 'hotspot:owned/contributor-5',

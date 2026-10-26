@@ -801,11 +801,6 @@ body:not(.free-cam) #stage canvas:active { cursor: default; }
     margin-left: 0.42em;
     vertical-align: middle;
   }
-  .j-menu-teaser > :is(.j-menu-il, .j-menu-is) {
-    opacity: 0.42;
-    filter: blur(3.5px);
-    user-select: none;
-  }
 
   /* Desktop reads as a quiet hierarchy rather than a stack of cards: every
      initiative glyph occupies the same left column as its chapter glyph, so
@@ -824,14 +819,6 @@ body:not(.free-cam) #stage canvas:active { cursor: default; }
     .j-menu-pict svg { width: 13px; }
     .j-menu-pict-dots { height: 17px; }
     .j-menu-pict-dots svg { width: 17px; }
-    .j-menu-teaser {
-      min-height: 28px;
-      white-space: nowrap;
-    }
-    .j-menu-teaser > :is(.j-menu-il, .j-menu-is) {
-      opacity: 0.36;
-      filter: blur(2.25px);
-    }
   }
 
   .j-menu-owned {
@@ -2388,19 +2375,6 @@ body:not(.free-cam) #stage canvas:active { cursor: default; }
      square controls it was written for and would flatten a pill. The outline
      follows the element's radius, so the pair states its own. */
   .j-act:focus-visible { border-radius: 999px; }
-  /* And the stacked marker states 0, for the same reason from the other
-     direction: its ring wraps a tab-over-capsule silhouette, where a 2px
-     round reads as a nick taken out of each corner rather than as a radius.
-     The INITIATIVE marker already lands on 0 — but by accident of the
-     cascade, not by saying so: cards.css writes `.j-hot.j-hot--icon-tab
-     { border-radius: 0 }` at two classes, which ties the shared ring above
-     and wins on order. The soon chip's own rule is one class and loses it,
-     so the pair drew two different rings (measured 2026-08-31: 2px on Quark,
-     0px on Arca and Tworp) — the exact family split this order set out to
-     close. Stated here rather than by thickening `.j-hot--soon` itself: that
-     rule also carries `color`, and raising it over the generic hover would
-     take the gold-brighten off the chip to win a corner. */
-  .j-hot--soon:focus-visible { border-radius: 0; }
   .j-card-x:is(:hover, :focus-visible) { color: var(--gold-bright); }
   .j-card-link:is(:hover, :focus-visible) { border-bottom-color: var(--gold-bright); }
 
@@ -3472,10 +3446,7 @@ body:not(.free-cam) #stage canvas:active { cursor: default; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    /* `.j-hot--soon .j-hot-dot::after` is the ember of a stacked marker, a
-       pseudo-element rather than the `<i>` itself, so it needs naming here to
-       get the same flattening the plain dot has always had. */
-    .j-hot, .j-hot-dot, .j-hot--soon .j-hot-dot::after, .j-card { transition: none; }
+    .j-hot, .j-hot-dot, .j-card { transition: none; }
     /* The initiative marker's condense (ICON-ARRIVAL): cards.css already
        flattens the entry's opacity/transform variables under reduced motion;
        this flattens the `scale` axis site.css added beside them. What

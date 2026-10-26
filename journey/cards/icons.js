@@ -4,7 +4,7 @@
 // the foot of journey/cards/index.js, below the idle-warming scheduler. They
 // are lifted here whole, byte-for-byte, so the glyph data has one owner and
 // index.js is left as the package face that re-exports it. Nothing about what
-// the table CONTAINS changed: same six keys, same key order, same markup, same
+// the table CONTAINS changed: same six keys (agent and app added 2026-10-26: eight now), same key order, same markup, same
 // `I()` signature. See tools/test-card-icons.mjs for the key/markup/signature
 // proof against the pre-move bytes.
 //
@@ -53,4 +53,9 @@ export const CARD_ICONS = {
   hivemind: I('<path d="M6 1.45 9.85 3.7v4.6L6 10.55 2.15 8.3V3.7Z"/><circle cx="6" cy="6" r="1.1"/>'),
   // a speech bubble — the room where the talk happens
   discord: I('<path d="M2.1 3.5C2.1 2.7 2.75 2.05 3.55 2.05h4.9c.8 0 1.45.65 1.45 1.45v3.2c0 .8-.65 1.45-1.45 1.45H5.7L3.55 9.95V8.15C2.75 8.15 2.1 7.5 2.1 6.7Z"/>'),
+  // a small robot head — the Astrid agent (the LOWER Equip chip; was the
+  // unbuilt `quark` glyph, 2026-10-05)
+  agent: I('<path d="M6 1.25v1.6"/><rect x="2.5" y="2.85" width="7" height="6.1" rx="1.5"/><circle cx="4.55" cy="5.6" r="0.6"/><circle cx="7.45" cy="5.6" r="0.6"/><path d="M4.85 7.45h2.3M1.35 5.05v1.75M10.65 5.05v1.75"/>'),
+  // a toolbox — the Astrid app (the UPPER Equip chip; was `brotchen`)
+  app: I('<path d="M4.45 4.1V2.95c0-.4.3-.7.7-.7h1.7c.4 0 .7.3.7.7V4.1"/><rect x="1.7" y="4.1" width="8.6" height="5.75" rx="1"/><path d="M1.7 6.75h3.35M6.95 6.75h3.35"/><rect x="5.05" y="6.05" width="1.9" height="1.4" rx="0.35"/>'),
 };

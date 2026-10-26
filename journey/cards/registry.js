@@ -32,6 +32,8 @@ import tworp from './tworp.js';
 import ados from './ados.js';
 import hivemind from './hivemind.js';
 import discord from './discord.js';
+import agent from './agent.js';
+import app from './app.js';
 
 // Preserve the registry's public configuration exports while builders depend
 // on the acyclic runtime leaf rather than importing back through this module.
@@ -40,6 +42,6 @@ export { CARD_ASSETS, REDUCE } from './runtime.js';
 // A module still under construction exports null; a null builder means the
 // node simply keeps the plain popover, so the site is shippable mid-build.
 export const CARD_BUILDERS = Object.fromEntries(
-  Object.entries({ arca, artcompute, tworp, ados, hivemind, discord })
+  Object.entries({ arca, artcompute, tworp, ados, hivemind, discord, agent, app })
     .filter(([, b]) => b),
 );

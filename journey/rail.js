@@ -1022,23 +1022,7 @@ export function createRail({ onNav, ready = true } = {}) {
     },
     {
       id: 'equip', route: 'equip', symbol: 'equip', number: 2, heading: 'Equipping',
-      /* The two Equipping rows are TEASERS: named, described, and concealed
-         behind the same blur their chips wear. They carried a `badge: 'Soon'`
-         until the owner removed the word from every visible Equip label
-         (2026-09-01); what states the third state here is the concealment and
-         the row's inertness, not a pill. `teaser` is what remains of it. */
-      items: [
-        {
-          id: 'equip-teaser-one', label: 'Quark',
-          short: 'Creative tools for everyone',
-          symbol: 'equip', teaser: true,
-        },
-        {
-          id: 'equip-teaser-two', label: 'Brötchen',
-          short: 'Shared workflows for agents',
-          symbol: 'connect', teaser: true,
-        },
-      ],
+      items: itemsFor('equip'),
     },
     {
       id: 'connect', route: 'connect', symbol: 'connect', number: 3, heading: 'Connecting',
@@ -1136,17 +1120,6 @@ export function createRail({ onNav, ready = true } = {}) {
           row.appendChild(link);
         } else {
           const surface = el('span', 'j-menu-row-link');
-          /* A TEASER ROW IS CONCEALED, NOT RENAMED (2026-09-01, the owner:
-             "remove 'Soon' from the visible Equip labels"). It used to take
-             `aria-label="Coming soon"` with its own name and line hidden from
-             AT — the blur is a statement to a sighted visitor and would be a
-             garbled one read aloud, so the row said the state instead of the
-             name. With the word gone there is nothing left for that override
-             to say, and keeping it would have kept the word for exactly the
-             visitors who cannot see the blur. So the row now reads its own
-             name and line, as the chip does, and the blur is the whole of the
-             concealment. */
-          if (it.teaser) surface.classList.add('j-menu-teaser');
           if (label) surface.appendChild(label);
           const short = it.short ? el('span', 'j-menu-is', it.short) : null;
           if (short) surface.appendChild(short);

@@ -102,7 +102,9 @@ const FIXTURE_REL = 'tools/fixtures/u01c-cards-index.pre-move.js.txt';
 const FIXTURE_SHA256 = '7d72a4d4e42292a142e8bbc4a31df742145cee326b29d587cae609a502cafe7a';
 const FIXTURE_BYTES = 9711;
 
-const BUILDER_FILES = ['arca.js', 'artcompute.js', 'tworp.js', 'ados.js', 'hivemind.js', 'discord.js'];
+// agent.js and app.js (2026-10-26) are stubs here: registry.js now imports them, so
+// both trees need them to resolve; this suite does not measure their content.
+const BUILDER_FILES = ['arca.js', 'artcompute.js', 'tworp.js', 'ados.js', 'hivemind.js', 'discord.js', 'agent.js', 'app.js'];
 
 /* ------------------------------------------------------------------ *
  * HAND-DERIVED EXPECTATIONS.                                         *
@@ -113,10 +115,15 @@ const BUILDER_FILES = ['arca.js', 'artcompute.js', 'tworp.js', 'ados.js', 'hivem
 
 const HAND_DERIVED = {
   // The CARD_ICONS object literal's field order, top to bottom.
-  iconKeys: ['arca', 'artcompute', 'tworp', 'ados', 'hivemind', 'discord'],
+  // 2026-10-26: `agent` and `app` were appended (the Equip pair's glyphs, moved
+  // from the retired soon-icons.js). The U01c MOVE is still proven on the six
+  // that existed then (`movedKeys`, against the pinned pre-move fixture); the
+  // shipped table is those six followed by the two additions, in that order.
+  iconKeys: ['arca', 'artcompute', 'tworp', 'ados', 'hivemind', 'discord', 'agent', 'app'],
+  movedKeys: ['arca', 'artcompute', 'tworp', 'ados', 'hivemind', 'discord'],
   // Every value is a complete element produced by I(): opens with the wrapper
-  // and closes with </svg>. Six trues — the shape, not the content.
-  iconValuesAreSvgElements: [true, true, true, true, true, true],
+  // and closes with </svg>. Eight trues — the shape, not the content.
+  iconValuesAreSvgElements: [true, true, true, true, true, true, true, true],
   // journey/cards/index.js's public surface, unchanged by this move.
   // Namespace keys come back sorted.
   exportNames: ['CARD_ASSETS', 'CARD_BUILDERS', 'CARD_ICONS', 'REDUCE', 'startCardWarming'],
@@ -400,16 +407,16 @@ async function main() {
   console.log('\n-- 3. pre vs post, and both vs hand-derived --');
   const pre = await materialise('pre');
   const post = await materialise('post');
-  check(deepEq(pre.record, HAND_DERIVED_RECORD()), 'PRE-move tree matches the hand-derived expectation (the expectation describes the code that shipped before U01c)');
+  check(deepEq(pre.record, PRE_MOVE_RECORD()), 'PRE-move tree matches the hand-derived expectation (the expectation describes the code that shipped before U01c)');
   check(deepEq(post.record, HAND_DERIVED_RECORD()), 'POST-move tree matches the same hand-derived expectation');
-  check(deepEq(pre.record, post.record), 'pre-move and post-move trees are observationally identical: icon key order, value shape, index.js export names, and the warming self-start epoch');
+  check(deepEq(pre.record, movedOnly(post.record)), 'pre-move and post-move trees are observationally identical on the moved six: icon key order, value shape, index.js export names, and the warming self-start epoch');
   check(pre.mapIsIconsOwn === null, 'the pre-move tree has no icons module, so table-identity has no pre-move counterpart (recorded as null, not silently as false)');
   check(post.mapIsIconsOwn === true, 'POST: index.js FORWARDS the glyph owner\'s own CARD_ICONS object rather than copying it');
 
   console.log('\n-- 4. markup exact, byte for byte, pre vs post --');
-  check(deepEq(Object.keys(pre.markup), Object.keys(post.markup)), 'the same six keys carry markup in both trees');
+  check(deepEq(Object.keys(pre.markup), Object.keys(post.markup).slice(0, HAND_DERIVED.movedKeys.length)), 'the same six keys carry markup in both trees (post then appends agent and app)');
   let allMarkupEqual = true;
-  for (const k of HAND_DERIVED.iconKeys) {
+  for (const k of HAND_DERIVED.movedKeys) {
     const same = pre.markup[k] === post.markup[k];
     if (!same) allMarkupEqual = false;
     check(same, `CARD_ICONS.${k} markup is byte-identical pre and post (${(post.markup[k] || '').length} chars)`);
@@ -491,7 +498,7 @@ async function main() {
       },
       reds: (r) => !deepEq(r.record.iconValuesAreSvgElements, HAND_DERIVED.iconValuesAreSvgElements)
         || HAND_DERIVED.iconKeys.some((k) => !r.markup[k].includes('focusable="false"')),
-      axis: 'markup (all six)',
+      axis: 'markup (all eight)',
     },
     {
       id: 'N4-copy-not-forward',
@@ -585,7 +592,14 @@ async function main() {
   if (!reexportStanza.endsWith("export { CARD_ICONS } from './icons.js';\n")) {
     throw new Error('reverse application refused: the shipped index.js does not end with the icons re-export');
   }
-  const iconsBlock = from(iconsSrc, ICONS_REL, '/* Chip glyphs (Hannah, 2026-08-18:');
+  const iconsBlockShipped = from(iconsSrc, ICONS_REL, '/* Chip glyphs (Hannah, 2026-08-18:');
+  // Cut the 2026-10-26 additions (agent, app) back out: the move proof is about
+  // the lines that moved, and those are the ones before them.
+  const ADDED_AT = '  // a small robot head — the Astrid agent';
+  if (iconsBlockShipped.split(ADDED_AT).length !== 2 || !iconsBlockShipped.endsWith('};\n')) {
+    throw new Error('reverse application refused: the agent/app additions are not one block at the foot of icons.js');
+  }
+  const iconsBlock = iconsBlockShipped.slice(0, iconsBlockShipped.indexOf(ADDED_AT)) + '};\n';
 
   const reconstructed = indexHead + iconsBlock;
 
@@ -612,6 +626,23 @@ async function main() {
   console.log('');
   console.log(`${passes + failures} assertions — ${passes} PASS, ${failures} FAIL`);
   if (failures > 0) process.exitCode = 1;
+}
+
+/** The pre-move expectation: the six keys the U01c fixture defines. */
+function PRE_MOVE_RECORD() {
+  const n = HAND_DERIVED.movedKeys.length;
+  return {
+    iconKeys: [...HAND_DERIVED.movedKeys],
+    iconValuesAreSvgElements: HAND_DERIVED.iconValuesAreSvgElements.slice(0, n),
+    exportNames: [...HAND_DERIVED.exportNames],
+    selfStartDelays: [...HAND_DERIVED.selfStartDelays],
+  };
+}
+
+/** A shipped record restricted to the moved six, for the pre/post comparison. */
+function movedOnly(record) {
+  const n = HAND_DERIVED.movedKeys.length;
+  return { ...record, iconKeys: record.iconKeys.slice(0, n), iconValuesAreSvgElements: record.iconValuesAreSvgElements.slice(0, n) };
 }
 
 /** The hand-derived record, rebuilt per comparison so no assertion can mutate

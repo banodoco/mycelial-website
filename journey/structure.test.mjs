@@ -69,7 +69,7 @@ assert.deepEqual(Object.keys(SYMBOLS), [...CHAPTER_IDS, 'menu']);
 assert.deepEqual(JOURNEY_SCHEMA.chapters.filter((c) => c.hotspots.kind === 'fixed')
   .map((c) => [c.id, c.hotspots.ids]), [
   ['inspire', ['artcompute', 'arca', 'tworp']],
-  ['equip', ['quark', 'brotchen']],
+  ['equip', ['agent', 'app']],
   ['connect', ['ados', 'hivemind', 'discord']],
 ]);
 
@@ -95,7 +95,7 @@ rejects((s) => { s.chapters[at('inspire')].hotspots.ids.pop(); }, /unsupported f
 assert.throws(() => validateJourneyStructure(JOURNEY_SCHEMA, { builders: {} }), /missing builder reference/);
 assert.throws(() => validateJourneyStructure(JOURNEY_SCHEMA, { symbols: {} }), /missing symbol reference/);
 const runtimeNodes = {
-  inspire: ['artcompute', 'arca', 'tworp'], equip: ['quark', 'brotchen'],
+  inspire: ['artcompute', 'arca', 'tworp'], equip: ['agent', 'app'],
   connect: ['ados', 'hivemind', 'discord'],
   owned: Array.from({ length: 16 }, (_, i) => `contributor-${i}`),
 };
