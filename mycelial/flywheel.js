@@ -958,7 +958,7 @@
     mo.dur = clamp(len / ((150 + 70 * boost) * Math.max(0.5, k)), 1.4, 7);
     motes.push(mo);
   };
-  let operation = null, resizedCtx = null;
+  let operation = null, resizedCtx = null, textClear = null;
   const finishOperation = (ctx, result = 'completed') => {
     if (!operation || operation.ctx !== ctx) return;
     const resolve = operation.resolve;
@@ -1007,10 +1007,18 @@
     cell = tall ? 1 : Math.max(short ? 1 : 2, Math.round(2.45 * cur.k));
   };
   const frame = () => {
+    // A cleared stage on 10/11 includes all its cards, even when the morph or
+    // its wall-time deadline arrives before their staggered introduction.
+    if (textClear && !morph && m === textClear.target && m >= 1) {
+      ta = Math.max(ta, T.chips + (chips.length - 1) * 0.15 + 0.6);
+    }
     if (m !== lastM || !cur) { settleCur(); lastM = m; }
     draw();
     place();
     if (m >= 1) window.AstridMark?.follow(Math.min(1, m - 1)); // the deck's mark grows with the halo on the way to 11 (and back)
+    if (textClear && !morph && m === textClear.target) {
+      const release = textClear.release; textClear = null; release();
+    }
   };
 
   // ---- Scene lifecycle --------------------------------------------------------------------------
@@ -1112,13 +1120,26 @@
     ctx.defer(() => {
       stop();
       clearFullCards();
+      if (textClear?.ctx === ctx) textClear = null;
       if (unhanding) endUnhand('cancelled');
       finishOperation(ctx, 'cancelled');
     });
-    const arrived = ctx.direct ? 'completed' : await ctx.arrived;
+    // The shared wheel already owns its rendered geometry across 9–11. It
+    // can begin moving immediately; only an external handoff waits for arrival.
+    const withinWheel = ctx.from >= 8 && ctx.from <= 10 && activeStage >= 0 && begun;
+    const target = ctx.to - 8;
+    const clearing = withinWheel && !ctx.direct && !motionOff();
+    if (clearing) {
+      const release = ctx.holdText(() => {
+        if (!ctx.isCurrent()) return;
+        m = target; morph = null; lastM = -1; frame();
+        finishOperation(ctx);
+      });
+      textClear = { ctx, target, release };
+    }
+    const arrived = ctx.direct || withinWheel ? 'completed' : await ctx.arrived;
     if (arrived !== 'completed' || !ctx.isCurrent()) return 'cancelled';
     if (resizedCtx === ctx) return 'completed';
-    const target = ctx.to - 8;
     const previous = activeStage;
     activeStage = target;
     html.classList.toggle('fw-quiet', target < 2);
@@ -1140,7 +1161,7 @@
       finishOperation(ctx);
       return done;
     }
-    morph = { from: m, to: target, t0: ta, dur: 1.15 + 0.45 * Math.abs(target - m) };
+    morph = { from: m, to: target, t0: ta, dur: clearing ? 0.5 : 1.15 + 0.45 * Math.abs(target - m) };
     if (target >= 1 && attach.dir <= 0) attach = { dir: 1, t0: Math.max(ta + 0.9, T.chips) };
     if (target === 0 && attach.dir > 0) { attach = { dir: -1, t0: ta, from: chips.map((_, i) => chipQ(i)) }; pulsed = [false, false, false]; }
     stop(); entryCtx = ctx; start(ctx);
@@ -1210,7 +1231,7 @@
     start(ctx);
     return 'completed';
   };
-  window.deckRegisterScene([8, 9, 10], { enter, exit, resize });
+  window.deckRegisterScene([8, 9, 10], { enter, exit, resize, supersede: true });
 
   const syncMotion = () => {
     if (motionOff() && activeStage >= 0) {
