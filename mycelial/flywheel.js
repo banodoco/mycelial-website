@@ -162,6 +162,18 @@
   const vis = chips.map(() => null), hov = chips.map(() => 0), hoT = chips.map(() => 0);
   // How far each has grown into its fuller card (slide 10), and the size that card stands at, whole.
   const gro = chips.map(() => 0), grT = chips.map(() => 0), fullH = chips.map(() => 0), fullSH = chips.map(() => 0);
+  window.deckOverlay?.register({
+    isOpen: () => grT.some((value) => value > 0),
+    contains: (target) => {
+      const open = grT.findIndex((value) => value > 0);
+      return open >= 0 && !!fulls[open]?.contains(target);
+    },
+    close: () => {
+      grT.fill(0);
+      if (motionOff()) gro.fill(0);
+      if (!running && begun) frame();
+    },
+  });
   let fullW = 0, fullS = 1;
   new MutationObserver(() => cardsRoot.classList.toggle('is-on', root.classList.contains('is-on'))).observe(root, { attributes: true, attributeFilter: ['class'] });
 
@@ -1205,12 +1217,11 @@
   // The browser hit-tests each card's rounded clip path, including the icon's
   // radius. Only those interactive pixels retain clicks; the decorative canvas
   // and the space around it pass through to the deck's normal click-thirds.
-  const grows = () => stageOf() === 1;
   const wire = (el, i, full) => {
     const mate = () => (full ? chips[i] : fulls[i]);
     const set = (on) => {
-      (full || grows() ? grT : hoT)[i] = on ? 1 : 0;
-      if (still) { hoT.forEach((t, j) => { hov[j] = t; }); grT.forEach((t, j) => { gro[j] = t; }); }
+      grT[i] = on ? 1 : 0;
+      if (motionOff()) { hoT.forEach((t, j) => { hov[j] = t; }); grT.forEach((t, j) => { gro[j] = t; }); }
       if (!running && begun) frame();
     };
     let pointerType = '';
@@ -1223,7 +1234,7 @@
       const source = pointerType || e.pointerType;
       pointerType = '';
       if (e.target.closest('a') || source === 'mouse') return;
-      const on = !full && !(grows() ? grT : hoT)[i]; // a tap on an open fuller card closes it
+      const on = !full && !grT[i]; // a tap on an open fuller card closes it
       hoT.fill(0); grT.fill(0);
       set(on);
     });
@@ -1247,7 +1258,7 @@
   const rememberPointer = (e) => {
     pointerType = e.pointerType;
     pointerAt = e.target;
-    outsideTap = !!pointerType && pointerType !== 'mouse' && !asks.contains(e.target);
+    outsideTap = !!opened && !opened.querySelector('.fw-ask-card')?.contains(e.target);
   };
   const close = () => {
     clearTimers();
@@ -1261,6 +1272,19 @@
     window.removeEventListener('keydown', key, true);
     if (unresize) { unresize(); unresize = null; }
   };
+  window.deckOverlay?.register({
+    isOpen: () => !!opened,
+    contains: (target) => !!opened?.querySelector('.fw-ask-card')?.contains(target),
+    close: (reason) => {
+      const button = opened?.querySelector('button');
+      close();
+      if (reason === 'escape' && button) {
+        returningFocus = true;
+        button.focus({ preventScroll: true });
+        returningFocus = false;
+      }
+    },
+  });
   const place = (item) => {
     const card = item.querySelector('.fw-ask-card'), row = asks.getBoundingClientRect(), q = item.getBoundingClientRect();
     const height = card.offsetHeight, width = card.offsetWidth;
@@ -1322,7 +1346,7 @@
   asks.addEventListener('click', (e) => {
     e.stopPropagation(); // the questions and their cards never turn the slide
     const source = pointerType || e.pointerType;
-    pointerType = ''; pointerAt = null;
+    pointerType = ''; pointerAt = null; outsideTap = false;
     const button = e.target.closest('.fw-ask-q');
     if (!button) return;
     const item = button.closest('.fw-ask');
@@ -1340,17 +1364,6 @@
     e.stopPropagation();
     e.preventDefault();
   };
-  // A tap outside dismisses the card on its own; the footer controls still do what the viewer asked.
-  window.addEventListener('click', (e) => {
-    if (!opened || asks.contains(e.target)) return;
-    const source = pointerType || e.pointerType;
-    pointerType = ''; pointerAt = null;
-    if (!source || source === 'mouse') return;
-    close();
-    if (e.target.closest('.chrome, #motion, .dt-name')) return;
-    e.stopPropagation();
-    e.preventDefault();
-  }, true);
   const sync = () => {
     const on = slide.classList.contains('on');
     if (on === watching) return;
