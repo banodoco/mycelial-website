@@ -50,6 +50,20 @@ The feedback reduces to four themes. Theme A matters most because it likely expl
 | **C. Mobile orientation of a diagram** | M6 | The slide 7 flow should run bottom to top on portrait. A real re-layout, not a rotation: labels must stay readable and the composition must be rebalanced. |
 | **D. Content** | M3 | Replace slide 5's hypothetical example with the real Astrid onboarding clips. Find the assets, then fit them into the existing demo frame. |
 
+## Bigger issues behind the bugs (coordinator synthesis, after wave 1)
+
+Back-and-forth isn't the cause. It is the stress test that exposes these underlying issues.
+
+| # | Underlying issue | How it produces Hannah's symptoms | Where it's addressed |
+|---|---|---|---|
+| B1 | **No lifecycle authority.** One controller picks the slide, but each of about 10 modules discovers navigation via its own `.on` MutationObserver, infers direction from neighbouring mutations, and reports completion with no visit identity. Every interruption therefore runs N independent, half-right cleanup paths. | M11-A stale "done", M11-B lost completion on resize, and the likely X1 clone leak | Astra steps 1–2 (now). Sol is reviewing steps 3–4 (registry with `enter/exit/abort/resize`). |
+| B2 | **Time is not one thing.** Five clock styles: capped timers, capped rAFs, uncapped tweens, wall clocks, and CSS rates. Under phone-level CPU load they drift apart, non-linearly. | M9 late text, M4 sequencing, "only appears when I leave" | Astra step 5 (now) |
+| B3 | **Everything is always alive.** All 11 slides stay mounted and laid out (inactive means opacity 0), and modules build their scenes eagerly. One tap costs about 734 ms of main thread, about 475 ms of it style recalculation. | X2 entry lag. Every race window is wider on a phone. | Partly in Astra step 6. A **follow-up** is proposed: take inactive slides out of style/layout (`content-visibility` or `display` gating, outside handoffs) and boot scenes lazily. |
+| B4 | **Choreography borrows DOM across slides with no lease.** Slide 6 deep-clones slide 5's panels, core lends canvases to demo, pays hides stack's mink, and three modules write one shared mask. The handoffs are the deck's signature, so the answer is to formalise them, not remove them. | X1 bleed (the three cloned panels), cross-slide cleanup bugs | Sol review (step 4 leases). Astra is hardening clone/carry cleanup now. |
+| B5 | **Patch layering.** Forced flag visibility, cleanup-before-done, neighbour-specific mask cleanup, and a 12 s completion-fabricating ceiling. These are defensive fixes over symptoms. The code has reached the point where the next fix should be the contract, not another guard. | Makes each new bug ambiguous to locate (Hannah: "bad structure on top of it") | Burn-down rule: each wave-2 step deletes its guards |
+| B6 | **The test setup didn't match the phone.** It ran at 844 px tall, with no toolbar resize, in Chromium only, and the deck had no interruption tests (only stress and first-load). The real device is about 670 px with dynamic toolbars, in WebKit. Bugs were invisible to the checks. | Explains why this shipped | Harness `tools/deck/lab.mjs`, the 390×670 profile, and toolbar resize simulation. **Follow-up:** promote Astra's probes to a durable `tools/deck/check-interrupt.mjs`. |
+| B7 | **Viewport assumptions.** Layouts were tuned for full-height portrait. Safari's visible height is smaller and changes. | M10 gap, M1 imbalance | Layout fixes done. **Follow-up:** audit `vh`/`innerHeight` use in favour of `svh`/`dvh`/`visualViewport` consistently. |
+
 ## Plan (waves)
 
 | Wave | Who (model @ effort) | What | Output |
