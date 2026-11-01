@@ -6,24 +6,32 @@
   const slide = root.closest('.slide');
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const motionOff = () => still || window.deckStill?.();
+  let entryCtx = null, reverseCtx = null;
   const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
   const ease = (k) => 1 - Math.pow(1 - k, 3);
   const easeIO = (q) => (q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2);
   // Keep absolute animation timestamps on the same clock across a pause.
-  let paused = false, pausedAt = 0, pausedTime = 0;
-  let pendingStart = null, pausedVideos = [];
+  let paused = false;
+  let pendingStart = null, pausedVideos = [], settlePreviewPending = false;
   const motionBlocked = () => document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.();
-  let paceOffset = 0, paceAt = performance.now();
-  const now = () => {
-    const real = (paused ? pausedAt : performance.now()) - pausedTime;
-    paceOffset += Math.max(0, real - paceAt) * ((window.deckPace?.() || 1) - 1);
-    paceAt = real;
-    return real + paceOffset;
-  };
+  const now = () => window.deckNow?.() ?? performance.now();
 
   const msgs = root.querySelector('.as-msgs');
   const typed = root.querySelector('.as-typed');
   const videos = [...root.querySelectorAll('.as-media video')];
+  let mediaCleanups = [];
+  const clearMediaHandlers = () => { mediaCleanups.forEach(([el, type, fn]) => el.removeEventListener(type, fn)); mediaCleanups = []; };
+  const bindMediaHandlers = (ctx) => {
+    clearMediaHandlers();
+    const bind = (el, type, fn) => {
+      const scoped = () => { if (ctx?.isCurrent?.() && ctx === entryCtx) fn(); };
+      el.addEventListener(type, scoped); mediaCleanups.push([el, type, scoped]);
+    };
+    bind(videos[1], 'seeked', () => drawPic(now()));
+    bind(gradedVideos[1], 'seeked', () => drawPic(now()));
+    videos.forEach((v) => bind(v, 'loadeddata', () => { if (motionOff() && slide.classList.contains('on')) drawPic(now()); }));
+    anchors.forEach((img) => bind(img, 'load', () => { if (motionOff() && slide.classList.contains('on')) drawPic(now()); }));
+  };
   // No twin for clip 0.
   const gradeSources = ['../assets/astrid/passing-shapes-graded.mp4', '../assets/astrid/quiet-finish-graded.mp4'];
   const gradedVideos = [null, ...gradeSources.map((source) => {
@@ -449,7 +457,7 @@
   // collection there), cleared back to its first state as a morph begins, and let go once both slides are left.
   const skySize = () => [Math.round(innerWidth * Math.min(2, devicePixelRatio || 1)), Math.round(innerHeight * Math.min(2, devicePixelRatio || 1))];
   const freeSky = () => { sky.width = 0; sky.height = 0; };
-  const startMorph = (snap, back = false) => {
+  const startMorph = (snap, back = false, ctx = back ? reverseCtx : entryCtx) => {
     const W = innerWidth, H = innerHeight, d = Math.min(2, devicePixelRatio || 1);
     const [sw, sh] = skySize();
     if (sky.width === sw && sky.height === sh && sg.reset) sg.reset(); else { sky.width = sw; sky.height = sh; }
@@ -483,7 +491,7 @@
     });
     const fit = (src, dst) => { const s = Math.min(dst.width / src.w, dst.height / src.h); return { s, x: dst.left + dst.width / 2, y: dst.top + dst.height / 2 }; };
     morph = {
-      t0: now(), d, snap, rings, cells, origin, outlineTo, throatTo, motes,
+      t0: now(), d, snap, rings, cells, origin, outlineTo, throatTo, motes, ctx,
       outline: snap.outline.map(([x, y]) => [x + ox, y + oy]), throat: snap.throat.map(([x, y]) => [x + ox, y + oy]),
       eyeFrom: { x: snap.eye.x + ox, y: snap.eye.y + oy }, eyeTo: { x: origin.x + 16 * cell, y: origin.y + 5 * cell },
       fly: [
@@ -575,8 +583,9 @@
   };
   const smoothstep = (k) => k * k * (3 - 2 * k);
   const endMorph = () => {
+    const completed = morph;
     morph = null;
-    window.deckEntryDone?.(slide);
+    if (completed && !completed.back) window.deckEntryDone?.(slide, completed.ctx);
     sg.setTransform(1, 0, 0, 1, 0, 0);
     sg.clearRect(0, 0, sky.width, sky.height);
     sky.style.display = 'none';
@@ -585,15 +594,13 @@
   };
 
   // Clock
-  let running = false, raf = 0, last = 0, ticking = false, requested = false;
-  videos[1].addEventListener('seeked', () => drawPic(now()));
-  gradedVideos[1].addEventListener('seeked', () => drawPic(now()));
-  const tick = () => {
+  let running = false, raf = 0, oneFrame = 0, last = 0, ticking = false, requested = false;
+  const tick = (ctx) => {
     raf = 0;
-    if (!running || paused) return;
+    if (!running || paused || ctx !== entryCtx || !ctx?.isCurrent?.()) return;
     const t = now();
     ticking = true;
-    const dt = Math.min(0.05, (t - (last || t)) / 1000);
+    const dt = Math.max(0, (t - (last || t)) / 1000);
     last = t;
     const morphing = morph ? (morph.back ? unmorph(t) : drawMorph(t)) : false;
     if (!running) { ticking = false; return; } // the fold back into slide 4 has just landed and stopped the demo
@@ -601,32 +608,33 @@
     const busy = morphing | stepBeats(slide.classList.contains('dt-await') || morph?.back ? 0 : dt) | stepMink(t);
     drawPic(t);
     ticking = false;
-    if (busy || requested) { requested = false; raf = requestAnimationFrame(tick); }
+    if (busy || requested) { requested = false; raf = requestAnimationFrame(() => tick(ctx)); }
   };
-  const wake = () => { if (!running || paused) return; if (ticking) { requested = true; return; } if (!raf) { last = 0; raf = requestAnimationFrame(tick); } };
+  const wake = () => { if (!running || paused) return; if (ticking) { requested = true; return; } if (!raf) { last = now(); const ctx = entryCtx; raf = requestAnimationFrame(() => tick(ctx)); } };
   const net = document.querySelector('.dt-net');
-  const softenNet = (on) => {
+  const softenNet = (on, ctx = entryCtx) => {
     if (!net) return;
-    if (!on) { net.style.maskImage = net.style.webkitMaskImage = ''; net.style.maskMode = ''; return; }
+    if (!on) { window.deckClearNetMask?.(ctx, 'demo'); return; }
     const b = slide.querySelector('.split').getBoundingClientRect(), W = innerWidth, H = innerHeight, pad = 14;
     const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><filter id='f'><feGaussianBlur stdDeviation='12'/></filter><rect width='${W}' height='${H}' fill='white'/><rect x='${Math.round(b.left - pad)}' y='${Math.round(b.top - pad)}' width='${Math.round(b.width + 2 * pad)}' height='${Math.round(b.height + 2 * pad)}' rx='18' fill='black' fill-opacity='.75' filter='url(%23f)'/></svg>`;
-    net.style.maskImage = `url("data:image/svg+xml,${svg.replace(/"/g, "'").replace(/</g, '%3C').replace(/>/g, '%3E')}")`;
-    net.style.maskMode = 'luminance';
-    net.style.maskSize = '100% 100%';
+    const value = `url("data:image/svg+xml,${svg.replace(/"/g, "'").replace(/</g, '%3C').replace(/>/g, '%3E')}")`;
+    window.deckSetNetMask?.(ctx, 'demo', { image: value, mode: 'luminance', size: '100% 100%' });
   };
-  const layout = () => { sizeMink(); sizePic(); measureTl(); placeHead(); if (slide.classList.contains('on')) softenNet(true); };
+  const layout = () => { sizeMink(); sizePic(); measureTl(); placeHead(); if (slide.classList.contains('on')) softenNet(true, entryCtx); };
   new ResizeObserver((es) => { for (const e of es) if (e.target === tl) { measureTl(e.contentRect.width); placeHead(); } }).observe(tl);
-  const start = (fromCore) => {
+  const start = (fromCore, ctx = window.deckNav) => {
+    entryCtx = ctx;
     if (document.hidden || document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingStart = fromCore; return; }
     pendingStart = null;
+    bindMediaHandlers(ctx);
     root.classList.remove('as-unmorph', 'is-morphing', 'is-minkless'); // folded away on the way back to slide 4
     // Also warm direct #5 entry.
     window.warmDeckMedia(slide);
     running = true;
     layout();
-    if (motionOff() || window.deckNav?.rest) {
-      settledState(); paint('profile', 0, 0); requestAnimationFrame(() => drawPic(now()));
-      window.deckEntryDone?.(slide);
+    if (motionOff() || ctx?.rest) {
+      settledState(); paint('profile', 0, 0); oneFrame = requestAnimationFrame(() => { oneFrame = 0; if (ctx?.isCurrent?.()) drawPic(now()); });
+      window.deckEntryDone?.(slide, ctx);
       // Back at rest: the finished editor, its preview playing, until the loop's own reset starts the demo again.
       if (!motionOff()) { playFrom(12, 1); td = beatTimes(BEATS[BEATS.length - 1]).done; wait = 0; root.classList.add('is-playing'); wake(); }
       return;
@@ -635,15 +643,17 @@
     td = 0; wait = 0;
     const snap = fromCore && window.AstridCore && window.AstridCore.snapshot();
     if (snap) { startMorph(snap); wait = MORPH.demo; }
-    else window.deckLater(() => window.deckEntryDone?.(slide), 1800);
+    else window.deckLater(() => { if (ctx?.isCurrent?.()) window.deckEntryDone?.(slide, ctx); }, 1800);
     wake();
   };
   const stop = () => {
     clearPicFade();
     running = false;
-    paused = false; pausedTime = 0; pendingStart = null; pausedVideos = [];
+    clearMediaHandlers();
+    paused = false; pendingStart = null; pausedVideos = []; settlePreviewPending = false;
     if (raf) cancelAnimationFrame(raf);
-    raf = 0; requested = false;
+    if (oneFrame) cancelAnimationFrame(oneFrame);
+    raf = 0; oneFrame = 0; requested = false;
     if (morph?.back) endUnmorph();
     if (morph) endMorph();
     softenNet(false);
@@ -658,23 +668,26 @@
   // A step back: the morph from slide 4 played backwards. The panels fade as their frames fold back into the two
   // rings, the chat and editor layers shrink back into them, the mink dissolves from the neck up as her outline
   // rises back into the lens's, and the community's motes come home; then slide 4's own picture stands in its place.
-  const pace = () => window.deckPace?.() || 1;
   const fold = () => {
+    reverseCtx = window.deckNav;
+    entryCtx = reverseCtx;
     const snap = window.AstridCore && window.AstridCore.snapshot(); // slide 4 has settled before this runs
     if (!snap) return false;
-    startMorph(snap, true); // the same paths, measured from the editor as it stands (it hides slide 4's picture)
+    startMorph(snap, true, reverseCtx); // the same paths, measured from the editor as it stands (it hides slide 4's picture)
     morph.back = { e: MORPH.end - 1e-3, last: 0, shown: false };
     morph.steps = { resolve: true, handoff: true, turn: true };
     slide.classList.add('dt-rewind');
     coreSlide.classList.add('dt-return', 'dt-await');
-    window.deckRewinding?.(coreSlide);
-    window.deckNav?.signal?.addEventListener('abort', () => { if (morph?.back) { endUnmorph(); stop(); } }, { once: true });
+    window.deckRewinding?.(coreSlide, reverseCtx);
+    reverseCtx?.signal?.addEventListener('abort', () => { if (morph?.back) { endUnmorph(); stop(); } }, { once: true });
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0; last = now();
     wake();
     return true;
   };
   const unmorph = (t) => {
     const b = morph.back;
-    b.e = Math.max(0, b.e - Math.min(0.05 * pace(), (t - (b.last || t)) / 1000)); // now() runs at the turn's pace
+    b.e = Math.max(0, b.e - Math.max(0, (t - (b.last || t)) / 1000));
     b.last = t;
     const e = b.e;
     morph.steps = { resolve: e >= MORPH.resolve, handoff: e >= MORPH.handoff, turn: true };
@@ -694,7 +707,7 @@
     root.classList.add('is-minkless'); // the editor and its mink stay folded away as slide 5 fades (until it next starts)
     slide.classList.replace('dt-rewind', 'dt-rewound');
     coreSlide.classList.remove('dt-return', 'dt-await');
-    window.deckRewound?.(coreSlide);
+    window.deckRewound?.(coreSlide, reverseCtx);
   };
 
   const coreHost = document.querySelector('[data-astrid-core]');
@@ -712,7 +725,7 @@
     if (on === wasOn) return;
     wasOn = on;
     if (morph?.back) { endUnmorph(); if (on) stop(); }
-    if (on) start(!!coreSlide && !coreSlide.classList.contains('on') && records.some((r) => r.target === coreSlide));
+    if (on) { entryCtx = window.deckNav; start(!!coreSlide && !coreSlide.classList.contains('on') && records.some((r) => r.target === coreSlide), entryCtx); }
     else if (coreSlide?.classList.contains('on') && window.deckNav?.back && !motionOff() && running && !paused && !morph && fold()) { /* folding back into slide 4 */ }
     else leave();
   });
@@ -734,43 +747,54 @@
     keepSky();
   }
   const syncMotion = () => {
-    if (motionOff() && slide.classList.contains('on')) { stop(); settledState(); drawPic(now()); window.deckEntryDone?.(slide); return; }
+    if (motionOff() && slide.classList.contains('on')) { stop(); settledState(); drawPic(now()); window.deckEntryDone?.(slide, entryCtx); return; }
     if (motionBlocked() && morph?.back) { endUnmorph(); leave(); return; } // a reverse never waits behind the overview
     if (motionBlocked()) {
       if (!running || paused) return;
-      pausedAt = performance.now(); paused = true;
+      paused = true;
       if (raf) cancelAnimationFrame(raf);
       raf = 0;
       pausedVideos = [...videos, ...gradedVideos].filter((v) => v && !v.paused);
       pausedVideos.forEach((v) => v.pause());
     } else if (slide.classList.contains('on')) {
       // An entry deferred behind the overview has no scene to resume yet.
-      if (pendingStart !== null) { start(pendingStart); return; }
-      if (!paused) { if (!running) { running = true; last = 0; wake(); } return; }
-      pausedTime += performance.now() - pausedAt;
+      if (pendingStart !== null) { start(pendingStart, entryCtx); return; }
+      if (!paused) { if (!running) { running = true; last = now(); wake(); } return; }
       paused = false;
-      last = 0;
+      last = now();
       pausedVideos.forEach((v) => v.play().catch(() => {}));
       pausedVideos = [];
+      if (settlePreviewPending) {
+        settlePreviewPending = false;
+        playFrom(12, 1); td = beatTimes(BEATS[BEATS.length - 1]).done; wait = 0;
+        root.classList.add('is-playing'); running = true;
+      }
       if (!still) wake();
     }
   };
   document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
-  window.deckOnResize(() => {
+  window.deckOnSettle?.((ctx) => {
     if (morph?.back) { endUnmorph(); leave(); } // its paths were measured on the old screen
     if (!slide.classList.contains('on')) return;
-    if (morph) { endMorph(); settledState(); td = -1; wait = 0; }
+    entryCtx = ctx;
+    stop();
+    settledState(); td = -1; wait = 0;
     layout();
     drawPic(now());
-    if (!document.hidden && !document.getElementById('overview')?.classList.contains('on') && !window.deckStill?.()) wake();
+    window.deckEntryDone?.(slide, ctx);
+    bindMediaHandlers(ctx);
+    if (!motionOff()) {
+      if (motionBlocked()) { settlePreviewPending = true; running = true; paused = true; }
+      else {
+        playFrom(12, 1); td = beatTimes(BEATS[BEATS.length - 1]).done; wait = 0;
+        root.classList.add('is-playing'); running = true; wake();
+      }
+    }
   });
   // Clicks on the demos stay here; they never turn the slide.
   root.addEventListener('click', (e) => { if (e.target.closest('.as-panel, .as-mink, .as-try')) e.stopPropagation(); }); // the link opens its tab and the slide stays
-  videos.forEach((v) => v.addEventListener('loadeddata', () => { if (motionOff() && slide.classList.contains('on')) drawPic(now()); }));
-  anchors.forEach((img) => img.addEventListener('load', () => { if (motionOff() && slide.classList.contains('on')) drawPic(now()); }));
-
   clearAll();
-  if (slide.classList.contains('on')) { wasOn = true; start(false); }
+  if (slide.classList.contains('on')) { wasOn = true; start(false, window.deckNav); }
 })();

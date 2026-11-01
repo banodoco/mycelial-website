@@ -606,19 +606,21 @@
     if (apps.length && tc >= apps[0].T + 0.05) root.classList.add('is-counting'); // fades in as the first reach rolls up
   };
 
-  const advance = (dt) => { ta += dt; if (ta - off >= END) window.deckEntryDone?.(slide); };
+  let entryCtx = null, reverseCtx = null;
+  const advance = (dt, ctx = entryCtx) => { ta += dt; if (ta - off >= END) window.deckEntryDone?.(slide, ctx); };
 
   // ---- Coming and going ----------------------------------------------------------------------------------------
-  const tick = (now) => {
+  const tick = (ctx, now) => {
     raf = 0;
-    if (!running) return;
-    const dt = Math.min(0.05, (now - (last || now)) / 1000) * (window.deckPace?.() || 1);
-    last = now;
-    if (back7) { if (!step7(dt)) return; } else advance(dt);
+    if (!running || ctx !== entryCtx || !ctx?.isCurrent?.()) return;
+    const clock = window.deckNow?.() ?? now;
+    const dt = Math.max(0, (clock - (last || clock)) / 1000);
+    last = clock;
+    if (back7) { if (!step7(dt)) return; } else advance(dt, ctx);
     draw(); labels();
-    raf = requestAnimationFrame(tick);
+    raf = requestAnimationFrame((t) => tick(ctx, t));
   };
-  const start = () => { if (running || still || document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; running = true; last = 0; raf = requestAnimationFrame(tick); };
+  const start = (ctx = entryCtx) => { if (running || still || document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now(); raf = requestAnimationFrame((t) => tick(ctx, t)); };
   const stop = () => { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; };
   const reset = () => {
     gen++;
@@ -636,24 +638,26 @@
   // Start once the fonts are in (everything is measured from the text) and, on a first load, once the Mycelial mark
   // has landed and the slide shows. A visit that has since ended (gen moved on) never starts.
   let waiting = null, gen = 0;
-  const whenOpen = (fn) => {
-    const my = gen, go = () => document.fonts.ready.then(() => { if (my === gen && slide.classList.contains('on')) fn(); });
+  const whenOpen = (ctx, fn) => {
+    const my = gen, go = () => document.fonts.ready.then(() => { if (my === gen && ctx?.isCurrent?.() && slide.classList.contains('on')) fn(ctx); });
     if (!html.classList.contains('dt-intro')) { go(); return; }
     if (waiting) waiting.disconnect();
     waiting = new MutationObserver(() => { if (!html.classList.contains('dt-intro')) { waiting.disconnect(); waiting = null; go(); } });
     waiting.observe(html, { attributes: true, attributeFilter: ['class'] });
   };
-  const quiet = () => timers.push(window.deckLater(() => { if (slide.classList.contains('on')) html.classList.add('fl-quiet'); }, 120));
-  const begin = () => {
+  const quiet = (ctx = entryCtx) => timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && slide.classList.contains('on')) html.classList.add('fl-quiet'); }, 120, ctx));
+  const begin = (ctx = entryCtx) => {
+    entryCtx = ctx;
     if (!layout()) return;
-    if (motionOff() || window.deckNav?.rest) { ta = 40; root.classList.add('is-labelled'); draw(); labels(); window.deckEntryDone?.(slide); if (!motionOff()) { html.classList.add('fl-quiet'); start(); } return; }
+    if (motionOff() || ctx?.rest) { ta = 40; root.classList.add('is-labelled'); draw(); labels(); window.deckEntryDone?.(slide, ctx); if (!motionOff()) { html.classList.add('fl-quiet'); start(ctx); } return; }
     ta = -0.15;
-    timers.push(window.deckLater(() => root.classList.add('is-labelled'), 900));
-    quiet();
-    start();
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, 900, ctx));
+    quiet(ctx);
+    start(ctx);
   };
   // From slide 7: carry its picture on.
-  const handoff = (snap) => {
+  const handoff = (snap, ctx = entryCtx) => {
+    entryCtx = ctx;
     if (!layout()) return;
     const b = root.getBoundingClientRect(), v = (p) => ({ ...p, x: p.x - b.left, y: p.y - b.top });
     off = 0.9;
@@ -670,11 +674,11 @@
     window.AstridPays.hide();
     ta = 0;
     html.classList.add('fl-quiet');
-    timers.push(window.deckLater(() => root.classList.add('is-labelled'), 1400));
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, 1400, ctx));
     draw(); // the core, in this frame, where slide 7 has just let go of it
     slide.classList.add('fl-arrive'); // at full strength at once, as slide 7 is
-    timers.push(window.deckLater(() => slide.classList.remove('fl-arrive'), 900));
-    start();
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) slide.classList.remove('fl-arrive'); }, 900, ctx));
+    start(ctx);
   };
   const paysHost = document.querySelector('[data-astrid-pays]');
   const paysSlide = paysHost && paysHost.closest('.slide');
@@ -690,7 +694,8 @@
   const unhand7 = () => {
     const snap = window.AstridPays.snapshot();
     if (!snap) return false;
-    const signal = window.deckNav?.signal;
+    reverseCtx = window.deckNav;
+    const signal = reverseCtx?.signal;
     timers.forEach(window.deckCancelLater); timers = [];
     const tc0 = ta - off;
     const b = root.getBoundingClientRect(), v = (p) => ({ ...p, x: p.x - b.left, y: p.y - b.top });
@@ -708,9 +713,10 @@
     window.AstridPays.holdCore?.(true); // the core is drawn here until it has landed in slide 7's lens
     slide.classList.add('dt-rewind');
     paysSlide.classList.add('dt-return', 'dt-await');
-    window.deckRewinding?.(paysSlide);
+    window.deckRewinding?.(paysSlide, reverseCtx);
     back7 = { tc0, shown: false, since: 0 };
     signal?.addEventListener('abort', end7, { once: true });
+    stop(); entryCtx = reverseCtx; start(reverseCtx);
     return true;
   };
   const step7 = (dt) => {
@@ -734,25 +740,27 @@
     paysSlide.classList.remove('dt-return', 'dt-await');
     if (!slide.classList.contains('on')) {
       stop(); html.classList.remove('fl-quiet');
-      timers.push(setTimeout(() => { if (!slide.classList.contains('on')) reset(); }, 700));
+      timers.push(window.deckLater(() => { if (reverseCtx?.isCurrent?.() && !slide.classList.contains('on')) reset(); }, 700, reverseCtx));
     }
-    window.deckRewound?.(paysSlide);
+    window.deckRewound?.(paysSlide, reverseCtx);
   };
-  slide.addEventListener('dt-arrive', () => { if (armed && slide.classList.contains('on')) { armed = false; whenOpen(begin); } });
+  slide.addEventListener('dt-arrive', () => { const ctx = entryCtx; if (ctx?.isCurrent?.() && armed && slide.classList.contains('on')) { armed = false; whenOpen(ctx, begin); } });
   let wasOn = false;
   const watch = new MutationObserver((records) => {
     const on = slide.classList.contains('on');
     if (on === wasOn) return;
     wasOn = on;
+    const ctx = window.deckNav;
     end7();
     if (on) {
       reset();
-      if (window.deckNav?.rest) { whenOpen(begin); return; }
+      entryCtx = ctx;
+      if (ctx?.rest) { whenOpen(ctx, begin); return; }
       const fromPays = !motionOff() && paysSlide && !paysSlide.classList.contains('on') && records.some((r) => r.target === paysSlide);
       const snap = fromPays && window.AstridPays && window.AstridPays.snapshot();
-      if (snap) { handoff(snap); return; }
+      if (snap) { handoff(snap, ctx); return; }
       layout(); draw(); armed = true;
-      timers.push(window.deckLater(() => { if (armed) { armed = false; whenOpen(begin); } }, 1500));
+      timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && armed) { armed = false; whenOpen(ctx, begin); } }, 1500, ctx));
     } else {
       slide.classList.remove('fl-arrive'); // it fades as it leaves, however soon
       if (motionOff()) { armed = false; gen++; stop(); reset(); html.classList.remove('fl-quiet'); return; }
@@ -760,7 +768,7 @@
       if (to7) { armed = false; gen++; if (waiting) { waiting.disconnect(); waiting = null; } if (unhand7()) return; }
       armed = false; gen++; stop(); html.classList.remove('fl-quiet');
       if (waiting) { waiting.disconnect(); waiting = null; }
-      timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) reset(); }, 700));
+      timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && !slide.classList.contains('on')) reset(); }, 700, ctx));
     }
   });
   watch.observe(slide, { attributes: true, attributeFilter: ['class'] });
@@ -768,7 +776,8 @@
   const syncMotion = () => {
     if (motionOff()) {
       end7(); stop(); reset();
-      if (slide.classList.contains('on') && layout()) { ta = 40; root.classList.add('is-labelled'); draw(); labels(); window.deckEntryDone?.(slide); }
+      const ctx = entryCtx;
+      if (ctx?.isCurrent?.() && slide.classList.contains('on') && layout()) { ta = 40; root.classList.add('is-labelled'); draw(); labels(); window.deckEntryDone?.(slide, ctx); }
     }
     else if (document.hidden || document.getElementById('overview')?.classList.contains('on')) { end7(); stop(); }
     else if (slide.classList.contains('on') && ta > 0) start();
@@ -776,9 +785,13 @@
   document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
-  window.deckOnResize(() => {
+  window.deckOnSettle?.((ctx) => {
     end7(); // its people's way back was measured on the old screen
     if (!slide.classList.contains('on')) return;
+    entryCtx = ctx;
+    gen++;
+    if (waiting) { waiting.disconnect(); waiting = null; }
+    stop();
     // layout rebuilds the crowd in the new geometry. Keep its clock: draw()
     // deterministically recreates every app already due at that phase.
     if (armed || from || ta < END) {
@@ -787,11 +800,11 @@
       armed = false;
       timers.forEach(window.deckCancelLater); timers = [];
       from = null; off = 0;
-      ta = Math.max(ta, END + 0.2);
+      ta = END + 0.2;
       root.classList.add('is-labelled');
       html.classList.add('fl-quiet');
     }
-    if (layout()) { draw(); labels(); start(); }
+    if (layout()) { draw(); labels(); window.deckEntryDone?.(slide, ctx); start(ctx); }
   });
 
   // For slide 9: the core and the visible communities' people, in viewport pixels, so the wheel can grow out of them.
@@ -824,5 +837,5 @@
     },
   };
 
-  if (slide.classList.contains('on')) { wasOn = true; layout(); whenOpen(begin); }
+  if (slide.classList.contains('on')) { wasOn = true; entryCtx = window.deckNav; layout(); whenOpen(entryCtx, begin); }
 })();

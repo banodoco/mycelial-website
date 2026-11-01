@@ -141,7 +141,7 @@
   let shift = { x: 0, y: 0, age: 9 };
   let resting = false, restAt = null;
   let pointer = null, touched = false, hot = null, front = null, f = 0, shown = null, keyHover = null, keyLock = null, lastLit;
-  let featured = null, held = 0, live = 0, clock = 0, running = false, last = 0, frameRaf = 0, holdFor = 0, busy = -9, back = false;
+  let featured = null, held = 0, live = 0, clock = 0, running = false, last = 0, frameRaf = 0, holdFor = 0, busy = -9, back = false, entryCtx = null, reverseCtx = null, fontHandler = null;
   const tags = labels.map((el) => ({ el, item: null }));
 
   // Names and cards live in the lower screen: below the headline (floor) and
@@ -176,9 +176,11 @@
     measure();
   };
   if (text) new ResizeObserver(measure).observe(text); // fonts landing reflow the headline
-  window.deckOnResize(() => {
+  window.deckOnSettle?.((ctx) => {
     if (rewind) endRewind(); // its motes were placed for the old screen
     if (!slide.classList.contains('on')) return;
+    entryCtx = ctx;
+    stop();
     const oldW = w, oldH = h;
     resize();
     if (oldW && oldH) {
@@ -195,7 +197,8 @@
       slide.classList.remove('sf-arrive');
     }
     aim();
-    scheduleFrame();
+    window.deckEntryDone?.(slide, ctx);
+    start(false, ctx);
   });
 
   // E: the field opens in the right half beside the text. F: below the text, full width.
@@ -233,34 +236,36 @@
     else if (o.z > FAR) scatter(o, NEAR + 0.3 + rnd() * 1.2);
   };
 
-  const frame = (now) => {
+  const frame = (now, visitCtx = entryCtx) => {
     frameRaf = 0;
-    if (!running) return;
-    if (!motionOff()) frameRaf = requestAnimationFrame(frame);
-    const raw = Math.min(0.05, (now - (last || now)) / 1000), paced = raw * pace();
-    const dt = since < 2.5 || rewind ? paced : raw; // the arrival, or the gathering back, is hurried with the turn
-    last = now;
+    if (!running || visitCtx !== entryCtx || !visitCtx?.isCurrent?.()) return;
+    if (!motionOff()) frameRaf = requestAnimationFrame((t) => frame(t, visitCtx));
+    const clockNow = window.deckNow?.() ?? now;
+    const elapsed = Math.max(0, (clockNow - (last || clockNow)) / 1000);
+    const dt = Math.min(0.05, elapsed); // capped integration for camera and motes
+    const paced = dt;
+    last = clockNow;
     if (!w || !h) return;
     const ease = (rate) => 1 - Math.exp(-rate * dt);
 
-    holdFor -= paced;
+    holdFor -= elapsed;
     const wantSpeed = motionOff() ? 0 : front ? 0.08 : hot ? 0.04 : holdFor > 0 ? 0 : 1;
     speed += (wantSpeed - speed) * ease(2.5);
     boost *= Math.exp(-2.2 * dt); // scroll momentum settles back to the drift
     // The arrival rush: the burst past slide 1's films is quick, then it eases
     // off more slowly, so slowing down and the heading's glide home settle together.
-    since += dt;
-    if (since >= 2.5) window.deckEntryDone?.(slide);
+    since += elapsed;
+    if (!rewind && since >= 2.5) window.deckEntryDone?.(slide, visitCtx);
     glide *= Math.exp(-(2.2 - 1.25 * (t => t * t * (3 - 2 * t))(clamp((since - 0.6) / 0.8))) * dt);
     // Gathering back into slide 1 (rewind): the arrival's flight runs backwards, the field rushing away from us.
     if (rewind) { // the vanishing point drifts back to the collage, coming to rest there as the motes land
-      rewind.t += dt;
+      rewind.t += elapsed;
       const q = clamp(rewind.t / 1.15);
       shift.k = rewind.k0 + (1 - rewind.k0) * q * q * q * (q * (q * 6 - 15) + 10);
     }
     const vel = rewind ? rewindSpeed() : speed + boost + glide, dz = dt * 0.36 * vel;
-    clock += dt; shift.age += dt;
-    if (!hot && !front && clock - busy > 0.5) held += dt; // a name's time runs only while it shows
+    clock += elapsed; shift.age += elapsed;
+    if (!hot && !front && clock - busy > 0.5) held += elapsed; // a name's time runs only while it shows
     roll += dt * 0.025 * speed;
     // Steering stays where the mouse left it; no snap back to centre. It eases
     // in two stages (no lurch when the mouse first moves), and just after an
@@ -452,8 +457,9 @@
   };
   const scheduleFrame = () => {
     if (!running || frameRaf) return;
-    if (still) last = 0;
-    frameRaf = requestAnimationFrame(frame);
+    if (still) last = window.deckNow?.() ?? performance.now();
+    const ctx = entryCtx;
+    frameRaf = requestAnimationFrame((t) => frame(t, ctx));
   };
 
   // Slide 1's films come apart: each tile is sampled into a grid of motes in
@@ -625,7 +631,6 @@
   // field rushes away from us, its vanishing point drifting back to the collage, and each tile's motes return along
   // their own paths into its grid; then the collage fades in over them and the field goes.
   let rewind = null;
-  const pace = () => window.deckPace?.() || 1;
   const smooth = (k) => k * k * (3 - 2 * k);
   // How far the arrival's flight had carried a mote t seconds in (its speed 1 + the arrival's glide of 3.5, easing off).
   const flown = (t) => 0.36 * (t + (3.5 / 2.2) * (1 - Math.exp(-2.2 * t)));
@@ -634,10 +639,14 @@
     return r.v0 + (back - r.v0) * smooth(clamp(r.t / 0.35)); // from the drift it had, without a jolt
   };
   const regather = () => {
-    const signal = window.deckNav?.signal;
+    reverseCtx = window.deckNav;
+    entryCtx = reverseCtx;
+    if (frameRaf) cancelAnimationFrame(frameRaf);
+    frameRaf = 0; running = true; last = window.deckNow?.() ?? performance.now();
+    const signal = reverseCtx?.signal;
     collageSlide.classList.add('vc-dissolve', 'dt-return', 'dt-await'); // the collage holds still, hidden, at full size
     slide.classList.add('dt-rewind');
-    window.deckRewinding?.(collageSlide);
+    window.deckRewinding?.(collageSlide, reverseCtx);
     resize();
     const k0 = shift.k ?? (shift.age < 0 ? 1 : (1 + shift.age * 1.8 + (shift.age * 1.8) ** 2 / 2) * Math.exp(-shift.age * 1.8));
     const base = stage.getBoundingClientRect(), mid = middle(base);
@@ -654,9 +663,11 @@
     rewind = { t: 0, k0, A, landed, v0: speed + boost + glide, kept: [...named, ...dust].map((o) => [o, o.x, o.y, o.z]), shown: false };
     pointer = null; front = null; boost = 0; glide = 0; since = 9;
     signal?.addEventListener('abort', () => endRewind(), { once: true });
+    scheduleFrame();
   };
   const stepRewind = () => {
     const r = rewind;
+    if (!r) return;
     if (!r.shown && r.t >= r.landed) { // back in their tiles: the collage fades in over them, and the field goes
       r.shown = true;
       collageSlide.classList.remove('dt-await');
@@ -674,7 +685,7 @@
     motes = [];
     shift = { x: 0, y: 0, age: 9 };
     stop();
-    window.deckRewound?.(collageSlide);
+    window.deckRewound?.(collageSlide, reverseCtx);
   };
 
   // Coming back from slide 3, the field holds still while the tools fly back to their dots, then drifts on.
@@ -696,16 +707,20 @@
     return { named: dots, dust: specks };
   };
 
-  const start = (arriving) => {
+  const start = (arriving, ctx = window.deckNav) => {
     if (running || !slide.classList.contains('on') || document.hidden || document.getElementById('overview')?.classList.contains('on')) return;
+    entryCtx = ctx;
     resize();
-    running = true; last = 0;
+    running = true; last = window.deckNow?.() ?? performance.now();
+    if (fontHandler) document.fonts?.removeEventListener?.('loadingdone', fontHandler);
+    fontHandler = () => { if (ctx?.isCurrent?.() && ctx === entryCtx) { labelSizes.clear(); scheduleFrame(); } };
+    document.fonts?.addEventListener?.('loadingdone', fontHandler);
     if (arriving && !motionOff()) { glide = 3.5; boost = 0; since = 0; settled = 0; } // arriving, we fly in past slide 1's collage
     else { glide = 0; boost = 0; since = 9; settled = 1; shift = { x: 0, y: 0, age: 9 }; motes = []; aim(); }
-    if (motionOff()) { frame(performance.now()); window.deckEntryDone?.(slide); }
+    if (motionOff()) { frame(performance.now(), ctx); window.deckEntryDone?.(slide, ctx); }
     else scheduleFrame();
   };
-  const stop = () => { if (rewind) { endRewind(); return; } running = false; pointer = null; if (frameRaf) cancelAnimationFrame(frameRaf); frameRaf = 0; };
+  const stop = () => { if (rewind) { endRewind(); return; } running = false; pointer = null; if (frameRaf) cancelAnimationFrame(frameRaf); frameRaf = 0; if (fontHandler) document.fonts?.removeEventListener?.('loadingdone', fontHandler); fontHandler = null; };
   const watch = new MutationObserver((records) => {
     if (!slide.classList.contains('on')) {
       if (rewind) return; // its own classes (and the turn's), while it gathers back
@@ -714,6 +729,8 @@
       if (running && toCollage && window.deckNav?.back && !motionOff()) regather(); else stop();
       return;
     }
+    const ctx = window.deckNav;
+    if (running && entryCtx !== ctx) stop();
     if (running) return;
     // Each visit sets off straight ahead: steering left from an earlier visit, or a mouse resting where it clicked
     // (often low, by the footer's arrows), would tip the flight down and rush the lower field at us.
@@ -721,7 +738,7 @@
     pointer = null; resting = true; restAt = null;
     const fromCollage = collageSlide && !collageSlide.classList.contains('on') && records.some((r) => r.target === collageSlide);
     if (fromCollage && !motionOff() && !window.deckNav?.rest) dissolve();
-    start(!window.deckNav?.rest);
+    start(!ctx?.rest, ctx);
   });
   watch.observe(slide, { attributes: true, attributeFilter: ['class'] });
   if (collageSlide) watch.observe(collageSlide, { attributes: true, attributeFilter: ['class'] });
@@ -796,6 +813,6 @@
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && running) { front = null; if (motionOff()) scheduleFrame(); } });
 
   resize();
-  document.fonts?.addEventListener('loadingdone', () => { labelSizes.clear(); scheduleFrame(); });
-  start();
+  fontHandler = null;
+  if (slide.classList.contains('on')) start(!window.deckNav?.rest, window.deckNav);
 })();

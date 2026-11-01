@@ -826,8 +826,8 @@
     .st::before { content: ""; position: absolute; left: 16px; right: 16px; top: var(--st-card-top); height: var(--st-card-height); box-sizing: border-box;
       border-radius: 7px; border: 1px solid rgb(255 255 255 / .07); border-left-color: rgb(224 171 94 / .5);
       background: linear-gradient(180deg, rgb(31 26 20 / .8), rgb(21 18 14 / .8));
-      box-shadow: 0 18px 46px rgb(0 0 0 / .4), 0 0 30px rgb(240 200 119 / .04); opacity: 0; transition: opacity .4s ease; }
-    .st-host.on .st::before { opacity: 1; }
+      box-shadow: 0 18px 46px rgb(0 0 0 / .4), 0 0 30px rgb(240 200 119 / .04); opacity: 0; transition: opacity .38s ease; }
+    .st-host.on .st.has-card::before { opacity: 1; }
     .st-card { padding: 10px 13px 10px 12px; transform: translateY(6px); background: transparent; border-color: transparent; box-shadow: none; }
     .st-card p { font-size: 13px; line-height: 1.25; margin-bottom: 8px; }
     .st-card ul { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
@@ -1863,8 +1863,8 @@
   const ov = document.getElementById('overview'), list = document.getElementById('list');
   let i = 0;
   let progressNav = null;
-  let initialized = false, turnController = null;
-  window.deckNav = { from: null, to: 0, dir: 0, rest: false, signal: null };
+  let initialized = false, turnController = null, generation = 0;
+  window.deckNav = null;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const pendingTurns = [];
   let turn = null, pace = 1;
@@ -1906,7 +1906,7 @@
   const turnBudgets = [3200, 4300, 4000, 5600, 3400, 5000, 5600, 4000, 4000, 3200, 3200];
   const hurry = () => {
     if (!turn || !pendingTurns.length) { setPace(turn?.basePace || 1); return; }
-    const elapsed = turn.ceiling ? turn.ceilingMs - turn.ceiling.left : 0;
+    const elapsed = window.deckNow() - turn.started;
     let remaining = Math.max(250, turn.budget - elapsed), target = i;
     for (const queued of pendingTurns.slice(0, -1)) {
       target += queued.dir;
@@ -1917,28 +1917,43 @@
     const available = Math.max(100, backlogDeadline - performance.now() - pendingTurns.length * 48);
     setPace(Math.min(STILL_PACE, Math.max(FLICK_PACE, turn.basePace, remaining / available)));
   };
-  // A timer's remaining time is measured on the same clock as the slide builds.
-  // Its handle can be cancelled even after the underlying timeout is rescheduled.
+  // One semantic timeline for timers and scene stages. Integrate before changing
+  // pace or pause state: a delayed callback must never throw elapsed time away.
+  let timeline = 0, timelineAt = performance.now();
+  let timelinePaused = document.hidden || ov.classList.contains('on');
+  window.deckNow = () => {
+    const at = performance.now();
+    if (!timelinePaused) timeline += Math.max(0, at - timelineAt) * pace;
+    timelineAt = at;
+    return timeline;
+  };
+  const syncTimeline = () => {
+    window.deckNow();
+    timelinePaused = document.hidden || ov.classList.contains('on');
+  };
+  document.addEventListener('visibilitychange', syncTimeline);
+  window.addEventListener('deck-overview', syncTimeline);
   window.deckPace = () => pace;
   window.deckCancelLater = (handle) => {
     if (typeof handle === 'number') { clearTimeout(handle); return; }
     if (!handle) return;
     handle.cancelled = true;
     clearTimeout(handle.id);
+    handle.signal?.removeEventListener('abort', handle.abort);
   };
-  window.deckLater = (fn, ms) => {
-    const signal = window.deckNav?.signal;
-    const handle = { left: ms, at: performance.now(), id: 0, cancelled: false };
+  window.deckLater = (fn, ms, context = window.deckNav) => {
+    const signal = context?.signal;
+    const handle = { left: ms, deadline: window.deckNow() + ms, id: 0, cancelled: false, signal };
+    handle.abort = () => window.deckCancelLater(handle);
     const tick = () => {
-      if (handle.cancelled || signal?.aborted) { window.deckCancelLater(handle); return; }
-      const now = performance.now();
-      handle.left -= Math.min(50, now - handle.at) * pace;
-      handle.at = now;
-      if (handle.left <= 0) { handle.cancelled = true; fn(); }
+      if (handle.cancelled || signal?.aborted || (context && !context.isCurrent())) { window.deckCancelLater(handle); return; }
+      handle.left = handle.deadline - window.deckNow();
+      if (handle.left <= 0 && !timelinePaused) { window.deckCancelLater(handle); fn(); }
       else handle.id = setTimeout(tick, Math.min(32, Math.max(4, handle.left / pace)));
     };
-    handle.id = setTimeout(tick, Math.min(32, Math.max(4, ms / pace)));
-    signal?.addEventListener('abort', () => window.deckCancelLater(handle), { once: true });
+    signal?.addEventListener('abort', handle.abort, { once: true });
+    if (signal?.aborted) handle.abort();
+    else handle.id = setTimeout(tick, Math.min(32, Math.max(4, ms / pace)));
     return handle;
   };
   const pacedAnimations = new Map();
@@ -1960,6 +1975,7 @@
   };
   const setPace = (value) => {
     if (pace === value) return;
+    window.deckNow();
     pace = value;
     showMotion();
     if (value === 1) { if (animationRaf) cancelAnimationFrame(animationRaf); syncAnimations(); }
@@ -1997,10 +2013,11 @@
     clearTimeout(toldTimer);
     toldTimer = setTimeout(() => motionBtn.classList.remove('is-told'), 1800);
   });
+  let transactionDepth = 0;
   const finishTurn = () => {
-    if (!turn || !turn.network || !turn.entry) return;
-    window.deckCancelLater(turn.ceiling);
-    slides[turn.to]?.setAttribute('data-settled', ''); // the slide has landed: anything that waits for it may come in
+    if (transactionDepth || !turn || !turn.network || !turn.entry) return;
+    clearTimeout(turn.watchdog);
+    slides[turn.to]?.setAttribute('data-settled', '');
     turn = null;
     setPace(1);
     if (pendingTurns.length) queueMicrotask(() => {
@@ -2010,25 +2027,82 @@
       hurry();
     });
   };
-  window.deckTurnDone = (slideEl) => {
-    if (turn && slides[turn.to] === slideEl && !turn.network) { turn.network = true; finishTurn(); hurry(); }
+  const ownsTurn = (slideEl, context) => !!context && context.isCurrent() &&
+    turn?.context === context && slides[context.to] === slideEl;
+  const completePhase = (phase, slideEl, context) => {
+    if (!ownsTurn(slideEl, context) || turn[phase] || (phase === 'entry' && turn.rewinding)) return false;
+    turn[phase] = true;
+    dispatchEvent(new CustomEvent('deck-phase', { detail: { generation: context.generation, phase } }));
+    finishTurn(); hurry();
+    return true;
   };
-  window.deckEntryDone = (slideEl) => {
-    if (turn && slides[turn.to] === slideEl && !turn.entry && !turn.rewinding) { turn.entry = true; finishTurn(); hurry(); }
+  window.deckTurnDone = (slideEl, context) => completePhase('network', slideEl, context);
+  window.deckEntryDone = (slideEl, context) => completePhase('entry', slideEl, context);
+  window.deckRewinding = (slideEl, context) => {
+    if (!ownsTurn(slideEl, context)) return false;
+    turn.rewinding = true; turn.entry = false;
+    return true;
   };
-  // A step back whose picture plays its hand-off in reverse: the slide being left claims the earlier slide's entry
-  // (deckRewinding) and reports it when the reverse has landed (deckRewound), so a queued turn waits for it.
-  window.deckRewinding = (slideEl) => {
-    if (turn && slides[turn.to] === slideEl) { turn.rewinding = true; turn.entry = false; }
+  window.deckRewound = (slideEl, context) => {
+    if (!ownsTurn(slideEl, context) || !turn.rewinding) return false;
+    turn.rewinding = false;
+    return completePhase('entry', slideEl, context);
   };
-  window.deckRewound = (slideEl) => {
-    if (turn && slides[turn.to] === slideEl && turn.rewinding) { turn.rewinding = false; turn.entry = true; finishTurn(); hurry(); }
-  };
-  // One viewport notification for the slide pictures. A phone's browser chrome can
-  // report several sizes in one gesture; only lay out after the last one.
-  const resizeSubscribers = new Set();
+
+  // Geometry listeners and scene settlement are separate participants in one
+  // transaction. Every scene restores its own visuals and acknowledges its own
+  // phase; the controller never fabricates completion on a timeout.
+  const resizeSubscribers = new Set(), settleSubscribers = new Set();
   let resizeTimer = 0;
   window.deckOnResize = (fn) => { resizeSubscribers.add(fn); return () => resizeSubscribers.delete(fn); };
+  window.deckOnSettle = (fn) => { settleSubscribers.add(fn); return () => settleSubscribers.delete(fn); };
+  let netMask = null;
+  const paintNetMask = (value) => {
+    const net = document.querySelector('.dt-net');
+    if (!net) return;
+    const { image = '', mode = '', size = '' } = typeof value === 'string' ? { image: value } : value;
+    net.style.maskImage = net.style.webkitMaskImage = image;
+    net.style.maskMode = mode;
+    net.style.maskSize = net.style.webkitMaskSize = size;
+  };
+  window.deckSetNetMask = (context, owner, value) => {
+    if (!context?.isCurrent()) return;
+    netMask = { context, owner };
+    paintNetMask(value);
+  };
+  window.deckClearNetMask = (context, owner) => {
+    if (!netMask || netMask.context !== context || netMask.owner !== owner) return;
+    netMask = null; paintNetMask('');
+  };
+  window.deckTransaction = (reason, context = window.deckNav) => {
+    if (!context?.isCurrent()) return false;
+    transactionDepth++;
+    try {
+      if (reason === 'abort') {
+        clearTimeout(turn?.watchdog);
+        turnController.abort();
+        netMask = null; paintNetMask('');
+      } else {
+        resizeSubscribers.forEach((fn) => fn(context, reason));
+        settleSubscribers.forEach((fn) => fn(context, reason));
+      }
+    } finally {
+      transactionDepth--;
+      dispatchEvent(new CustomEvent('deck-transaction', { detail: {
+        reason, generation: context.generation,
+        pending: turn?.context === context ? ['network', 'entry'].filter((phase) => !turn[phase]) : [],
+      } }));
+      if (reason !== 'abort') finishTurn();
+    }
+    return true;
+  };
+  const watchTurn = (context, delay) => setTimeout(() => {
+    if (!context.isCurrent() || turn?.context !== context) return;
+    if (timelinePaused) { turn.watchdog = watchTurn(context, 1000); return; }
+    dispatchEvent(new CustomEvent('deck-watchdog', { detail: { generation: context.generation } }));
+    console.warn('Deck navigation recovery', context.generation);
+    window.deckTransaction('recover', context);
+  }, delay);
   // Safari, and Chrome on a phone, report a resize while the page loads with nothing changed; only a real
   // change lays out again (one that lands during the opening would cut it short).
   const viewSize = () => `${innerWidth}x${innerHeight} ${Math.round(window.visualViewport?.width || 0)}x${Math.round(window.visualViewport?.height || 0)}`;
@@ -2039,7 +2113,7 @@
       const size = viewSize();
       if (size === laidOut) return;
       laidOut = size;
-      resizeSubscribers.forEach((fn) => fn());
+      window.deckTransaction('resize');
     }, 120);
   };
   addEventListener('resize', scheduleResize);
@@ -2054,7 +2128,7 @@
     if (ov.classList.contains('on')) toggleOv(false);
     const from = initialized ? i : null;
     const dir = from === null ? 0 : Math.sign(to - from);
-    if (turnController) turnController.abort();
+    if (turnController) window.deckTransaction('abort');
     turnController = new AbortController();
     // Slides 9–11 are one picture moving between them: its own motion plays both ways.
     const reversePair = from !== null && from >= 8 && to >= 8;
@@ -2062,10 +2136,12 @@
     // a jump back (hash, overview, history, Home) just lands at rest.
     // With animations off every slide lands at rest, as on a jump back; the network and text land as in reduced motion.
     const back = !motionOff && stepped && dir < 0 && to === from - 1 && !reversePair;
-    window.deckNav = { from, to, dir, rest: motionOff || (dir < 0 && !reversePair), back, signal: turnController.signal };
-    const ceilingMs = from === null ? 18000 : 12000;
+    const context = Object.freeze({ generation: ++generation, from, to, dir,
+      rest: motionOff || (dir < 0 && !reversePair), back, signal: turnController.signal,
+      now: window.deckNow, isCurrent: () => window.deckNav === context && !context.signal.aborted });
+    window.deckNav = context;
     const basePace = motionOff && !reduced ? STILL_PACE : stepPace || 1;
-    turn = { to, dir: stepped ? dir : 0, basePace, network: reduced, entry: reduced, ceiling: null, ceilingMs, rewinding: false,
+    turn = { context, to, dir: stepped ? dir : 0, basePace, network: reduced, entry: reduced, watchdog: null, started: window.deckNow(), rewinding: false,
       budget: from === null ? 6500 : turnBudgets[to] };
     setPace(basePace);
     document.documentElement.dataset.dir = String(dir);
@@ -2085,9 +2161,7 @@
     if (historyMode !== 'none' || location.hash || history.state?.deckSlide !== i + 1) {
       history.replaceState({ ...history.state, deckSlide: i + 1 }, '', url);
     }
-    if (!reduced) turn.ceiling = window.deckLater(() => {
-      if (turn?.to === to) { turn.network = true; turn.entry = true; finishTurn(); }
-    }, ceilingMs);
+    if (!reduced) turn.watchdog = watchTurn(context, from === null ? 18000 : 12000);
     else finishTurn();
   };
   const go = (n, historyMode = 'push') => {
@@ -2095,7 +2169,6 @@
     lastPressAt = -Infinity;
     if (initialized && to === i) { pendingTurns.length = 0; setPace(1); return; }
     pendingTurns.length = 0;
-    turn = null;
     setPace(1);
     startTurn(to, historyMode);
   };
