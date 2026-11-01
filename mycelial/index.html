@@ -1139,8 +1139,14 @@
     html[data-ver="f"] .fw-raise { justify-content: center; padding: 60px 24px 80px; }
     html[data-ver="f"] .fw-top { padding: 52px 24px 0; }
     html[data-ver="f"] .fw-raise h1 { font-size: clamp(1.25rem, 5.6vw, 1.6rem); max-width: 8.6em; }
-    .fw-card .fw-cbody span { display: none; }
-    .fw-card .fw-dc { gap: .3em; padding: .35em .5em; } .fw-card .fw-dc-ch { display: none; } .fw-card .fw-dc-t { font-size: .62em; }
+    /* Slide 10 upright: each card a preview, its picture, its name and its line held to two lines; the way in is on the
+       fuller card a tap opens, so the small card's link stays for a keyboard or a reader only. */
+    .fw-card .fw-cbody { gap: .2em; padding: .55em .65em .65em; }
+    .fw-card .fw-cbody span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; font-size: .88em; line-height: 1.24; }
+    .fw-card .fw-cbody a, .fw-card .fw-cbody em { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .fw-card .fw-dc { gap: .3em; padding: .35em .5em; } .fw-card .fw-dc-ch { display: none; }
+    .fw-card .fw-dc-t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; font-size: .54em; }
+    .fw-card .fw-dc-p { font-size: .74em; }
     .fw-card .fw-ac { font-size: .56em; gap: .35em; padding: .35em .45em; } .fw-card .fw-ac-l { display: none; } .fw-card .fw-ac-stats { padding: .1em 0 .4em; }
     .fw-stat { top: 24px; font-size: 1rem; }
     .fw-sub { margin-top: .7rem; font-size: .95rem; line-height: 1.4; max-width: 17em; }
