@@ -272,6 +272,8 @@
   // The three beats replay the source tour prompts in order; later starts follow the prior act's done beat.
   // Each Qwen frame holds about a second in the preview before the next one is generated.
   const FRAME_STEP = 1.1;
+  // Astrid thinks (the working state) for a second after each message is sent, before she replies.
+  const THINK = 1;
   const BEATS = [
     { at: 0.1, ask: 'Make a 14-second Three.js bird flight over Lantern Valley.', reply: 'Lantern Valley is on your timeline: a 14-second live Three.js flight from the mountains down into town.', step: ['Built Lantern Valley', 'Three.js', '14 s live scene'], dur: 1.5 },
     { at: 4.7, ask: 'Can you make me realistic frames for that using Qwen Image 2.1?', reply: 'I made four realistic reference frames through WaveSpeed: start, mountains, descent, and town.', step: ['Captured 4 reference frames', 'Qwen Image 2.1', 'WaveSpeed'], dur: FRAME_STEP * FRAMES.length },
@@ -279,7 +281,7 @@
   ];
   for (let i = 1; i < BEATS.length; i++) {
     const previous = BEATS[i - 1], typeEnd = previous.at + previous.ask.length / CPS;
-    BEATS[i].at = typeEnd + 0.95 + previous.dur + 0.45;
+    BEATS[i].at = typeEnd + 0.45 + THINK + previous.dur + 0.45; // send + think + act lead-in, as in beatTimes
   }
   let td = -1, wait = 0, rows = [];
   const bubble = (cls, html) => {
@@ -307,8 +309,8 @@
     headTo(0, true);
   };
   const beatTimes = (b) => {
-    const typeEnd = b.at + b.ask.length / CPS;
-    return { typeEnd, send: typeEnd + 0.25, reply: typeEnd + 0.75, act: typeEnd + 0.95, done: typeEnd + 0.95 + b.dur };
+    const typeEnd = b.at + b.ask.length / CPS, send = typeEnd + 0.25, reply = send + THINK;
+    return { typeEnd, send, reply, act: reply + 0.2, done: reply + 0.2 + b.dur };
   };
   // Let the completed result keep playing for ten seconds, then use the existing one-second reset fade.
   const RESET = beatTimes(BEATS[BEATS.length - 1]).done + FINISHED_HOLD, LOOP = RESET + 1;
@@ -366,8 +368,10 @@
         root.classList.remove('is-typing', 'has-draft');
         root.classList.add('is-working');
         bubble('as-msg is-user', b.ask + (b.att ? `<br><span class="as-att">${b.att}</span>` : ''));
+        bubble('as-msg is-astrid as-thinking', '<i></i><span>Thinking…</span>');
       }
       if (passed(T.reply)) {
+        msgs.querySelectorAll('.as-thinking').forEach((el) => el.remove());
         bubble('as-msg is-astrid', b.reply);
         rows[bi] = bubble('as-step is-active', `<i></i><span>${b.step[0]}</span><code><b>${b.step[1]}</b> ${b.step[2]}</code>`);
       }
