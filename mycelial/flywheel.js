@@ -1282,6 +1282,9 @@
     if (m >= 1) { attach = { dir: 1, t0: ta - T.chips - 1 }; boost = 1; relay = { start: ta, arrivals: 6, next: 0, launch: ta + 1, attacks: chips.map(() => 0) }; }
     lastM = -1; minkAt = null; flyCell = 0;
     frame();
+    if (textClear?.ctx === ctx) {
+      const release = textClear.release; textClear = null; release();
+    }
     finishOperation(ctx);
     start(ctx);
     return 'completed';
