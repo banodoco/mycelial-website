@@ -608,6 +608,7 @@
   };
   const smoothstep = (k) => k * k * (3 - 2 * k);
   const endMorph = () => {
+    if (wait === Infinity) wait = 0; // a morph that ends early never leaves the demo held
     const completed = morph;
     morph = null;
     if (completed && !completed.back) entryCompletion?.(completed.ctx, 'completed');
@@ -618,6 +619,16 @@
     root.classList.remove('is-morphing', 'is-minkless');
   };
 
+  // The chat counts as shown once it and its ancestors are fully opaque and not morphing.
+  const chatPanel = root.querySelector('.as-chat');
+  const chatShown = () => {
+    if (root.classList.contains('is-morphing')) return false;
+    for (let el = chatPanel; el && el !== document.body; el = el.parentElement) {
+      const cs = getComputedStyle(el);
+      if (cs.visibility !== 'visible' || +cs.opacity < 0.98) return false;
+    }
+    return true;
+  };
   // Clock
   let running = false, raf = 0, oneFrame = 0, last = 0, ticking = false, requested = false;
   const tick = (ctx) => {
@@ -630,7 +641,8 @@
     const morphing = morph ? (morph.back ? unmorph(t) : drawMorph(t)) : false;
     if (!running) { ticking = false; return; } // the fold back into slide 4 has just landed and stopped the demo
     // Coming back from slide 6 the finished editor waits, hidden, for the stack to fold back into it (dt-await).
-    const busy = morphing | stepBeats(slide.classList.contains('dt-await') || morph?.back ? 0 : dt) | stepMink(t);
+    if (wait === Infinity && chatShown()) wait = 0.1; // the first prompt types once the chat is fully on screen
+    const busy = morphing | (wait === Infinity) | stepBeats(slide.classList.contains('dt-await') || morph?.back ? 0 : dt) | stepMink(t);
     drawPic(t);
     ticking = false;
     if (busy || requested) { requested = false; raf = requestAnimationFrame(() => tick(ctx)); }
@@ -668,6 +680,9 @@
       paint('profile', 0, 0); entryCompletion?.(ctx, 'completed'); wake(); return;
     }
     const snap = fromCore && window.AstridCore && window.AstridCore.snapshot();
+    // The first prompt starts typing once the chat is on screen: held until the morph resolves the panels
+    // (that step then allows their fade-in), or a short beat when there is no morph.
+    wait = snap ? Infinity : 0.3;
     if (snap) startMorph(snap);
     else window.deckLater(() => { if (ctx?.isCurrent?.()) entryCompletion?.(ctx, 'completed'); }, 1800, ctx); // deliberate entry stage when no Core picture is available
     wake();
