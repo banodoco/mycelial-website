@@ -293,7 +293,7 @@
 
   // ---- Layout ---------------------------------------------------------------------------------
   let W = 0, H = 0, dpr = 1, tall = false, short = false, R = WIDE, cell = 3;
-  let stages = [null, null, null]; // per slide: the picture in viewport pixels
+  let stages = [null, null, null], nb = 0; // per slide: the picture in viewport pixels
   let lastPlaceKey = null, layoutVersion = 0, lastPlacedM = null;
   const colOf = (s) => s.querySelector(':scope > .split > :first-child');
   const fit = (s) => {
@@ -413,6 +413,8 @@
       c[0] = cx + rx * Math.cos(t); c[1] = cy + ry * Math.sin(t);
     }));
     if (tall) tallTen(stages[1]);
+    const [,, rx, ry] = stages[1].ring;
+    nb = Math.round(Math.PI * (rx + ry) / (14 * Math.max(0.6, stages[1].k)));
     paintSeat();
     return true;
   };
@@ -438,8 +440,9 @@
   // ---- Time and state ----------------------------------------------------------------------------
   // ta: seconds since the picture began; m: where it stands between the slides (0 = 9, 1 = 10, 2 = 11).
   let ta = 0, m = 0, morph = null, begun = false, running = false, raf = 0, last = 0, entryCtx = null, reverseCtx = null, activeStage = -1;
-  let attach = { dir: 0, t0: 0 }, boost = 0, spin = 0, motes = [], nextMote = 0, flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], ring: 0 };
-  let cur = null, lastM = -1, pulsed = chips.map(() => false);
+  let attach = { dir: 0, t0: 0 }, boost = 0, spin = 0, motes = [], nextMote = 0, flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], plug: chips.map(() => 0) };
+  const relayOrder = [1, 4, 3, 5, 2, 0], OMEGA = TAU / 10;
+  let relay = null, cur = null, lastM = -1;
   const T_FRESH = { lens: 0.05, ring: 0.25, art: 0.35, artT: 0.75, grpT: 1.05, grp: 1.3, link: 1.8, labels: 1.5, motes: 2.0, chips: 2.3 };
   // From slide 8 the core is already there: it glides up into the hub, the apps' communities drift out to become the
   // artists and the builders' groups, and the ring draws round the core as they arrive.
@@ -451,7 +454,7 @@
   const cardOut = () => smooth(clamp((m - 0.42) / 0.58));
   const chipQ = (i) => (m >= 1 ? 1 : smooth(clamp((m - 0.42 - i * 0.04) / 0.5))) * smooth(k01(T.chips + i * 0.15, 0.6));
   // The artists and the groups, with "inspire" and "equip", belong to 9: they go into the circle on the way to 10.
-  const nine = () => 1 - smooth(clamp((m - 0.08) / 0.42));
+  const nine = () => 1 - smooth(clamp(tall ? m / 0.25 : (m - 0.08) / 0.42));
   // The lens folds into the core as the mink leaves it for her card; she flies from 9's centre to the Astrid card.
   const lensA = () => 1 - smooth(clamp((m - 0.25) / 0.4));
   // She sets off for her card as the stage starts to change, and flies with it, into her seat as her card comes whole.
@@ -519,9 +522,9 @@
       return join(rev(grpThread(mo.b)), line(arc(a, b < a ? b + TAU : b, -lane())), rev(artThread(mo.a)));
     }
     if (mo.kind === 'hop') return linkThread(mo.b);
-    // An initiative plugging energy in: from its card down its thread, into the ring and on round it.
-    const at_ = cur.cards[mo.c][2] * RAD;
-    return join(rev(cardThread(mo.c)), line(arc(at_, at_ + mo.span, 0)));
+    if (mo.kind === 'arrival') return rev(cardThread(mo.c));
+    const from = cur.cards[mo.c][2] * RAD, to = cur.cards[mo.next][2] * RAD;
+    return line(arc(from, from + ((to - from + TAU) % TAU), 0));
   };
   const routeFor = (mo) => {
     if (mo.pathM !== m || mo.pathVersion !== layoutVersion) {
@@ -621,11 +624,10 @@
       [[0, 1.1, 0.62], [-lane(), 0.7, 0.34]].forEach(([off, w, al]) => {
         for (const dir of [1, -1]) {
           const h = line(arc(a0, a0 + dir * Math.PI * qr, 0).map(([x, y]) => [cx + (x - cx) * (rx + off) / rx, cy + (y - cy) * (ry + off) / ry]));
-          stroke(h, 0, h.total, w * LW, THREAD, al * (0.85 + 0.25 * boost + 0.4 * flashes.ring));
+          stroke(h, 0, h.total, w * LW, THREAD, al * (0.85 + 0.25 * boost));
         }
       });
       halo(cx, cy, Math.max(rx, ry) * 1.15, 0.035 * qr * bright);
-      const nb = Math.round(Math.PI * (rx + ry) / (14 * Math.max(0.6, k)));
       for (let i = 0; i < nb; i++) {
         const th = (i / nb) * TAU + spin, rel = (((th - a0) % TAU) + TAU) % TAU, reach = Math.min(rel, TAU - rel) / Math.PI;
         if (reach > qr) continue;
@@ -664,10 +666,9 @@
     // threads out to where each initiative plugs into the ring.
     const cq = coreQ() * qr;
     if (cq > 0.003) {
-      const br = 1 + 0.12 * Math.sin(ta * 1.4) + 0.5 * flashes.ring;
-      halo(cx, cy, 90 * k * br, 0.2 * cq);
-      halo(cx, cy, 34 * k, 0.5 * cq * br);
-      for (let n = 0; n < 9; n++) { const a = (n / 9) * TAU + spin * 3, r = (22 + (n % 3) * 9) * k; dot(cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.92, (n % 3 ? 1.1 : 1.6) * Math.max(0.7, k), CORE, (n % 3 ? 0.5 : 0.85) * cq); }
+      const br = 1 + 0.05 * Math.sin(TAU * ta / 10);
+      halo(cx, cy, 90 * k, 0.2 * cq * br);
+      halo(cx, cy, 34 * k, 0.5 * cq);
       node(cx, cy, 1.5, cq);
       cur.cards.forEach((c) => { const [ex, ey] = ell(c[2] * RAD); const h = line(bez({ x: cx, y: cy }, { x: lerp(cx, ex, 0.4), y: lerp(cy, ey, 0.4) }, { x: lerp(cx, ex, 0.7), y: lerp(cy, ey, 0.7) }, { x: ex, y: ey }, 12)); stroke(h, 0, h.total, 0.6 * LW, THREAD, 0.16 * cq); });
     }
@@ -730,6 +731,8 @@
       const q = chipQ(i);
       if (q <= 0.003) return;
       const h = cardThread(i), v = vis[i];
+      const [px, py] = ell(c[2] * RAD);
+      halo(px, py, 10 * Math.max(0.6, k), 0.25 * flashes.plug[i] * q);
       if (h.total > 3) {
         stroke(h, 0, h.total * ease(q), 0.95 * LW, THREAD, 0.6 * q);
         node(h.pts[0][0], h.pts[0][1], 0.9, q);
@@ -745,14 +748,15 @@
 
     // Motes in flight, each with a short tail; where one lands, its node lights.
     for (const mo of motes) {
-      const h = routeFor(mo), u = clamp((ta - mo.t0) / mo.dur), d = (0.8 * u + 0.2 * smooth(u)) * h.total;
-      const tail = 64 * Math.max(0.6, k) * (1 + 0.3 * boost);
-      const plug = mo.kind === 'plug', fade = smooth(clamp(u / 0.06)) * smooth(clamp((1 - u) / (plug ? 0.25 : 0.04)));
-      const a = (mo.kind === 'eq' || mo.kind === 'hop' ? 0.8 : 1) * fade * (0.85 + 0.25 * boost) * (plug ? chipQ(mo.c) : pa) * (unhanding ? 1 - unhanding.fade : 1);
+      const h = routeFor(mo), u = clamp((ta - mo.t0) / mo.dur), plug = mo.kind === 'relay' || mo.kind === 'arrival';
+      const d = (plug ? u : 0.8 * u + 0.2 * smooth(u)) * h.total;
+      const tail = 64 * Math.max(0.6, k) * (plug ? 1 : 1 + 0.3 * boost);
+      const fade = smooth(clamp(u / (plug ? 0.1 : 0.06))) * smooth(clamp((1 - u) / (plug ? 0.12 : 0.04)));
+      const a = (mo.kind === 'eq' || mo.kind === 'hop' ? 0.8 : 1) * fade * (plug ? 1 : 0.85 + 0.25 * boost) * (plug ? chipQ(mo.c) : pa) * (unhanding ? 1 - unhanding.fade : 1);
       if (a <= 0.003) continue;
       for (let s = 0; s < 4; s++) stroke(h, Math.max(0, d - tail * (1 - s / 4)), d, (0.6 + s * 0.35) * LW, NODE, a * (0.18 + s * 0.16));
       const p = at(h, d);
-      halo(p.x, p.y, 15 * Math.max(0.6, k) * (1 + 0.25 * boost), 0.85 * a);
+      halo(p.x, p.y, (plug ? 10 : 15 * (1 + 0.25 * boost)) * Math.max(0.6, k), (plug ? 0.6 : 0.85) * a);
       dot(p.x, p.y, 2.6 * Math.max(0.7, k), CORE, a);
     }
   };
@@ -800,11 +804,11 @@
     // The cards: sized from the picture's scale, coming out of the ring on the way from 9; on 11 (and on a
     // phone) each is clipped down to an icon of its picture, opening back into the whole card when asked.
     const out = m < 1 ? cardOut() : 1, ob = openBase(), S = iconR() * 2;
-    // While the picture morphs, the cards are laid out at a width that moves in steps (6%), and scaled the rest of
-    // the way; once it rests they are laid out at the true width. Their type is sized with their width, so a step
-    // wraps much as the true width would, and a morph costs a handful of layouts rather than one every frame.
+    // On 9→10 use the final card layout throughout, scaling it as it moves so the last morph frame
+    // and the settled frame have identical wrapping and geometry. Other morphs retain stepped layouts.
     const cw = cur.cw;
-    if (!morph || Math.abs(cw - layW) > cw * 0.06) layW = cw;
+    if (morph && morph.to === 1 && morph.from < 1) layW = stages[1].cw;
+    else if (!morph || Math.abs(cw - layW) > cw * 0.06) layW = cw;
     const w = layW, ls = cw / w, ws = `${w.toFixed(1)}px`, fs = `${cardFont(w).toFixed(2)}px`, compact = !tall && w < 176;
     chips.forEach((el, i) => { // 1. sizing
       if (el.style.width !== ws) { el.style.width = ws; el.style.fontSize = fs; dirty[i] = true; }
@@ -870,7 +874,8 @@
       const other = Math.max(0, ...gro.filter((_, j) => j !== 1)); // never over a neighbour opened above her
       const into = (1 - v.o) * arrive; // flying into her icon, she becomes its logo
       // As she becomes the logo she is drawn onto its middle, so the two never stand apart.
-      paintFly(lerp(lerp(sx, tx, fq), tx, into), lerp(lerp(sy, ty, fq) - Math.sin(Math.PI * fq) * 60 * k, ty, into), u, (1 - into) * (1 - other));
+      const fy = lerp(lerp(sy, ty, fq) - (tall ? 0 : Math.sin(Math.PI * fq) * 60 * k), ty, into);
+      paintFly(lerp(lerp(sx, tx, fq), tx, into), tall ? Math.max(wordsBottom + 8 + 10 * u, fy) : fy, u, (1 - into) * (1 - other));
     } else if (fly.style.opacity !== '0') fly.style.opacity = '0';
   };
   // Slide 10's cards grow into their fuller cards, from the small card's box (or its icon's, on a phone on its side) to the
@@ -950,9 +955,8 @@
   // ---- Motion -------------------------------------------------------------------------------------
   const spawn = () => {
     const r = Math.random(), a = Math.floor(Math.random() * 7), b = Math.floor(Math.random() * 3);
-    // On 9 the community circulates; from 10 on, the initiatives plug energy into the ring.
-    const mo = m >= 0.5 ? { kind: 'plug', c: Math.floor(Math.random() * chips.length), span: (0.55 + Math.random() * 0.9) * Math.PI }
-      : r < 0.5 ? { kind: 'in', a, b } : r < 0.84 ? { kind: 'eq', a, b } : { kind: 'hop', b: Math.floor(Math.random() * 2) };
+    // On 9 the community circulates between its artists and groups.
+    const mo = r < 0.5 ? { kind: 'in', a, b } : r < 0.84 ? { kind: 'eq', a, b } : { kind: 'hop', b: Math.floor(Math.random() * 2) };
     mo.t0 = ta;
     const len = routeFor(mo).total;
     mo.dur = clamp(len / ((150 + 70 * boost) * Math.max(0.5, k)), 1.4, 7);
@@ -969,10 +973,10 @@
     if (mo.kind === 'in') flashes.grp[mo.b] = 1;
     else if (mo.kind === 'eq') flashes.art[mo.a] = 1;
     else if (mo.kind === 'hop') flashes.grp[mo.b + 1] = 1;
-    else flashes.ring = 1;
+    else if (relay) relay.attacks[mo.kind === 'relay' ? mo.next : mo.c] = 0.3;
   };
-  const advance = (dt, ctx = entryCtx) => {
-    ta += dt;
+  const advance = (dt, elapsed, ctx = entryCtx) => {
+    ta += elapsed;
     // The morph between slides.
     if (morph) {
       const q = clamp((ta - morph.t0) / morph.dur);
@@ -980,28 +984,44 @@
       if (q >= 1) { m = morph.to; morph = null; }
     }
     if (!morph && begun && ta >= T.chips) finishOperation(ctx);
-    // Once the initiatives are on, the wheel turns a little faster and brighter; on 11, gently again.
+    // Once the initiatives are on, the wheel brightens; on 11, gently again.
     const target = m >= 0.9 ? (m > 1.5 ? 0.6 : 1) : 0;
     boost += (target - boost) * (1 - Math.exp(-dt / 0.9));
-    spin += dt * (0.05 + 0.05 * boost);
+    spin += dt * 0.08;
     for (const key of ['art', 'grp']) flashes[key] = flashes[key].map((f) => f * Math.exp(-dt / 0.5));
-    flashes.ring *= Math.exp(-dt / 0.6);
-    // Each initiative, once out, sends its first pulse of energy down its thread into the ring.
-    chips.forEach((_, i) => { if (!pulsed[i] && m >= 0.9 && chipQ(i) >= 1) { pulsed[i] = true; const mo = { kind: 'plug', c: i, span: 0.8 * Math.PI, t0: ta }; mo.dur = clamp(routeFor(mo).total / (220 * Math.max(0.5, k)), 1.2, 4); motes.push(mo); } });
-    if (m < 0.5) pulsed = chips.map(() => false);
+    if (m >= 0.9 && !relay) relay = { start: ta, arrivals: 0, nextArrival: ta, next: 0, launch: Infinity, attacks: chips.map(() => 0) };
+    if (m < 0.5) { relay = null; flashes.plug.fill(0); }
+    if (relay) {
+      if (relay.arrivals < relayOrder.length && ta >= relay.nextArrival && chipQ(relayOrder[relay.arrivals]) >= 1) {
+        const c = relayOrder[relay.arrivals++];
+        motes.push({ kind: 'arrival', c, t0: ta, dur: 0.45 });
+        relay.nextArrival = ta + 0.15;
+        if (relay.arrivals === relayOrder.length) relay.launch = ta + 0.45;
+      }
+      if (ta >= relay.launch) {
+        const c = relayOrder[relay.next], next = relayOrder[(relay.next + 1) % relayOrder.length];
+        const span = ((cur.cards[next][2] - cur.cards[c][2]) * RAD + TAU) % TAU;
+        const dur = span / OMEGA;
+        motes.push({ kind: 'relay', c, next, t0: ta, dur });
+        relay.next = (relay.next + 1) % relayOrder.length;
+        relay.launch = ta + dur * 0.88;
+      }
+      flashes.plug = flashes.plug.map((f, i) => {
+        if (relay.attacks[i] > 0) { relay.attacks[i] -= dt; return f + (1 - f) * (1 - Math.exp(-dt / 0.15)); }
+        return f * Math.exp(-dt / 0.9);
+      });
+    }
     grT.forEach((t, i) => { gro[i] += (t - gro[i]) * (1 - Math.exp(-dt / 0.13)); if (Math.abs(t - gro[i]) < 0.002) gro[i] = t; });
     // Motes: a calm, continuous circulation once the wheel is drawn.
     if (ta >= T.motes) {
-      if (ta >= nextMote) { spawn(); nextMote = ta + (0.75 + Math.random() * 0.6) / (1 + 0.8 * boost); }
-      motes = motes.filter((mo) => mo.kind !== 'plug' || m >= 0.3); // back on 9, the energy goes with the cards
+      if (m < 0.5 && ta >= nextMote) { spawn(); nextMote = ta + (0.75 + Math.random() * 0.6) / (1 + 0.8 * boost); }
+      motes = motes.filter((mo) => !['relay', 'arrival'].includes(mo.kind) || m >= 0.3); // back on 9, the energy goes with the cards
       motes = motes.filter((mo) => { if (ta - mo.t0 >= mo.dur) { land(mo); return false; } return true; });
     }
   };
   const settleCur = () => {
     const a = Math.floor(clamp(m, 0, 2)), b = Math.min(2, a + 1), f = m - a;
     cur = f < 1e-4 ? stages[a] : mixed(stages[a], stages[b], f);
-    // On the way from 9 to 10 the circle contracts a little before it opens out bigger.
-    if (m > 0 && m < 0.6) { const c = 1 - 0.14 * Math.sin(Math.PI * m / 0.6); cur = { ...cur, ring: [cur.ring[0], cur.ring[1], cur.ring[2] * c, cur.ring[3] * c] }; }
     // The lens waits for the artists and the groups to go into the circle, then folds into the core.
     if (m > 0 && m < 1) { const q = smooth(clamp((m - 0.3) / 0.7)); cur = { ...cur, lens: stages[0].lens.map((v, i) => lerp(v, stages[1].lens[i], q)) }; }
     cell = tall ? 1 : Math.max(short ? 1 : 2, Math.round(2.45 * cur.k));
@@ -1059,9 +1079,10 @@
     raf = 0;
     if (!running || ctx !== entryCtx || !ctx?.isCurrent?.()) return;
     const clock = window.deckNow?.() ?? now;
-    const dt = Math.max(0, (clock - (last || clock)) / 1000);
+    const elapsed = Math.max(0, (clock - (last || clock)) / 1000), dt = Math.min(0.05, elapsed);
     last = clock;
-    if (unhanding) { if (!unstep(dt)) return; } else advance(dt, ctx);
+    // Lifecycle deadlines use the semantic clock even if rendering stalls. Only visual integration is capped.
+    if (unhanding) { if (!unstep(dt, elapsed)) return; } else advance(dt, elapsed, ctx);
     frame();
     raf = requestAnimationFrame((t) => tick(ctx, t));
   };
@@ -1069,11 +1090,11 @@
   const stop = () => { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; };
   const reset = () => {
     stop();
-    begun = false; morph = null; motes = []; ta = 0; boost = 0; attach = { dir: 0, t0: 0 }; lastM = -1; pulsed = chips.map(() => false);
+    begun = false; morph = null; motes = []; ta = 0; boost = 0; attach = { dir: 0, t0: 0 }; lastM = -1; relay = null;
     clearFullCards(); vis.fill(null);
     vids.forEach((v) => v && !v.paused && v.pause()); cardsRoot.inert = true; cardsRoot.classList.remove('is-live'); fly.style.opacity = '0';
     T = T_FRESH; hand = null; minkAt = null;
-    flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], ring: 0 };
+    flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], plug: chips.map(() => 0) };
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height);
     for (const key in labels) labels[key].style.opacity = '0';
     chips.forEach((c) => { c.style.opacity = '0'; });
@@ -1085,9 +1106,9 @@
     m = target;
     lastM = -1;
     if (motionOff() || ctx?.direct || ctx?.rest) {
-      ta = 30; attach = m >= 1 ? { dir: 1, t0: 0 } : { dir: 0, t0: 0 }; boost = m >= 1 ? 1 : 0; pulsed = [true, true, true];
+      ta = 30; attach = m >= 1 ? { dir: 1, t0: 0 } : { dir: 0, t0: 0 }; boost = m >= 1 ? 1 : 0; relay = m >= 1 ? { start: ta, arrivals: 6, next: 0, launch: ta + 1, attacks: chips.map(() => 0) } : null;
       motes = [];
-      if (m >= 1) [[0, 0.5], [1, 0.3], [2, 0.6], [3, 0.4], [4, 0.45], [5, 0.35]].forEach(([c, u]) => motes.push({ kind: 'plug', c, span: Math.PI, t0: 30 - u, dur: 1 }));
+      if (m >= 1) motes.push({ kind: 'relay', c: 1, next: 4, t0: 29.5, dur: 1 });
       else [['in', 1, 0, 0.42], ['in', 4, 1, 0.66], ['in', 6, 2, 0.3], ['eq', 2, 2, 0.5], ['eq', 5, 0, 0.72], ['hop', 0, 0, 0.5]].forEach(([kind, a, b, u]) => motes.push({ kind, a, b, t0: 30 - u, dur: 1 }));
       frame();
       finishOperation(ctx);
@@ -1130,7 +1151,7 @@
     stop();
     finishOperation(reverseCtx, result);
   };
-  const unstep = (dt) => {
+  const unstep = (dt, elapsed) => {
     const u = unhanding;
     if (!u.snapped) {
       const snap = window.AstridFlowers.snapshot();
@@ -1138,8 +1159,8 @@
       u.snapped = true;
       hand = { core: snap.core, k: snap.k, mo: minkIn(snap), dots: assign(snap.people, snap.core.x), done: false };
     }
-    ta -= dt;
-    spin += dt * 0.05;
+    ta -= elapsed;
+    spin += dt * 0.08;
     setOp(labels.astrid, smooth(k01(T.lens + 0.6, 0.5)));
     if (!u.shown && ta <= 0.5) { u.shown = true; reverseCtx.present(flSlide, '', 'dt-await'); }
     if (ta <= 0) { endUnhand(); return false; }
@@ -1197,7 +1218,7 @@
     }
     morph = { from: m, to: target, t0: ta, dur: duration };
     if (target >= 1 && attach.dir <= 0) attach = { dir: 1, t0: Math.max(ta + 0.9, T.chips) };
-    if (target === 0 && attach.dir > 0) { attach = { dir: -1, t0: ta, from: chips.map((_, i) => chipQ(i)) }; pulsed = [false, false, false]; }
+    if (target === 0 && attach.dir > 0) { attach = { dir: -1, t0: ta, from: chips.map((_, i) => chipQ(i)) }; relay = null; }
     stop(); entryCtx = ctx; start(ctx);
     return done;
   };
@@ -1258,7 +1279,7 @@
     if (!layout()) { finishOperation(ctx); return 'completed'; }
     stop();
     begun = true; morph = null; hand = null; m = activeStage; ta = Math.max(ta, T.chips + 1);
-    if (m >= 1) { attach = { dir: 1, t0: ta - T.chips - 1 }; boost = 1; pulsed = chips.map(() => true); }
+    if (m >= 1) { attach = { dir: 1, t0: ta - T.chips - 1 }; boost = 1; relay = { start: ta, arrivals: 6, next: 0, launch: ta + 1, attacks: chips.map(() => 0) }; }
     lastM = -1; minkAt = null; flyCell = 0;
     frame();
     finishOperation(ctx);
