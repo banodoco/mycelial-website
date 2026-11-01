@@ -2075,12 +2075,12 @@
     state.grants.clear();
   };
   const finishTurn = () => {
-    if (transactionDepth || !turn || !turn.network || !turn.entry) return;
+    if (transactionDepth || !turn || !turn.network || !turn.entry || !turn.textReady) return;
     clearTimeout(turn.watchdog);
+    const context = turn.context;
+    networkScene.finish(context);
     retirePresentation(turn.context);
     slides[turn.to]?.setAttribute('data-settled', '');
-    const context = turn.context;
-    networkScene?.settled?.(context);
     turn = null;
     setPace(1);
     if (pendingTurns.length) queueMicrotask(() => {
@@ -2329,9 +2329,14 @@
     }, { once: true });
     window.deckNav = context;
     const basePace = motionOff && !reduced ? STILL_PACE : stepPace || 1;
-    turn = { context, arrive, to, dir: stepped ? dir : 0, basePace, network: false, entry: false,
+    turn = { context, arrive, to, dir: stepped ? dir : 0, basePace, network: false, entry: false, textReady: false,
       entryRequested: reduced && !scenes.has(to), scenePending: 0, watchdog: null, started: window.deckNow(), rewinding: false,
       budget: from === null ? 6500 : turnBudgets[to] };
+    textReady.then((result) => {
+      if (result !== 'completed' || turn?.context !== context || !context.isCurrent()) return;
+      turn.textReady = true;
+      finishTurn();
+    });
     setPace(basePace);
     document.documentElement.dataset.dir = String(dir);
     i = to;

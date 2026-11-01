@@ -1140,11 +1140,9 @@
     const finish = () => { if (!done) { done = true; turning = null; } };
     const transition = {
       cancel() {
-        // A completed text reveal can still have its outgoing-slide retirement pending.
-        // Navigation aborts those timers too, so always retire its visual classes first.
+        // A completed reveal can still have an outgoing retirement pending.
+        // The next visit owns copy initialization and presentation retirement.
         timers.forEach(window.deckCancelLater);
-        context.present(prev, '', 'dt-leaving dt-release');
-        if (!prev.classList.contains('on')) hideText(prev);
         if (done) return;
         done = true;
         landed?.('cancelled');
@@ -1153,11 +1151,6 @@
         // Retire only this interrupted turn's transient drawing, not ambient growth.
         hyphae = hyphae.filter((h) => h.owner !== context);
         nodes = nodes.filter((n) => n.owner !== context);
-        context.present(prev, '', 'dt-leaving dt-release');
-        context.present(next, '', 'dt-entering');
-        clearText(current);
-        hideText(prev === current ? next : prev);
-        if (next !== current && prev !== current) hideText(next);
         dot.classList.remove('is-moving');
         if (anchor) place(anchor);
         turning = null;
@@ -1399,8 +1392,10 @@
       } catch { launch(); }
     }
   };
-  const settledText = (context) => {
-    if (context.isCurrent() && current === slides[context.to]) clearText(current);
+  const finishText = (context) => {
+    if (!context.isCurrent()) return;
+    textTweens.forEach((tw) => tw.stop());
+    clearText(slides[context.to]);
   };
-  window.deckRegisterNetwork({ enter, resize, settled: settledText });
+  window.deckRegisterNetwork({ enter, resize, finish: finishText });
 })();
