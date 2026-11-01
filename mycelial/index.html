@@ -937,7 +937,7 @@
   .fw-card:first-child .fw-media > img { object-position: 50% 30%; }
   /* A slow drift on the cards' pictures while they're out, so they feel alive without the weight of video. */
   .fw-cards.is-live .fw-media > img { animation: fw-drift 14s ease-in-out infinite alternate; }
-  @keyframes fw-drift { from { transform: scale(1.02); } to { transform: scale(1.08) translateY(-1.5%); } }
+  @keyframes fw-drift { from { transform: scale(1); } to { transform: scale(1.08) translateY(-1.5%); } }
   @media (prefers-reduced-motion: reduce) { .fw-cards.is-live .fw-media > img { animation: none; } }
   .fw-cbody { display: flex; flex-direction: column; align-items: flex-start; gap: .28em; padding: .7em .85em .8em; text-align: left; }
   .fw-cbody b { font: 400 1.12em/1.1 "EB Garamond", serif; color: var(--ink); }
