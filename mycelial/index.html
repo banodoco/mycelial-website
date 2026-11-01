@@ -529,8 +529,9 @@
   @keyframes as-spin { to { transform: rotate(360deg); } }
   .as-in { animation: as-in .35s cubic-bezier(.2, .7, .2, 1) both; } @keyframes as-in { from { opacity: 0; transform: translateY(6px); } }
   .as-composer { padding: 8px 10px 10px; border-top: 1px solid var(--as-line); }
-  .as-field { display: flex; align-items: center; gap: 8px; border: 1px solid var(--as-line); border-radius: 10px; background: var(--as-field); padding: 3px 3px 3px 10px; }
-  .as-input { flex: 1; min-width: 0; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--as-ink); }
+  .as-field { display: flex; align-items: flex-end; gap: 8px; border: 1px solid var(--as-line); border-radius: 10px; background: var(--as-field); padding: 6px 4px 4px 10px; }
+  /* Two lines tall: the first prompt is written to fit them. */
+  .as-input { flex: 1; min-width: 0; font-size: 11.5px; line-height: 1.4; height: 2.8em; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; color: var(--as-ink); }
   .as-ph { color: #8a8174; } .as-typed:not(:empty) + .as-ph { display: none; }
   .as-caret { display: inline-block; width: 1px; height: 1.1em; margin-left: 1px; vertical-align: -2px; background: var(--as-ink); opacity: 0; }
   .as.is-typing .as-caret { opacity: 1; animation: as-blink 1s steps(1) infinite; } @keyframes as-blink { 50% { opacity: 0; } }

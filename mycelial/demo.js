@@ -273,9 +273,9 @@
   // Each Qwen frame holds about a second in the preview before the next one is generated.
   const FRAME_STEP = 1.1;
   const BEATS = [
-    { at: 0.1, ask: 'Make me a 14-second bird flight through Lantern Valley, soaring past the mountains and descending into town.', reply: 'Lantern Valley is on your timeline: a 14-second live Three.js flight from the mountains down into town.', step: ['Built Lantern Valley', 'Three.js', '14 s live scene'], dur: 1.5 },
+    { at: 0.1, ask: 'Make a 14-second bird flight over Lantern Valley into town.', reply: 'Lantern Valley is on your timeline: a 14-second live Three.js flight from the mountains down into town.', step: ['Built Lantern Valley', 'Three.js', '14 s live scene'], dur: 1.5 },
     { at: 4.7, ask: 'Can you make me realistic frames for that using Qwen Image 2.1?', reply: 'I made four realistic reference frames through WaveSpeed: start, mountains, descent, and town.', step: ['Captured 4 reference frames', 'Qwen Image 2.1', 'WaveSpeed'], dur: FRAME_STEP * FRAMES.length },
-    { at: 9.6, ask: 'Now use MiniMax H3 to make a 14-second video using all four frames and the Three.js motion guide.', reply: 'MiniMax H3 used all four frames and the 14-second motion guide. The finished shot is trimmed to 14 seconds.', step: ['Generated the final shot', 'MiniMax H3', '4 frames + motion guide · 14 s'], dur: 2.8 },
+    { at: 9.6, ask: 'Now animate it with MiniMax H3 using the frames and guide.', reply: 'MiniMax H3 used all four frames and the 14-second motion guide. The finished shot is trimmed to 14 seconds.', step: ['Generated the final shot', 'MiniMax H3', '4 frames + motion guide · 14 s'], dur: 2.8 },
   ];
   for (let i = 1; i < BEATS.length; i++) {
     const previous = BEATS[i - 1], typeEnd = previous.at + previous.ask.length / CPS;
