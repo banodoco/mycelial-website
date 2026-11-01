@@ -27,7 +27,7 @@
       const scoped = () => { if (ctx?.isCurrent?.() && ctx === entryCtx) fn(); };
       el.addEventListener(type, scoped); mediaCleanups.push([el, type, scoped]);
     };
-    bind(videos[0], 'seeked', () => drawPic(now()));
+    videos.forEach((v) => bind(v, 'seeked', () => drawPic(now())));
     videos.forEach((v) => bind(v, 'loadeddata', () => { if (motionOff() && slide.classList.contains('on')) drawPic(now()); }));
     videos.forEach((v) => bind(v, 'error', () => drawPic(now())));
     anchors.forEach((img) => bind(img, 'load', () => { if (motionOff() && slide.classList.contains('on')) drawPic(now()); }));
@@ -182,7 +182,7 @@
     const src = view.mode === 'still' ? anchors[view.i] : view.mode === 'guide' ? guide : view.mode === 'play' ? videos[0] : null;
     const ready = !!src && (src.tagName === 'VIDEO' ? src.readyState >= 2 && !src.seeking : src.complete && src.naturalWidth > 0);
     root.classList.toggle('has-frame', ready || hasPicFrame);
-    const key = picFade || (view.mode === 'play' && ready) ? '' : `${view.mode}|${view.i}|${ready}`;
+    const key = picFade || ((view.mode === 'play' || view.mode === 'guide') && ready) ? '' : `${view.mode}|${view.i}|${ready}`;
     if (key && key === picKey) return; // the same picture as last frame
     picKey = key;
     const w = pic.width, h = pic.height;
@@ -200,9 +200,30 @@
     hasPicFrame = true;
   };
   const showStill = (i) => { if (view.mode !== 'still' || view.i !== i) fadePic(); view.mode = 'still'; view.i = i; view.seq = -1; videos.forEach((v) => v.pause()); };
-  const showGuide = () => { if (view.mode !== 'guide') fadePic(); view.mode = 'guide'; view.i = -1; view.seq = -1; videos.forEach((v) => v.pause()); };
+  // A play request can settle after this visit has stopped or the overview has opened.
+  // Only the current, unpaused guide view may keep the shared element playing.
+  const guideMayPlay = () => running && !paused && !motionBlocked() && entryCtx?.isCurrent?.() && view.mode === 'guide';
+  const playGuide = () => {
+    if (!guideMayPlay()) return;
+    guide.play().then(() => { if (!guideMayPlay()) guide.pause(); }).catch(() => {});
+  };
+  const showGuide = () => {
+    if (view.mode !== 'guide') fadePic();
+    view.mode = 'guide'; view.i = -1; view.seq = 0;
+    videos[0].pause();
+    guide.playbackRate = 2.5;
+    playGuide();
+  };
   const playFrom = (seqT, rate, prepared = false) => { fadePic(); view.mode = 'play'; view.seq = seqT; view.rate = rate; view.i = -2; view.seekPending = !prepared; };
   const stepPlay = () => {
+    if (view.mode === 'guide') {
+      if (guide.ended) headTo(SPAN, true);
+      else {
+        if (guide.paused && !paused && guide.readyState >= 2 && !guide.seeking) playGuide();
+        if (Number.isFinite(guide.duration) && guide.duration > 0) headTo(clamp(guide.currentTime / guide.duration) * SPAN, true);
+      }
+      return;
+    }
     if (view.mode !== 'play') return;
     const video = videos[0];
     if (video.readyState < 1) { headTo(view.seq, true); return; }
@@ -294,7 +315,8 @@
   const events = [];
   BEATS.forEach((b, bi) => {
     const T = beatTimes(b);
-    [b.at, T.send, T.reply, T.act, T.done].forEach((at) => events.push({ at }));
+    [b.at, T.send, T.reply, T.act].forEach((at) => events.push({ at }));
+    events.push({ at: T.done, guideEnd: bi === 0 });
     const offsets = bi === 0 ? [0.65, 1.2] : bi === 1
       ? FRAMES.flatMap((_, i) => [i * 0.55, i * 0.55 + 0.32, i * 0.55 + 0.5]) : [0.55];
     offsets.forEach((offset) => events.push({ at: T.act + offset, bi, offset }));
@@ -302,9 +324,16 @@
   events.push({ at: RESET }, { at: LOOP });
   events.sort((a, b) => a.at - b.at);
   const imageReady = (img) => img.complete && img.naturalWidth > 0;
-  let videoGateSeeking = false;
+  let videoGateSeeking = false, guideGateSeeking = false;
   const gateReady = (event) => {
-    if (event.bi === 0 && event.offset === 0.65) return imageReady(guide);
+    if (event.guideEnd) return guide.ended;
+    if (event.bi === 0 && event.offset === 0.65) {
+      if (guide.readyState < 1) return false;
+      if (!guideGateSeeking) {
+        try { guide.currentTime = 0; guideGateSeeking = true; } catch { return false; }
+      }
+      return guide.readyState >= 2 && !guide.seeking;
+    }
     if (event.bi === 1) {
       const i = FRAMES.findIndex((_, n) => Math.abs(event.offset - (n * 0.55 + 0.32)) < 1e-7);
       if (i >= 0) return imageReady(anchors[i]);
@@ -357,7 +386,7 @@
       eventIndex++;
       if (event.at === LOOP) {
         const remaining = target - LOOP;
-        clearAll(); td = 0; eventIndex = 0; videoGateSeeking = false;
+        clearAll(); td = 0; eventIndex = 0; videoGateSeeking = false; guideGateSeeking = false;
         target = remaining;
       }
     }
@@ -375,8 +404,8 @@
     const at = (x) => p < x - 1e-8 && a >= x - 1e-8;
     const touch = (el, on) => el.classList.toggle('is-touched', on);
     if (bi === 0) {
-      if (at(0)) { sceneEl.style.opacity = ''; sceneEl.classList.add('is-generating'); touch(sceneEl, true); total = SPAN; headTo(1); }
-      if (at(0.65)) { sceneEl.classList.remove('is-generating'); sceneEl.classList.add('is-ready'); showGuide(); headTo(SPAN); }
+      if (at(0)) { sceneEl.style.opacity = ''; sceneEl.classList.add('is-generating'); touch(sceneEl, true); total = SPAN; headTo(0, true); }
+      if (at(0.65)) { sceneEl.classList.remove('is-generating'); sceneEl.classList.add('is-ready'); showGuide(); headTo(0, true); }
       if (at(1.2)) touch(sceneEl, false);
     }
     if (bi === 1) {
@@ -626,7 +655,7 @@
       entryCompletion?.(ctx, 'completed'); wake(); return;
     }
     clearAll();
-    td = 0; wait = 0; eventIndex = 0; videoGateSeeking = false;
+    td = 0; wait = 0; eventIndex = 0; videoGateSeeking = false; guideGateSeeking = false;
     if (motionOff() || ctx?.rest || ctx?.direct) {
       paint('profile', 0, 0); entryCompletion?.(ctx, 'completed'); wake(); return;
     }
@@ -707,14 +736,15 @@
       if (raf) cancelAnimationFrame(raf);
       raf = 0;
       pausedVideos = videos.filter((v) => !v.paused);
-      pausedVideos.forEach((v) => v.pause());
+      // Also cancel a play request that has not yet changed the element's paused state.
+      videos.forEach((v) => v.pause());
     } else if (slide.classList.contains('on')) {
       // An entry deferred behind the overview has no scene to resume yet.
       if (pendingStart !== null) { start(pendingStart, entryCtx); return; }
       if (!paused) { if (!running) { running = true; last = now(); wake(); } return; }
       paused = false;
       last = now();
-      pausedVideos.forEach((v) => v.play().catch(() => {}));
+      pausedVideos.forEach((v) => { if (v === guide) playGuide(); else v.play().catch(() => {}); });
       pausedVideos = [];
       wake();
     }
