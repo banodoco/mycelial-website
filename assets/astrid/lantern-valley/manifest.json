@@ -35,6 +35,10 @@
     "file": "final.mp4",
     "source_sha256": "9afbe1674750162fbf47587790728fc5526f26e6845744bda3e99f07573e12ef"
   },
+  "final-vp9": {
+    "file": "final-vp9.webm",
+    "source_sha256": "9afbe1674750162fbf47587790728fc5526f26e6845744bda3e99f07573e12ef"
+  },
   "final-poster": {
     "file": "final-poster.webp",
     "source_sha256": "9afbe1674750162fbf47587790728fc5526f26e6845744bda3e99f07573e12ef",

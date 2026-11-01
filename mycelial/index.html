@@ -506,6 +506,7 @@
   .as-state::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #7fbf8f; vertical-align: 1px; }
   .as.is-working .as-state { opacity: 1; }
   .as-msgs { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 7px; padding: 10px 12px; overflow: hidden; transition: opacity .6s ease; }
+  @media (min-width: 761px) { .as-msgs { -webkit-mask-image: linear-gradient(to bottom, transparent, var(--as-ink) 18px); mask-image: linear-gradient(to bottom, transparent, var(--as-ink) 18px); } }
   .as.is-resetting .as-msgs { opacity: 0; }
   .as-msg { max-width: 88%; padding: 7px 11px; border-radius: 14px; font-size: 12px; line-height: 1.45; }
   .as-msg.is-user { align-self: flex-end; background: var(--as-orange); color: #25241f; }
@@ -533,9 +534,10 @@
   .as-surface { border-radius: 9px; border: 1px solid var(--as-line); background: var(--as-panel); box-shadow: 0 1px 0 rgb(255 255 255 / .05) inset, 0 12px 24px -10px rgb(0 0 0 / .45); min-height: 0; }
   .as-player { display: grid; grid-template-rows: minmax(0, 1fr) auto; padding: 8px 8px 6px; }
   .as-screen { position: relative; min-height: 0; border-radius: 6px; background: #12100d; overflow: hidden; }
+  .as-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .as.has-frame .as-poster { opacity: 0; }
   .as-pic { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .as-empty { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; color: #6f675b; transition: opacity .3s ease; }
-  .as.has-pic .as-empty { opacity: 0; }
+  .as-empty { display: none; }
   .as-media { display: none; }
   .as-transport { display: flex; align-items: center; gap: 5px; padding: 6px 2px 0; font-size: 10.5px; color: var(--as-muted); }
   .as-btn { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; color: var(--as-ink); }
@@ -564,17 +566,9 @@
   .as-clip.is-generating { border-color: rgb(56 189 248 / .45); background: linear-gradient(100deg, rgb(44 40 34) 30%, rgb(70 64 54) 50%, rgb(44 40 34) 70%) 0 0 / 300% 100%; animation: as-shimmer 1.1s linear infinite; }
   @keyframes as-shimmer { to { background-position: -150% 0; } }
   .as-clip.is-touched { border-color: var(--as-sky); box-shadow: 0 0 0 1px rgb(56 189 248 / .35), 0 0 16px rgb(56 189 248 / .25); }
-  .as-clip .as-fx { position: absolute; right: 6px; top: 4px; padding: 1px 6px; border-radius: 4px; background: rgb(124 95 176 / .85); color: #f3eaff; font-size: 9px; opacity: 0; transform: translateY(-4px); transition: opacity .3s ease, transform .3s ease; }
-  .as-clip.has-fx .as-fx { opacity: 1; transform: none; }
-  .as-fxclip { position: absolute; top: 4px; bottom: 4px; left: 0; border-radius: 5px; border: 1px solid rgb(167 139 250 / .6); background: rgb(91 70 140 / .55);
-    color: #efe7ff; font-size: 10px; display: flex; align-items: center; gap: 6px; padding: 0 8px; white-space: nowrap; overflow: hidden; clip-path: inset(0 100% 0 0); }
-  .as-fxclip em { font-style: normal; color: #c9b8f0; font-size: 9px; }
-  .as-fxclip.on { clip-path: inset(0 0 0 0); transition: clip-path .7s cubic-bezier(.4, 0, .2, 1); }
-  .as-clip.is-motion { transform-origin: 50% 100%; transform: scaleY(0); transition: transform .35s cubic-bezier(.2, .7, .2, 1), opacity .35s ease, box-shadow .3s ease, border-color .3s ease; }
-  .as-clip.is-motion.is-grown { transform: none; }
   .as-playhead { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; margin-left: -1px; will-change: transform; background: var(--as-sky); box-shadow: 0 0 6px rgb(56 189 248 / .5); pointer-events: none; z-index: 2; }
   .as-playhead::before { content: ""; position: absolute; top: 0; left: -4px; width: 10px; height: 8px; border-radius: 2px 2px 5px 5px; background: var(--as-sky); }
-  .as.is-resetting .as-clip, .as.is-resetting .as-fxclip { opacity: 0; }
+  .as.is-resetting .as-clip { opacity: 0; }
   /* Arriving from slide 4 the panels draw out of the rings (demo.js): hidden while the frames form, then the shells and their contents resolve. */
   .as-flight { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; display: none; }
   .as-panel { transition: opacity .45s ease; } .as-panel > * { transition: opacity .5s ease .2s; }
@@ -589,17 +583,39 @@
     .as { margin: 6px 0 0; } /* the slide's own 90 px foot already clears the footer */
     .as-stage { width: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, .75fr) minmax(0, 1.5fr); }
     .as-chat { grid-column: 1; grid-row: 2; } .as-edit { grid-column: 1; grid-row: 3; padding: 6px; gap: 6px; }
-    .as-tl { --as-hcol: 52px; } .as-th em { display: none; }
+    .as-tl { --as-hcol: 78px; } .as-th { gap: 5px; padding-right: 6px; padding-left: 6px; } .as-th span { display: none; } .as-th em { display: block; overflow: hidden; }
     .as-msg, .as-step { font-size: 10px; } .as-composer { display: none; }
-    /* Slimmer lanes (demo.js sets their heights inline), so the preview keeps its room. */
-    .as-tl > .as-th:nth-child(3), .as-lane[data-track="V2"] { height: 30px !important; }
-    .as-tl > .as-th:nth-child(5), .as-lane[data-track="V1"] { height: 44px !important; }
+    /* Three compact rows keep the 14-second scene, frames and output visible together. */
+    .as-tl > .as-th:nth-child(3), .as-lane[data-track="V3"] { height: 26px !important; }
+    .as-tl > .as-th:nth-child(5), .as-lane[data-track="V2"] { height: 34px !important; }
+    .as-tl > .as-th:nth-child(7), .as-lane[data-track="V1"] { height: 30px !important; }
     .as-clip .as-kind { display: none; } /* no room for both badges on a slim clip; its name stays */
   }
   /* A phone with its browser's bars showing: the headline in fewer, longer lines, so the editor keeps its preview. */
   @media (max-width: 760px) and (orientation: portrait) and (max-height: 740px) {
     html[data-ver="f"] .as-host h1 { max-width: none; font-size: 1.3rem; }
-    .as-stage { grid-template-rows: auto minmax(0, .6fr) minmax(0, 1.5fr); }
+    .as-stage { grid-template-rows: auto minmax(0, .5fr) minmax(0, 1.6fr); }
+    .as-edit { padding: 4px; gap: 3px; }
+    .as-player { padding: 3px; }
+    .as-timeline { padding-bottom: 2px; }
+    .as-ruler { height: 16px; }
+    .as-ruler span { top: 2px; }
+    .as-ruler span::before { top: -2px; height: 16px; }
+    .as-tl > .as-th:nth-child(3), .as-lane[data-track="V3"] { height: 24px !important; }
+    .as-tl > .as-th:nth-child(5), .as-lane[data-track="V2"] { height: 26px !important; }
+    .as-tl > .as-th:nth-child(7), .as-lane[data-track="V1"] { height: 24px !important; }
+    .as-clip { top: 3px; bottom: 3px; }
+    .as-transport { padding-top: 2px; }
+    .as-btn { width: 20px; height: 20px; }
+    .as-pill { padding: 2px 5px; font-size: 9px; }
+    .as-chat-head { gap: 6px; padding: 5px 8px; font-size: 10.5px; }
+    .as-avatar { width: 18px; height: 18px; }
+    .as-msgs { gap: 3px; padding: 4px 8px; }
+    .as-msgs > :not(:last-child) { display: none; }
+    .as-msg, .as-step { padding: 4px 7px; font-size: 9px; line-height: 1.3; }
+    .as-step { column-gap: 6px; }
+    .as-step code { font-size: 8.5px; }
+    .as-msg.as-welcome { font-size: 9px; line-height: 1.3; }
     /* 1 and 3: slightly smaller words, so the collage and the chart (fitted to what is left) stay a good size. */
     .slide.vc-host, .slide.gap-host { padding-top: 56px; }
     .vc-host .split h1, .gap-host .split h1 { font-size: 1.6rem; }
@@ -749,7 +765,7 @@
   .st-card code { font: 400 12.5px ui-monospace, "SF Mono", Menlo, monospace; color: #e7c27c; }
   .st-more { margin-top: 8px; font: 400 11.5px/1.4 Inter, system-ui, sans-serif; letter-spacing: .015em; color: #aca395; }
   .st-card em { display: block; margin-top: 9px; padding-top: 7px; border-top: 1px solid rgb(255 255 255 / .07); font: italic 400 14px/1.2 "Cormorant Garamond", serif; color: #c9a86e; }
-  /* The preview, as on slide 5: the light study playing, its title on it, the transport beneath. */
+  /* The preview, as on slide 5, with the transport beneath. */
   .st-preview { display: grid; grid-template-rows: minmax(0, 1fr) 36px; gap: 6px; padding: 12px 14px 8px; }
   .st-screen { position: relative; border-radius: 10px; background: #12100d; overflow: hidden; }
   .st-pic { position: absolute; left: 50%; top: 50%; height: 95%; aspect-ratio: 16 / 9; transform: translate(-50%, -50%); }
@@ -760,8 +776,8 @@
   .st-btn.is-play { background: rgb(255 255 255 / .06); border: 1px solid var(--as-line); }
   .st-time { margin-left: 4px; font-variant-numeric: tabular-nums; color: var(--as-ink); }
   .st-pill { margin-left: auto; padding: 4px 10px; border-radius: 999px; background: rgb(255 255 255 / .06); border: 1px solid var(--as-line); color: var(--as-ink); font-size: 13px; }
-  /* The timeline: V2 Effects (community-made) over V1 Video. */
-  .st-timeline { display: grid; grid-template-columns: 122px minmax(0, 1fr); grid-template-rows: 34px minmax(0, 1fr) minmax(0, 1.3fr); padding: 0 14px 12px 0; }
+  /* The timeline: the finished video, reference frames and source scene. */
+  .st-timeline { display: grid; grid-template-columns: 122px minmax(0, 1fr); grid-template-rows: 34px repeat(3, minmax(0, 1fr)); padding: 0 14px 12px 0; }
   .st-th { display: flex; align-items: center; gap: 9px; padding: 0 14px; border-right: 1px solid var(--as-line); font-size: 15px; font-weight: 500; }
   .st-th em { font-style: normal; font-weight: 400; color: var(--as-muted); }
   .st-th svg { color: var(--as-muted); flex: none; }
@@ -1473,10 +1489,11 @@
     .as-stage { grid-template-columns: minmax(0, 36fr) minmax(0, 64fr); row-gap: 4px; }
     .as-edit { padding: 5px; gap: 4px; }
     .as-player { padding: 4px; }
-    .as-tl { --as-hcol: 64px; } .as-th em { display: none; }
+    .as-tl { --as-hcol: 64px; } .as-th span { display: none; } .as-th em { display: block; }
     .as-msg, .as-step { font-size: 10.5px; }
-    .as-tl > .as-th:nth-child(3), .as-lane[data-track="V2"] { height: 26px !important; }
-    .as-tl > .as-th:nth-child(5), .as-lane[data-track="V1"] { height: 36px !important; }
+    .as-tl > .as-th:nth-child(3), .as-lane[data-track="V3"] { height: 22px !important; }
+    .as-tl > .as-th:nth-child(5), .as-lane[data-track="V2"] { height: 28px !important; }
+    .as-tl > .as-th:nth-child(7), .as-lane[data-track="V1"] { height: 24px !important; }
     .as-clip .as-kind { display: none; }
     html[data-ver="f"] .st-host { padding-top: 30px; }
     html[data-ver="f"] .st-host > .split { grid-template-columns: minmax(0, 28vw); }
@@ -1648,22 +1665,22 @@
         <div class="body">No installs, no node graphs, locally or in the cloud. The agent picks the right models and community-made tools, and when nothing fits, it builds what you need. Every result comes back to your timeline for you to change and build on: you stay the artist. We start with video because that's where open models are moving fastest — and where they're hardest to use.</div>
       </div>
     </div>
-    <div class="as" data-astrid-demo role="img" aria-label="Astrid at work: asked in the chat, she generates three anchor images, animates them, and layers community-made effects on top, while the editor's preview and timeline change with each step">
+    <div class="as" data-astrid-demo role="img" aria-label="Lantern Valley: Astrid builds a 14-second live Three.js flight, adds four Qwen Image 2.1 frames made through WaveSpeed at 0, 6.5, 10, and 13 seconds, then previews the MiniMax H3 result made from those frames and the motion guide">
       <div class="as-stage">
         <div class="as-seat"><canvas class="as-mink" aria-hidden="true"></canvas></div>
         <a class="as-try" href="https://astrid.haus/" target="_blank" rel="noopener">Try Astrid <span aria-hidden="true">→</span></a>
         <section class="as-panel as-chat" aria-hidden="true">
           <header class="as-chat-head"><span class="as-avatar"><img data-src="../assets/astrid/mink-profile.png" alt=""></span><span>Astrid</span><em class="as-state">working</em></header>
-          <div class="as-msgs"></div>
+          <div class="as-msgs"><div class="as-msg is-astrid as-welcome">This tour replays the finished Lantern Valley project. No new generation runs.</div></div>
           <div class="as-composer"><div class="as-field"><span class="as-input"><span class="as-typed"></span><span class="as-ph">Ask Astrid to edit your project…</span><i class="as-caret"></i></span><b class="as-send"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></b></div></div>
         </section>
         <section class="as-panel as-edit" aria-hidden="true">
           <div class="as-surface as-player">
-            <div class="as-screen"><canvas class="as-pic"></canvas><span class="as-empty">Nothing on the timeline yet</span></div>
-            <div class="as-transport"><b class="as-btn"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></b><b class="as-btn as-play"><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path class="as-i-play" d="M7 4.5v15L19.5 12z"/><path class="as-i-pause" d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/></svg></b><span class="as-time">0:00 / 0:00</span><span class="as-pill">1280x720</span></div>
+            <div class="as-screen"><img class="as-poster" data-src="../assets/astrid/lantern-valley/final-poster.webp" alt="Lantern Valley H3 preview poster"><canvas class="as-pic"></canvas><span class="as-empty" aria-hidden="true">Lantern Valley · MiniMax H3</span></div>
+            <div class="as-transport"><b class="as-btn"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></b><b class="as-btn as-play"><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path class="as-i-play" d="M7 4.5v15L19.5 12z"/><path class="as-i-pause" d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/></svg></b><span class="as-time">0:00 / 0:14</span><span class="as-pill">1280×720 · 30 fps</span></div>
           </div>
           <div class="as-surface as-timeline"><div class="as-tl"></div></div>
-          <div class="as-media"><video data-src="../assets/astrid/first-light.mp4" data-poster="../assets/astrid/first-light-anchor.jpg" muted playsinline preload="none"></video><video data-src="../assets/astrid/passing-shapes.mp4" data-poster="../assets/astrid/passing-shapes-anchor.jpg" muted playsinline preload="none"></video><video data-src="../assets/astrid/quiet-finish.mp4" data-poster="../assets/astrid/quiet-finish-anchor.jpg" muted playsinline preload="none"></video><img data-src="../assets/astrid/first-light-anchor.jpg" alt=""><img data-src="../assets/astrid/passing-shapes-anchor.jpg" alt=""><img data-src="../assets/astrid/quiet-finish-anchor.jpg" alt=""></div>
+          <div class="as-media"><video data-src="../assets/astrid/lantern-valley/final.mp4" data-type='video/mp4; codecs="avc1.64001e"' data-fallback="../assets/astrid/lantern-valley/final-vp9.webm" data-poster="../assets/astrid/lantern-valley/final-poster.webp" muted playsinline preload="none"></video><img class="as-guide-media" data-src="../assets/astrid/lantern-valley/motion-guide.webp" alt=""><img class="as-frame-media" data-src="../assets/astrid/lantern-valley/start-preview.webp" alt=""><img class="as-frame-media" data-src="../assets/astrid/lantern-valley/mountains-preview.webp" alt=""><img class="as-frame-media" data-src="../assets/astrid/lantern-valley/descent-preview.webp" alt=""><img class="as-frame-media" data-src="../assets/astrid/lantern-valley/town-preview.webp" alt=""></div>
         </section>
       </div>
     </div>
@@ -2261,12 +2278,15 @@
   const warmedMedia = new Map();
   const warmMedia = (slide) => {
     if (!slide) return Promise.resolve();
+    // Keep the editor's media warm whenever the stack is requested, including a direct visit.
+    const dependencies = slide.matches('.st-host') ? [warmMedia(document.querySelector('.as-host'))] : [];
     slide.dataset.pictures = 'on';
     loadPictures(slide);
     slide.dispatchEvent(new Event('deck-pictures')); // pictures a script keeps outside the slide (the flywheel's cards)
-    const pending = [];
+    const pending = dependencies;
     slide.querySelectorAll('video[data-src], video[src]').forEach((video) => {
-      const source = video.dataset.src || video.getAttribute('src');
+      const source = video.dataset.fallback && video.dataset.type && !video.canPlayType(video.dataset.type)
+        ? video.dataset.fallback : video.dataset.src || video.getAttribute('src');
       if (!source) return;
       const url = new URL(source, document.baseURI).href;
       video.preload = 'auto';
@@ -2292,7 +2312,17 @@
     return Promise.all(pending);
   };
   window.warmDeckMedia = warmMedia;
-  const warmOpening = () => { if (slides[0]?.classList.contains('on')) warmMedia(slides[0]); };
+  let demoWarmScheduled = false;
+  const warmOpening = () => {
+    if (slides[0]?.classList.contains('on')) warmMedia(slides[0]);
+    // The small onboarding media is likely to be needed before a user reaches slide 5.
+    if (!demoWarmScheduled) {
+      demoWarmScheduled = true;
+      const warmDemo = () => warmMedia(document.querySelector('.as-host'));
+      if (window.requestIdleCallback) requestIdleCallback(warmDemo, { timeout: 1000 });
+      else setTimeout(warmDemo, 100);
+    }
+  };
   if (document.documentElement.classList.contains('dt-intro')) {
     const intro = new MutationObserver(() => {
       if (document.documentElement.classList.contains('dt-intro')) return;
