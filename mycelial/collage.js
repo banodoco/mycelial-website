@@ -770,16 +770,13 @@
       via = 'mouse';
     });
     note.addEventListener('click', (e) => e.stopPropagation());
-    // A press anywhere else closes it.
-    addEventListener('pointerdown', (e) => { if (note.classList.contains('is-open') && !note.contains(e.target) && !mark.contains(e.target)) show(false); }, true);
-    // From the keyboard: focus opens it, Tab goes on into its link and from there on to the ring, Esc closes it.
-    let hush = false; // Esc hands focus back to the mark without opening it again
+    // From the keyboard: focus opens it, Tab goes on into its link and from there on to the ring.
+    let hush = false;
     mark.addEventListener('focus', () => { if (!hush && mark.matches(':focus-visible')) { show(true); keyed = true; } });
     mark.addEventListener('blur', (e) => { if (keyed && !note.contains(e.relatedTarget)) show(false); });
     const link = note.querySelector('a');
     addEventListener('keydown', (e) => {
       if (!note.classList.contains('is-open')) return;
-      if (e.key === 'Escape') { show(false); hush = true; mark.focus({ preventScroll: true }); hush = false; return; }
       if (e.key !== 'Tab') return;
       if (document.activeElement === mark && !e.shiftKey) { e.preventDefault(); link.focus({ preventScroll: true }); }
       else if (document.activeElement === link) {
@@ -788,6 +785,15 @@
         show(false);
         tiles[0].focus({ preventScroll: true });
       }
+    });
+    window.deckOverlay?.register({
+      isOpen: () => note.classList.contains('is-open'),
+      contains: (target) => note.contains(target),
+      close: (reason) => {
+        const returnFocus = reason === 'escape' && (mark.contains(document.activeElement) || note.contains(document.activeElement));
+        show(false);
+        if (returnFocus) { hush = true; mark.focus({ preventScroll: true }); hush = false; }
+      },
     });
     new MutationObserver(() => { if (!slide.classList.contains('on')) show(false); }).observe(slide, { attributes: true, attributeFilter: ['class'] });
     window.deckOnResize(() => { if (note.classList.contains('is-open')) place(); });
@@ -893,18 +899,16 @@
     syncPause();
   };
 
+  window.deckOverlay?.register({
+    isOpen: () => !!open,
+    contains: (target) => frame2.contains(target) || page.contains(target),
+    close: () => hide(),
+  });
+
   // The prize's name under the ring links to its site; following it leaves the slide where it is.
   label.querySelector('a')?.addEventListener('click', (e) => e.stopPropagation());
   box2.addEventListener('click', (e) => { if (!e.target.closest('.vc-frame, .vc-page')) hide(); });
-  // While it's open, the deck's keys and swipes wait; Esc closes.
-  const DECK_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'PageUp', 'PageDown', 'Home', 'End', 'o', 'O', 'v', 'V', 'Escape']);
-  addEventListener('keydown', (e) => {
-    if (!open || !DECK_KEYS.has(e.key)) return;
-    e.stopPropagation();
-    e.preventDefault();
-    if (e.key === 'Escape') hide();
-  }, true);
-  addEventListener('touchend', (e) => { if (open) e.stopPropagation(); }, true);
+  // The shared overlay manager handles outside clicks, Escape, navigation keys and swipes.
 
   // Laid out only while slide 1 is on (or about to be taken apart or put back by slide 2, which asks for faces());
   // a change while it is away waits for its return. The sizes it leaves behind are kept, so the observer below never

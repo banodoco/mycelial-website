@@ -1032,6 +1032,11 @@
   // A plane is a bigger target for the same thing: hovering its layer's flag or tapping the plane itself.
   planes.forEach((pl, i) => pl.addEventListener('click', () => pinTo(i)));
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && hold.pin >= 0 && slide.classList.contains('on')) { hold.pin = -1; react(); } });
+  window.deckOverlay?.register({
+    isOpen: () => hold.pin >= 0 && slide.classList.contains('on'),
+    contains: (target) => cards[hold.pin]?.contains(target) || false,
+    close: () => { hold.pin = -1; react(); },
+  });
   // The mink, as on slide 5: hovering flashes her eye; clicking turns her to face you and back.
   minkCv.addEventListener('pointerenter', () => { if (still || build || mk.seq || mk.pose !== 'profile') return; mk.hover = now(); });
   minkCv.addEventListener('click', (e) => { e.stopPropagation(); if (!still && !build && !mk.seq) { mk.hover = null; mk.seq = now(); } });

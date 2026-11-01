@@ -810,7 +810,12 @@
     front = pick && pick !== front ? pick : null;
     if (motionOff()) scheduleFrame();
   });
-  addEventListener('keydown', (e) => { if (e.key === 'Escape' && running) { front = null; if (motionOff()) scheduleFrame(); } });
+  const clearFront = () => { front = null; if (motionOff()) scheduleFrame(); };
+  window.deckOverlay?.register({
+    isOpen: () => !!front,
+    contains: (target) => slide.querySelector('.sf-card')?.contains(target) || false,
+    close: clearFront,
+  });
 
   resize();
   fontHandler = null;
