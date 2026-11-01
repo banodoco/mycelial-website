@@ -69,7 +69,7 @@
   // `face` is what the icon shows instead of that crop, where a logo or an image reads better in a circle;
   // `full` is the fuller card it grows into on slide 10, the homepage's own (journey/cards/, content/content.js).
   const CARDS = [
-    { short: 'Open-source AI art prize', name: 'Arca Gidan', line: 'The Arca Gidan Prize is an open source AI art competition.', href: 'https://arcagidan.com/', crop: [0.5, 0.5, 1],
+    { short: 'Open-source AI art competition', name: 'Arca Gidan', line: 'The Arca Gidan Prize is an open source AI art competition.', href: 'https://arcagidan.com/', crop: [0.5, 0.5, 1],
       media: '<img data-src="../assets/cards/arca/poster-2.jpg" alt="">',
       full: { name: 'Arca Gidan Prize', line: 'The Arca Gidan Prize is an open source AI art competition. We wish to provide a reason for people to push themselves and open models to their limits.',
         door: 'See the winners →', href: 'https://arcagidan.com/winners/edition-2',
@@ -81,7 +81,7 @@
         door: 'Try Astrid →', href: 'https://astrid.haus/', stage: SEAT(' fw-astrid-full', true) } },
     // Banodoco: the homepage's card, its live Discord digest (the captured snapshot, assets/cards/discord/fallback.json);
     // its icon is the Banodoco logo, the site's own B (assets/brand/mark-b-mask-96.png, as in the header's .logo .mark).
-    { short: 'Where the community lives', name: 'Banodoco', line: 'Banodoco is where the community actually lives, day to day.', href: 'https://discord.gg/NnFxGvx94b', label: 'Join →', crop: [0.17, 0.83, 0.42], focus: '.fw-dc-p .fw-avs',
+    { short: 'Where the community hangs out', name: 'Banodoco', line: 'Banodoco is where the community actually lives, day to day.', href: 'https://discord.gg/NnFxGvx94b', label: 'Join →', crop: [0.17, 0.83, 0.42], focus: '.fw-dc-p .fw-avs',
       media: `<span class="fw-dc"><span class="fw-dc-ch"># daily_summaries</span><span class="fw-dc-t">H3 Tooling Week: Timeline Director, Studio Node Pack, and a Training Adapter Land</span><span class="fw-dc-p"><span class="fw-avs">${AV('persoon')}${AV('loreweavr')}${AV('ashmotv')}</span><b>20,000+</b> people</span></span>`,
       face: '<span class="fw-face fw-face-b"><i></i></span>',
       full: { name: 'Banodoco', line: 'Banodoco is where the community actually lives, day to day. Artists, engineers, and knowledge sharers, in one room — it is where the work gets shown, argued over, and picked up by someone else.',
