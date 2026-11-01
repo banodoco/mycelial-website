@@ -271,7 +271,7 @@
   const CPS = 30, FINISHED_HOLD = 10;
   // The three beats replay the source tour prompts in order; later starts follow the prior act's done beat.
   const BEATS = [
-    { at: 0.4, ask: 'Make me a 14-second bird flight through Lantern Valley, soaring past the mountains and descending into town.', reply: 'Lantern Valley is on your timeline: a 14-second live Three.js flight from the mountains down into town.', step: ['Built Lantern Valley', 'Three.js', '14 s live scene'], dur: 1.5 },
+    { at: 0.1, ask: 'Make me a 14-second bird flight through Lantern Valley, soaring past the mountains and descending into town.', reply: 'Lantern Valley is on your timeline: a 14-second live Three.js flight from the mountains down into town.', step: ['Built Lantern Valley', 'Three.js', '14 s live scene'], dur: 1.5 },
     { at: 4.7, ask: 'Can you make me realistic frames for that using Qwen Image 2.1?', reply: 'I made four realistic reference frames through WaveSpeed: start, mountains, descent, and town.', step: ['Captured 4 reference frames', 'Qwen Image 2.1', 'WaveSpeed'], dur: 2.6 },
     { at: 9.6, ask: 'Now use MiniMax H3 to make a 14-second video using all four frames and the Three.js motion guide.', reply: 'MiniMax H3 used all four frames and the 14-second motion guide. The finished shot is trimmed to 14 seconds.', step: ['Generated the final shot', 'MiniMax H3', '4 frames + motion guide · 14 s'], dur: 2.8 },
   ];
@@ -448,7 +448,7 @@
   const sg = sky.getContext('2d');
   let morph = null;
   // Type as the panels resolve, so the first message lands during the mink's turn.
-  const MORPH = { rings: [0.05, 1.15], fly: [0, 1.1], outline: [0.1, 0.9], pixels: [0.85, 0.45], resolve: 1.05, handoff: 1.35, turn: 1.55, end: 1.75, demo: 0.6 };
+  const MORPH = { rings: [0.05, 1.15], fly: [0, 1.1], outline: [0.1, 0.9], pixels: [0.85, 0.45], resolve: 1.05, handoff: 1.35, end: 1.75 };
   // A rounded rectangle as n points spaced evenly round it, clockwise from the top centre.
   const roundRect = (b, rad, n) => {
     const { left: l, top: t, right: r, bottom: bt } = b, pts = [];
@@ -515,7 +515,7 @@
         { img: snap.layers.agent, from: { x: rings[0].cx, y: rings[0].cy }, src: { w: rings[0].r * 2, h: rings[0].r * 2 }, to: fit({ w: rings[0].r * 2, h: rings[0].r * 2 }, chat) },
         { img: snap.layers.face, from: { x: rings[1].cx, y: rings[1].cy }, src: { w: rings[1].r * 2, h: rings[1].r * 2 }, to: fit({ w: rings[1].r * 2, h: rings[1].r * 2 }, edit) },
       ],
-      steps: { resolve: false, handoff: false, turn: false },
+      steps: { resolve: false, handoff: false },
     };
     window.AstridCore.hide();
   };
@@ -594,7 +594,6 @@
     }
     if (!m.steps.resolve && e >= MORPH.resolve) { m.steps.resolve = true; root.classList.remove('is-morphing'); }
     if (!m.steps.handoff && e >= MORPH.handoff) { m.steps.handoff = true; root.classList.remove('is-minkless'); }
-    if (!m.steps.turn && e >= MORPH.turn) { m.steps.turn = true; turn(); }
     if (e >= MORPH.end) { endMorph(); return false; }
     return true;
   };
@@ -660,7 +659,7 @@
       paint('profile', 0, 0); entryCompletion?.(ctx, 'completed'); wake(); return;
     }
     const snap = fromCore && window.AstridCore && window.AstridCore.snapshot();
-    if (snap) { startMorph(snap); wait = MORPH.demo; }
+    if (snap) startMorph(snap);
     else window.deckLater(() => { if (ctx?.isCurrent?.()) entryCompletion?.(ctx, 'completed'); }, 1800, ctx); // deliberate entry stage when no Core picture is available
     wake();
   };
@@ -692,7 +691,7 @@
     if (!snap) return false;
     startMorph(snap, true, reverseCtx); // the same paths, measured from the editor as it stands (it hides slide 4's picture)
     morph.back = { e: MORPH.end - 1e-3, last: 0, shown: false };
-    morph.steps = { resolve: true, handoff: true, turn: true };
+    morph.steps = { resolve: true, handoff: true };
     ctx.present(slide, 'dt-rewind');
     ctx.present(coreSlide, 'dt-return dt-await');
     if (raf) cancelAnimationFrame(raf);
@@ -705,7 +704,7 @@
     b.e = Math.max(0, b.e - Math.max(0, (t - (b.last || t)) / 1000));
     b.last = t;
     const e = b.e;
-    morph.steps = { resolve: e >= MORPH.resolve, handoff: e >= MORPH.handoff, turn: true };
+    morph.steps = { resolve: e >= MORPH.resolve, handoff: e >= MORPH.handoff };
     if (e < MORPH.resolve + 0.5) root.classList.add('as-unmorph'); // the panels fade as their frames come back (as they faded in)
     root.classList.toggle('is-morphing', e < MORPH.resolve);
     root.classList.toggle('is-minkless', e < MORPH.handoff);
