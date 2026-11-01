@@ -644,7 +644,8 @@
   .pa-side span { display: block; font-size: .78em; color: #b8a98f; font-style: italic; }
   .pa-core { color: #f0c67e; }
   @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px) {
-    /* Upright, as on slide 4, the picture and the words are one group in the middle of the screen: the words are
+    /* Narrow, as on slide 4, the picture and the words are one group in the middle of the screen (upright, the rule
+       below sets the words at the foot instead): the words are
        centred under the picture's room (40 px + the picture, 72.38vw - 17.4 px tall at the phone's scale, + a 34 px
        gap), and pays.js hangs the picture just above the label. The words take slide 4's size. */
     html[data-ver="f"] .pa-host { justify-content: center; padding-left: max(16px, 9vw); padding-top: calc(72.38vw + 56.6px); padding-bottom: 90px; }
@@ -652,9 +653,12 @@
     html[data-ver="f"] .pa-host > .split > :first-child { grid-column: 1; text-align: center; }
     html[data-ver="f"] .pa-host h1 { font-size: clamp(1.6rem, 7vw, 2.2rem); max-width: 20ch; margin: 0 auto; }
   }
-  /* A short upright screen has no room to centre the group: the words go to the foot, the picture above them. */
-  @media (max-width: 760px) and (orientation: portrait) and (max-height: 640px) {
-    html[data-ver="f"] .pa-host { justify-content: flex-end; padding-top: 40px; }
+  /* Upright, the story runs up the screen (pays.js): devices at the foot, Astrid above them, everyone else fanning out
+     at the top. The words sit under the whole picture at slide 9's size, with the same air above the footer. */
+  @media (max-width: 760px) and (orientation: portrait) {
+    html[data-ver="f"] .pa-host { justify-content: flex-end; padding: 0 max(20px, 6vw) max(84px, calc(env(safe-area-inset-bottom) + 60px)); }
+    html[data-ver="f"] .pa-host > .split { width: 100%; }
+    html[data-ver="f"] .pa-host h1 { max-width: 23ch; font-size: clamp(1.4rem, 5.75vw, 1.9rem); line-height: 1.12; }
   }
   /* Version F, slide 6: where it goes (stack.js). The text on the left; on the right slide 5's product taken apart into
      one exploded stack of thin planes (preview, timeline, agent, tools & effects, models / runtime), tied by fine gold
@@ -1682,7 +1686,7 @@
   </section>
 
   <section class="slide pa-host" data-v="f">
-    <div class="pa" data-astrid-pays role="img" aria-label="A few machines running Astrid locally feed the Astrid core; past a boundary, the core reaches a great many people using the hosted version"><canvas class="pa-canvas" aria-hidden="true"></canvas></div>
+    <div class="pa" data-astrid-pays role="img" aria-label="Local devices below feed Astrid in the middle; above it, the hosted service reaches a widening crowd"><canvas class="pa-canvas" aria-hidden="true"></canvas></div>
     <div class="num">07<span class="act">How it pays</span></div>
     <div class="split">
       <div>
