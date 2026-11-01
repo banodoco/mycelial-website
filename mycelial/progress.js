@@ -66,14 +66,17 @@ window.installDeckProgress = ({ slides, go, current }) => {
     button.addEventListener('pointerenter', (event) => { if (event.pointerType !== 'touch') { touch = false; show(index); } });
     button.addEventListener('pointerleave', (event) => { if (event.pointerType !== 'touch') leave(); });
     button.addEventListener('focus', () => { if (!touch) show(index); });
-    button.addEventListener('click', () => {
-      if (touch && armed !== index) { show(index); armed = index; }
-      else jump(index);
+    button.addEventListener('click', (event) => {
+      if (touch && armed !== index) { show(index); armed = index; return; }
+      jump(index);
+      // A pointer click hands focus back to the deck, so no stale outline or preview stays on the bar
+      // (keyboard activation, event.detail 0, keeps focus here).
+      if (event.detail > 0) button.blur();
     });
     button.addEventListener('keydown', (event) => {
       touch = false;
       // Horizontal arrows keep the deck's normal navigation, even after a bar click.
-      if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { hide(); return; }
+      if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { hide(); button.blur(); return; } // the deck takes these; focus leaves the bar
       if (['ArrowUp', 'ArrowDown'].includes(event.key)) {
         event.preventDefault(); event.stopPropagation();
         const next = Math.max(0, Math.min(slides.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)));
