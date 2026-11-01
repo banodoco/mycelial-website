@@ -936,11 +936,12 @@
   .fw-stat a::before { content: ""; position: absolute; inset: -13px; }
   .fw-cbody em { color: #a39684; }
   .fw-cards.is-live .fw-card { pointer-events: auto; }
-  /* Preview cards show their short line; the call to action waits for hover or focus (the full card keeps it visible). */
-  @media (hover: hover) {
-    .fw-card .fw-cbody a, .fw-card .fw-cbody em { opacity: 0; transition: opacity .2s ease; }
-    .fw-card:hover .fw-cbody a, .fw-card:hover .fw-cbody em, .fw-card:focus-within .fw-cbody a, .fw-card:focus-within .fw-cbody em { opacity: 1; }
-  }
+  /* Preview cards show their short line, sized to the card so it always fills two lines. Their call to action is
+     visually hidden (still reachable by keyboard and screen readers): hovering a card opens the full card, which shows it. */
+  .fw-card { container-type: inline-size; }
+  .fw-card .fw-cbody span { font-size: 10.75cqi; line-height: 1.2; }
+  @media (min-width: 761px) { .fw-card .fw-cbody b { font-size: 13cqi; } } /* the title stays a step above its line */
+  .fw-card .fw-cbody a, .fw-card .fw-cbody em { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .fw-card.is-icon { cursor: pointer; }
   .fw-cbody a:hover, .fw-cbody a:focus-visible { color: #ffe3a8; text-decoration: underline; text-underline-offset: 3px; outline: none; }
   /* Astrid's card: a still of slide 5's editor, its preview over its timeline, and the mink's seat. */
