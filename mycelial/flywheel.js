@@ -270,7 +270,7 @@
     artistsLabel: [[200, 38], [200, 400], [200, 410]],
     inspire: [[350, 330], [200, 400], [200, 410]],
     equip: [[52, 330], [200, 400], [200, 410]],
-    cards: [ // on a phone they are icons on 10 too, tapped open
+    cards: [ // 10's are preview cards, placed in viewport pixels by tallTen(); on 11 they are icons on the halo
       { at: [[200, 330], 'ring', 'ring'], th: [232, 232, 240] },
       { at: [[200, 330], 'ring', 'ring'], th: [270, 270, 270] },
       { at: [[200, 330], 'ring', 'ring'], th: [128, 128, 120] },
@@ -412,8 +412,27 @@
       const t = c[2] * RAD, [cx, cy, rx, ry] = st.ring;
       c[0] = cx + rx * Math.cos(t); c[1] = cy + ry * Math.sin(t);
     }));
+    if (tall) tallTen(stages[1]);
     paintSeat();
     return true;
+  };
+  // A card's type follows its width (place() sizes it); upright on a phone it stays readable however narrow the card.
+  const cardFont = (w) => Math.max(tall ? 12 : 11.5, (w / 250) * 15.5);
+  // Upright on a phone, slide 10's six stand as preview cards as on a wide screen (picture, name and a line), three
+  // above the ring and three below in the desktop's order, and the ring takes the room between the rows. Placed here,
+  // in viewport pixels, from the cards' own heights measured at that width (place() then keeps that width).
+  const TALL_TEN = { rows: [[0, 1, 4], [2, 5, 3]], th: [[232, 270, 308], [128, 90, 52]] };
+  const tallTen = (st) => {
+    const top = wordsBottom + 18, bottom = H - 70, gx = 12, gap = 8, w = (W - 2 * gx - 2 * gap) / 3;
+    chips.forEach((el) => { el.style.width = `${w.toFixed(1)}px`; el.style.fontSize = `${cardFont(w).toFixed(2)}px`; el.classList.remove('is-compact'); });
+    const hs = chips.map((el) => el.offsetHeight), rowH = TALL_TEN.rows.map((row) => Math.max(...row.map((i) => hs[i])));
+    // The ring stays as flat as the desktop's; on a taller screen the rows close round it, the whole centred in the room.
+    const rx = W * 0.34, spare = Math.max(0, (bottom - top - rowH[0] - rowH[1] - 2 * (rx * 0.5 + 16)) / 2);
+    const rowTop = [top + spare, bottom - spare - rowH[1]];
+    st.cw = w;
+    TALL_TEN.rows.forEach((row, r) => row.forEach((i, c) => { st.cards[i] = [gx + w / 2 + c * (w + gap), rowTop[r] + hs[i] / 2, TALL_TEN.th[r][c]]; }));
+    const r0 = rowTop[0] + rowH[0], r1 = rowTop[1];
+    st.ring = [W / 2, (r0 + r1) / 2, rx, Math.max(24, (r1 - r0) / 2 - 16)];
   };
 
   // ---- Time and state ----------------------------------------------------------------------------
@@ -442,9 +461,9 @@
   const flightQ = () => (m >= 1 ? 1 : m <= 0 ? 0 : smooth(clamp(unease(m) / 0.7)));
   const seatCell = () => (tall || short ? 1 : 2);
   const lensCell = () => (tall ? 1 : Math.max(short ? 1 : 2, Math.round(2.45 * stages[0].k))); // her cell in the lens on 9 (as settleCur's)
-  // A card's own openness: whole on 10, an icon on 11 (and on a phone); hovered, focused or tapped, it opens again.
+  // A card's own openness: whole on 10, an icon on 11 (and on a phone on its side); hovered, focused or tapped, it opens again.
   const iconR = () => (tall ? 23 : short ? 22 : 32);
-  const openBase = () => (tall || short ? 0 : m <= 1 ? 1 : 1 - smooth(clamp((m - 1) / 0.8)));
+  const openBase = () => (short ? 0 : m <= 1 ? 1 : 1 - smooth(clamp((m - 1) / 0.8)));
   // The quiet core of the ecosystem at the centre on 10, once the lens has folded into it.
   const coreQ = () => smooth(clamp((m - 0.3) / 0.5)) * (1 - smooth(clamp((m - 1.1) / 0.4)));
 
@@ -786,7 +805,7 @@
     // wraps much as the true width would, and a morph costs a handful of layouts rather than one every frame.
     const cw = cur.cw;
     if (!morph || Math.abs(cw - layW) > cw * 0.06) layW = cw;
-    const w = layW, ls = cw / w, ws = `${w.toFixed(1)}px`, fs = `${Math.max(tall ? 10.5 : 11.5, (w / 250) * 15.5).toFixed(2)}px`, compact = !tall && w < 176;
+    const w = layW, ls = cw / w, ws = `${w.toFixed(1)}px`, fs = `${cardFont(w).toFixed(2)}px`, compact = !tall && w < 176;
     chips.forEach((el, i) => { // 1. sizing
       if (el.style.width !== ws) { el.style.width = ws; el.style.fontSize = fs; dirty[i] = true; }
       if (el.classList.contains('is-compact') !== compact) { el.classList.toggle('is-compact', compact); dirty[i] = true; }
@@ -854,7 +873,7 @@
       paintFly(lerp(lerp(sx, tx, fq), tx, into), lerp(lerp(sy, ty, fq) - Math.sin(Math.PI * fq) * 60 * k, ty, into), u, (1 - into) * (1 - other));
     } else if (fly.style.opacity !== '0') fly.style.opacity = '0';
   };
-  // Slide 10's cards grow into their fuller cards, from the small card's box (or its icon's, on a phone) to the
+  // Slide 10's cards grow into their fuller cards, from the small card's box (or its icon's, on a phone on its side) to the
   // whole card, kept on screen; the small card steps out beneath. Each fuller card is sized (from slide 10's own card
   // width) and measured once a layout.
   let wordsBottom = 0;
@@ -886,7 +905,7 @@
       // and grows to the whole card where it fits. Transform and opacity only, so a grow repaints nothing.
       const a0 = icon ? fullSH[i] / 2 : (v.h / s0) / 2, s = lerp(s0, s1, g);
       const hw = (fullW * s1) / 2, hh = (FH * s1) / 2;
-      const tx = clamp(v.x, m_ + hw, W - m_ - hw), ty = clamp(v.y, top_ + hh, bottom - hh);
+      const tx = tall ? W / 2 : clamp(v.x, m_ + hw, W - m_ - hw), ty = clamp(v.y, top_ + hh, bottom - hh);
       const cx = lerp(v.x, tx, g), cy = lerp(v.y, ty, g), ax = fullW / 2, ay = lerp(a0, FH / 2, g);
       if (el.style.visibility) el.style.visibility = '';
       el.style.pointerEvents = grT[i] ? 'auto' : 'none';
