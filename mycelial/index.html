@@ -506,6 +506,7 @@
   .as-state::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #7fbf8f; vertical-align: 1px; }
   .as.is-working .as-state { opacity: 1; }
   .as-msgs { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 7px; padding: 10px 12px; overflow: hidden; transition: opacity .6s ease; }
+  @media (min-width: 761px) { .as-msgs { -webkit-mask-image: linear-gradient(to bottom, transparent, var(--as-ink) 18px); mask-image: linear-gradient(to bottom, transparent, var(--as-ink) 18px); } }
   .as.is-resetting .as-msgs { opacity: 0; }
   .as-msg { max-width: 88%; padding: 7px 11px; border-radius: 14px; font-size: 12px; line-height: 1.45; }
   .as-msg.is-user { align-self: flex-end; background: var(--as-orange); color: #25241f; }
@@ -764,7 +765,7 @@
   .st-card code { font: 400 12.5px ui-monospace, "SF Mono", Menlo, monospace; color: #e7c27c; }
   .st-more { margin-top: 8px; font: 400 11.5px/1.4 Inter, system-ui, sans-serif; letter-spacing: .015em; color: #aca395; }
   .st-card em { display: block; margin-top: 9px; padding-top: 7px; border-top: 1px solid rgb(255 255 255 / .07); font: italic 400 14px/1.2 "Cormorant Garamond", serif; color: #c9a86e; }
-  /* The preview, as on slide 5: the light study playing, its title on it, the transport beneath. */
+  /* The preview, as on slide 5, with the transport beneath. */
   .st-preview { display: grid; grid-template-rows: minmax(0, 1fr) 36px; gap: 6px; padding: 12px 14px 8px; }
   .st-screen { position: relative; border-radius: 10px; background: #12100d; overflow: hidden; }
   .st-pic { position: absolute; left: 50%; top: 50%; height: 95%; aspect-ratio: 16 / 9; transform: translate(-50%, -50%); }
@@ -775,8 +776,8 @@
   .st-btn.is-play { background: rgb(255 255 255 / .06); border: 1px solid var(--as-line); }
   .st-time { margin-left: 4px; font-variant-numeric: tabular-nums; color: var(--as-ink); }
   .st-pill { margin-left: auto; padding: 4px 10px; border-radius: 999px; background: rgb(255 255 255 / .06); border: 1px solid var(--as-line); color: var(--as-ink); font-size: 13px; }
-  /* The timeline: V2 Effects (community-made) over V1 Video. */
-  .st-timeline { display: grid; grid-template-columns: 122px minmax(0, 1fr); grid-template-rows: 34px minmax(0, 1fr) minmax(0, 1.3fr); padding: 0 14px 12px 0; }
+  /* The timeline: the finished video, reference frames and source scene. */
+  .st-timeline { display: grid; grid-template-columns: 122px minmax(0, 1fr); grid-template-rows: 34px repeat(3, minmax(0, 1fr)); padding: 0 14px 12px 0; }
   .st-th { display: flex; align-items: center; gap: 9px; padding: 0 14px; border-right: 1px solid var(--as-line); font-size: 15px; font-weight: 500; }
   .st-th em { font-style: normal; font-weight: 400; color: var(--as-muted); }
   .st-th svg { color: var(--as-muted); flex: none; }
