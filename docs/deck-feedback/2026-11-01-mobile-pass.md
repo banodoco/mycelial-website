@@ -37,6 +37,31 @@ Status: `open` → `diagnosing` → `fixing` → `review` → `accepted` (or `wo
 | M11 | Mobile, general | Back-and-forth navigation leaves content missing or overlapping. Assume a structural smell (ambiguous slide→element ownership, uncancelled timers or rAF, late async loads, transitions racing) rather than a set of separate bugs. | structural | | | Astra (Sol if escalated) | open |
 | D1 | Desktop | Desktop feels much better overall. Same slide 9 change as M8. | — | see M8 | see M8 | Terra | open |
 | X1 | Evidence | Hannah's iPhone screenshot, 14:46, mycelial.works, slide **6/11**: slide 5's Astrid editor is still painted **under** slide 6. Visible bleed-through: the "Astrid" header row (avatar plus the word "Astrid" colliding with the "Editing" pill), the editor's panel frames, the transport row "0:12 / 0:28" with the "1280×720" badge, the timeline ruler (0:00 … 0:25) with its playhead, and the preview video frame (orange ball) under the "Models" pill. Slide 6's own layer (stack, pills, "Rendering" detail card) renders on top. Result: two slides composited at once. Canonical repro target for M5 and M11. | — | | | — | n/a |
+| X2 | Evidence | Hannah: the X1 bleed-through happens "when I click back and forth, not when I just go into it normally". A normal (direct) entry into slide 6 has its own **lag**, which may be the same friction surfacing differently. So: (a) the bleed is order- and interruption-dependent, meaning an exit is cancelled or overtaken by a re-entry; (b) entry lag is a separate measurable signal (long tasks, decode or layout on entry). | — | | | — | n/a |
+
+## Problems → avenues to explore
+
+The feedback reduces to four themes. Theme A matters most because it likely explains several symptoms at once.
+
+| Theme | Items | Working hypotheses (to prove or kill, not assume) |
+|---|---|---|
+| **A. Slide lifecycle is not trustworthy on mobile** | M4 M5 M9 M11 X1 X2 | 1. An exit (fade or teardown) is cancelled or overtaken when the user re-enters mid-transition, so the old slide's layer stays painted (X1). 2. Ownership is ambiguous: slides share DOM or modules (slide 5's editor feeds slide 6's stack; slides 9, 10 and 11 are all `fw-host`), so "which slide owns this element right now" has no single answer. 3. Uncancelled timers, rAF loops, video playback or observers keep running after exit, then fire into the wrong slide. 4. Async work (image or video decode, font load, layout measurement) resolves after the slide has changed, and nothing checks that the slide is still current. 5. Card or marker placement measures geometry before layout settles on mobile (wrong or zero rects → late jump-in, only 3 of N cards, pointers aiming at nothing). 6. Mobile-only paths (touch/swipe, `visualViewport` resize, URL-bar collapse, scroll-snap) trigger re-layout mid-transition. 7. Plain heavy work on entry (the X2 lag): long tasks, synchronous decode, large layout or paint. |
+| **B. Mobile layout composition** | M1 M8 M10 (D1) | Positions tuned for desktop and carried over to portrait. Each needs a mobile-specific arrangement: labels pinned to the top (M1), the stat above the visual (M8), a vertically centred group (M10). |
+| **C. Mobile orientation of a diagram** | M6 | The slide 7 flow should run bottom to top on portrait. A real re-layout, not a rotation: labels must stay readable and the composition must be rebalanced. |
+| **D. Content** | M3 | Replace slide 5's hypothetical example with the real Astrid onboarding clips. Find the assets, then fit them into the existing demo frame. |
+
+## Plan (waves)
+
+| Wave | Who (model @ effort) | What | Output |
+|---|---|---|---|
+| 1 | Terra `gpt-6.1-terra` @ high | Build the lean visual harness (`tools/deck/lab.mjs`): device profiles, scripted nav sequences (incl. rapid back-and-forth), filmstrip contact sheets, a **ghost detector** (anything from a non-active slide still visible), a card-count probe, entry-lag metrics, a repeat-N failure rate. Produce the baseline evidence pack. | harness + baseline pack |
+| 1 | Astra `gpt-6-astra` @ high, plus `gpt-6-luna` sub-agents | Map the real slide lifecycle and ownership model. Root-cause theme A with mechanisms (file:line). Propose an ownership model and a fix order. **Diagnosis only**, no deck edits yet. | structural report |
+| 1 | Luna `gpt-6-luna` @ high | Find the Astrid onboarding clips (M3) in `astrid-app`, plus how slide 5's current example is wired. | asset report |
+| 2 | Astra (resumed session) | Implement the approved lifecycle fix in its worktree. Each race gets a scripted repro that fails before and passes after (20× under throttling). | lifecycle fix |
+| 2 | Terra | Layout items M1, M8/D1, M10. Content swap M3. First pass at M6. | layout fixes |
+| 2b | Claude Opus 5.5 sub-agents | Taste passes on M1, M3, M6 and M10: try variants, compare them with the harness, pick one. | refined variants |
+| esc | Sol `gpt-6.1-sol` @ xhigh | Only if Astra's root cause is uncertain, its fix fails the repro, or the refactor is architectural. Independent second diagnosis. | second opinion |
+| 3 | Claude (coordinator) | Merge worktrees. Re-run the full harness pack on the merged branch. Adjudicate each row against the bar. Report back to Hannah. | accepted ledger |
 
 ## Acceptance bar (Claude adjudicates)
 
