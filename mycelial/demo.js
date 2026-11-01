@@ -270,9 +270,11 @@
 
   const CPS = 30, FINISHED_HOLD = 10;
   // The three beats replay the source tour prompts in order; later starts follow the prior act's done beat.
+  // Each Qwen frame holds about a second in the preview before the next one is generated.
+  const FRAME_STEP = 1.1;
   const BEATS = [
     { at: 0.1, ask: 'Make me a 14-second bird flight through Lantern Valley, soaring past the mountains and descending into town.', reply: 'Lantern Valley is on your timeline: a 14-second live Three.js flight from the mountains down into town.', step: ['Built Lantern Valley', 'Three.js', '14 s live scene'], dur: 1.5 },
-    { at: 4.7, ask: 'Can you make me realistic frames for that using Qwen Image 2.1?', reply: 'I made four realistic reference frames through WaveSpeed: start, mountains, descent, and town.', step: ['Captured 4 reference frames', 'Qwen Image 2.1', 'WaveSpeed'], dur: 2.6 },
+    { at: 4.7, ask: 'Can you make me realistic frames for that using Qwen Image 2.1?', reply: 'I made four realistic reference frames through WaveSpeed: start, mountains, descent, and town.', step: ['Captured 4 reference frames', 'Qwen Image 2.1', 'WaveSpeed'], dur: FRAME_STEP * FRAMES.length },
     { at: 9.6, ask: 'Now use MiniMax H3 to make a 14-second video using all four frames and the Three.js motion guide.', reply: 'MiniMax H3 used all four frames and the 14-second motion guide. The finished shot is trimmed to 14 seconds.', step: ['Generated the final shot', 'MiniMax H3', '4 frames + motion guide · 14 s'], dur: 2.8 },
   ];
   for (let i = 1; i < BEATS.length; i++) {
@@ -318,7 +320,7 @@
     [b.at, T.send, T.reply, T.act].forEach((at) => events.push({ at }));
     events.push({ at: T.done, guideEnd: bi === 0 });
     const offsets = bi === 0 ? [0.65, 1.2] : bi === 1
-      ? FRAMES.flatMap((_, i) => [i * 0.55, i * 0.55 + 0.32, i * 0.55 + 0.5]) : [0.55];
+      ? FRAMES.flatMap((_, i) => [i * FRAME_STEP, i * FRAME_STEP + 0.32, i * FRAME_STEP + 0.5]) : [0.55];
     offsets.forEach((offset) => events.push({ at: T.act + offset, bi, offset }));
   });
   events.push({ at: RESET }, { at: LOOP });
@@ -335,7 +337,7 @@
       return guide.readyState >= 2 && !guide.seeking;
     }
     if (event.bi === 1) {
-      const i = FRAMES.findIndex((_, n) => Math.abs(event.offset - (n * 0.55 + 0.32)) < 1e-7);
+      const i = FRAMES.findIndex((_, n) => Math.abs(event.offset - (n * FRAME_STEP + 0.32)) < 1e-7);
       if (i >= 0) return imageReady(anchors[i]);
     }
     if (event.bi === 2 && event.offset === 0.55) {
@@ -410,7 +412,7 @@
     }
     if (bi === 1) {
       FRAMES.forEach((frame, i) => {
-        const el = anchorEls[i], start = i * 0.55;
+        const el = anchorEls[i], start = i * FRAME_STEP;
         if (at(start)) { el.style.opacity = ''; el.classList.add('is-generating'); touch(el, true); headTo(frame.at + 0.5); }
         if (at(start + 0.32)) { el.classList.remove('is-generating'); el.classList.add('is-ready'); showStill(i); total = SPAN; }
         if (at(start + 0.5)) touch(el, false);
