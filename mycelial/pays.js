@@ -24,6 +24,10 @@
   const easeIO = (q) => (q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2);
   const THREAD = '240,200,119', NODE = '255,217,145', CORE = '255,241,214';
   const TAU = Math.PI * 2;
+  // Portrait compositions are selectable during review with ?pa=A|B|C. The
+  // transform is shared so the variants can change proportions without forking
+  // any drawing, animation, or slide handoff code.
+  const portraitVariant = (new URLSearchParams(location.search).get('pa') || 'A').toUpperCase();
 
   // ---- Labels -------------------------------------------------------------------
   const tag = (cls, html) => {
@@ -85,8 +89,10 @@
   // On a phone the picture sits above the text, positions stretched down by ky (across by k). Beside the text on
   // the left, it is laid out in the room to the right: positions stretch by kx across and ky down. Either way,
   // sizes (circles, the lens, the mink, dots) scale by k so nothing is squashed.
-  let W = 0, H = 0, dpr = 1, k = 1, kx = 1, ky = 1, ox = 0, oy = 0, LW = 1, small = false;
-  const X = (rx) => ox + (rx - (small ? 836 : 150)) * (small ? k : kx), Y = (ry) => oy + (ry - 415) * ky, P = (rx, ry) => ({ x: X(rx), y: Y(ry) });
+  let W = 0, H = 0, dpr = 1, k = 1, kx = 1, ky = 1, ox = 0, oy = 0, LW = 1, small = false, portraitFlow = false, portraitSideRail = false;
+  const X = (rx, ry = 415) => portraitFlow ? ox + (ry - 415) * kx : ox + (rx - (small ? 836 : 150)) * (small ? k : kx);
+  const Y = (ry, rx = 750) => portraitFlow ? oy + (1580 - rx) * ky : oy + (ry - 415) * ky;
+  const P = (rx, ry) => ({ x: X(rx, ry), y: Y(ry, rx) });
   let seed = 1;
   const rnd = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
   let machines = [], feeds = [], lens = null, lensLines = [], arcs = [], rays = [], boundary = null, cell = 3;
@@ -102,9 +108,40 @@
     dpr = Math.min(2, devicePixelRatio || 1);
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
     small = W <= 760 && (H >= W || H > 500); // a phone held upright (one on its side takes the wide layout)
+    portraitFlow = small && H >= W && ['A', 'B', 'C'].includes(portraitVariant);
+    portraitSideRail = portraitFlow && portraitVariant === 'C';
+    slide.dataset.pa = portraitVariant;
     const num = slide.querySelector('.num'), top = num.getBoundingClientRect().top - b.top;
     const low = !small && H <= 500; // a phone on its side: less air round the picture, and the footer to clear
-    if (small) { // the picture spans reference x 150..1580 and y 70..760
+    if (portraitSideRail) { // C: keep the full-height flow in a right corridor, with copy in a clear left rail.
+      const railRight = Math.min(144, W * 0.37);
+      const flowLeft = railRight + 8;
+      const deviceY = H - Math.max(118, 0.18 * H);
+      const hostY = Math.max(60, 0.1 * H);
+      kx = Math.min((W - flowLeft - 16) / 690, 0.34);
+      ky = (deviceY - hostY) / (1580 - 213);
+      k = Math.min(kx, ky, 0.62);
+      ox = flowLeft + (W - flowLeft - 16) / 2;
+      oy = hostY;
+    } else if (portraitFlow && portraitVariant === 'B') { // B: copy first, then devices below Astrid and the hosted crowd rising toward it.
+      const copy = slide.querySelector('.split > :first-child').getBoundingClientRect();
+      const flowTop = copy.bottom - b.top + 52;
+      const flowBottom = H - Math.max(112, (window.visualViewport?.offsetTop || 0) + 104);
+      kx = (W - 32) / 690; // reference y becomes screen x (the builders' and audience's spread)
+      ky = Math.max(1, flowBottom - flowTop) / 1430; // reference x rises from devices toward the copy
+      k = Math.min(kx, ky, 0.62);
+      ox = W / 2;
+      oy = flowTop;
+    } else if (portraitFlow) { // A: rotate the story upward: devices below, Astrid in the middle, hosted people above.
+      const copy = slide.querySelector('.split').getBoundingClientRect();
+      const visualTop = Math.max(46, 24 + (window.visualViewport?.offsetTop || 0));
+      const visualBottom = Math.max(visualTop + 210, copy.top - b.top - 16);
+      kx = (W - 32) / 690; // reference y becomes screen x (the builders' and audience's spread)
+      ky = (visualBottom - visualTop) / 1430; // reference x is turned upward, with independent spacing
+      k = Math.min(kx, ky, 0.62); // glyphs and the Astrid lens stay proportionate
+      ox = W / 2;
+      oy = visualTop;
+    } else if (small) { // the picture spans reference x 150..1580 and y 70..760
       // Upright, the picture and the words are one group (the phone CSS centres the words under the picture's
       // room): it stands half as tall again as its width allows, and its foot sits 34 px above the label.
       k = Math.min((W - 24) / 1430, (top - 74) / 690);
@@ -132,24 +169,32 @@
     cell = small ? 1 : low ? 2 : k >= 0.45 ? 4 : 3;
     const lw0 = small ? CORE_REF.w * k : Math.max(CORE_REF.w * k, 23 * cell + 40);
     lens = { c: P(CORE_REF.cx, CORE_REF.cy), w: lw0, h: Math.max(CORE_REF.h * k, lw0 * 1.66) };
-    const lensL = { x: lens.c.x - lens.w / 2, y: lens.c.y }, lensR = { x: lens.c.x + lens.w / 2, y: lens.c.y };
+    const lensL = portraitFlow ? { x: lens.c.x, y: lens.c.y + lens.h / 2 } : { x: lens.c.x - lens.w / 2, y: lens.c.y }, lensR = portraitFlow ? { x: lens.c.x, y: lens.c.y - lens.h / 2 } : { x: lens.c.x + lens.w / 2, y: lens.c.y };
     // Its three strands, each side traced from the middle out (built once here, not every frame).
     lensLines = [[0, 1.2, 0.95], [6 * k, 0.9, 0.55], [-4 * k, 0.8, 0.35]].flatMap(([inset, w, a]) => [-1, 1].map((side) => ({ h: line(lensPts(side, 40, inset)), w, a })));
     machines = [[213, 277, 'term'], [213, 424, 'gpu'], [213, 570, 'graph']].map(([x, y, kind], i) => ({ ...P(x, y), r: 52 * k, kind, i }));
     feeds = machines.map((m, i) => {
-      const end = { x: lensL.x + 2 * k, y: lensL.y + (i - 1) * 12 * k };
-      const start = { x: m.x + m.r, y: m.y };
-      const dx = end.x - start.x;
-      const h = line(bez(start, { x: start.x + dx * 0.4, y: start.y }, { x: end.x - dx * 0.4, y: end.y }, end, 48));
+      const end = portraitFlow
+        ? { x: lens.c.x + (i - 1) * 0.22 * lens.w, y: lens.c.y + lens.h / 2 + 2 * k }
+        : { x: lensL.x + 2 * k, y: lensL.y + (i - 1) * 12 * k };
+      const start = portraitFlow ? { x: m.x, y: m.y - m.r } : { x: m.x + m.r, y: m.y };
+      const dx = end.x - start.x, dy = end.y - start.y;
+      const c0 = portraitFlow ? { x: start.x + dx * 0.4, y: start.y + dy * 0.4 } : { x: start.x + dx * 0.4, y: start.y };
+      const c1 = portraitFlow ? { x: end.x - dx * 0.4, y: end.y - dy * 0.4 } : { x: end.x - dx * 0.4, y: end.y };
+      const h = line(bez(start, c0, c1, end, 48));
       h.nodes = [0.3, 0.68].map((f) => f * h.total);
       return h;
     });
     // The boundary: hosted begins past this line (clear of the lens when the picture is narrowed).
-    boundary = { x: Math.max(X(836), lens.c.x + lens.w / 2 + 16 * k), y0: Y(120), y1: Y(705) };
+    boundary = portraitFlow
+      ? { horizontal: true, y: Y(415, 836), x0: X(836, 120), x1: X(836, 705) }
+      : { x: Math.max(X(836), lens.c.x + lens.w / 2 + 16 * k), y0: Y(120), y1: Y(705) };
     // Everyone else: wave fronts of people widening out from the core, as in the reference: each an arc
     // (centre u, radius r, half-height hh, in reference units), the last a dense band.
     arcs = [];
-    const FRONTS = [[895, 225, 180, 18, 1], [1000, 265, 225, 22, 1], [1103, 327, 275, 28, 1], [1206, 359, 330, 46, 3]];
+    const FRONTS = portraitSideRail
+      ? [[895, 225, 160, 18, 1], [1000, 265, 230, 22, 1], [1103, 327, 300, 28, 1], [1206, 359, 345, 46, 3]]
+      : [[895, 225, 180, 18, 1], [1000, 265, 225, 22, 1], [1103, 327, 275, 28, 1], [1206, 359, 330, 46, 3]];
     FRONTS.forEach(([u, r, hh, n, rows], ai) => {
       const dots = [], span = Math.asin(Math.min(1, hh / r));
       for (let row = 0; row < rows; row++) {
@@ -160,7 +205,7 @@
           dots.push({ ...P(u + Math.cos(a) * (rr + jit), 415 + Math.sin(a) * (rr + jit)), a: a / span, r: rows > 1 ? 1.1 + rnd() * 0.8 : 1.7 + rnd() * 0.4, bright: rnd() < (rows > 1 ? 0.3 : 0.15) });
         }
       }
-      const thread = rows > 1 ? null : line(Array.from({ length: 41 }, (_, j) => { const a = -span + (2 * span * j) / 40; return [X(u + Math.cos(a) * r), Y(415 + Math.sin(a) * r)]; }));
+      const thread = rows > 1 ? null : line(Array.from({ length: 41 }, (_, j) => { const a = -span + (2 * span * j) / 40, rx = u + Math.cos(a) * r, ry = 415 + Math.sin(a) * r; return [X(rx, ry), Y(ry, rx)]; }));
       // For the waves: how far each person (and each stretch of thread) is from the core; and a phase to twinkle by.
       dots.forEach((d, j) => { d.dc = Math.hypot(d.x - lens.c.x, d.y - lens.c.y); d.ph = (j * 2.39996 + ai * 1.7) % TAU; });
       if (thread) thread.dc = thread.pts.slice(1).map(([x, y], j) => Math.hypot((x + thread.pts[j][0]) / 2 - lens.c.x, (y + thread.pts[j][1]) / 2 - lens.c.y));
@@ -168,16 +213,34 @@
     });
     // Rays from the core's right tip out to the far front, a few bright people on them.
     rays = [[-0.42, 0.62], [-0.27, 0.45], [-0.1, 0.78], [0.03, 0.3], [0.16, 0.66], [0.3, 0.5], [0.45, 0.85]].map(([a, mark], i) => {
-      const start = { x: lensR.x, y: lensR.y + (i - 3) * 4 * k };
+      const start = portraitFlow ? { x: lensR.x + (i - 3) * 4 * k, y: lensR.y } : { x: lensR.x, y: lensR.y + (i - 3) * 4 * k };
       const end = P(820 + Math.cos(a) * 760, 415 + Math.sin(a) * 760);
       return Object.assign(line([[start.x, start.y], [end.x, end.y]]), { mark, i });
     });
     // Labels.
     labels.local.style.fontSize = labels.hosted.style.fontSize = `${Math.max(small ? 10.5 : 13, 23 * k).toFixed(1)}px`;
     labels.core.style.fontSize = `${Math.max(small ? 11 : 14, 25 * k).toFixed(1)}px`;
-    put(labels.local, X(150), Y(118), 0, 0.5); // the two sides' names share a line, either side of the boundary's top
-    put(labels.hosted, X(1170), Y(118), 0.5, 0.5);
-    put(labels.core, lens.c.x + M.LENS.x * cell, lens.c.y - lens.h / 2 - 28 * k, 0.5, 0.5); // over her
+    if (!portraitSideRail) {
+      labels.local.style.maxWidth = labels.hosted.style.maxWidth = '';
+      labels.local.style.whiteSpace = labels.hosted.style.whiteSpace = '';
+      labels.local.style.textAlign = labels.hosted.style.textAlign = '';
+    }
+    if (portraitSideRail) {
+      labels.local.style.maxWidth = labels.hosted.style.maxWidth = '142px';
+      labels.local.style.whiteSpace = labels.hosted.style.whiteSpace = 'normal';
+      labels.local.style.textAlign = labels.hosted.style.textAlign = 'center';
+      put(labels.local, ox, Y(415, 300) - 15 * k, 0.5, 1);
+      put(labels.hosted, ox, Y(415, 1580) - 10 * k, 0.5, 1);
+      put(labels.core, lens.c.x + M.LENS.x * cell, lens.c.y - lens.h / 2 - 16 * k, 0.5, 0.5);
+    } else if (portraitFlow) {
+      put(labels.local, W / 2, Y(415, 340) - 18 * k, 0.5, 1);
+      put(labels.hosted, W / 2, Y(415, 1180), 0.5, 0.5);
+      put(labels.core, lens.c.x + M.LENS.x * cell, lens.c.y - lens.h / 2 - 16 * k, 0.5, 0.5);
+    } else {
+      put(labels.local, X(150), Y(118), 0, 0.5); // the two sides' names share a line, either side of the boundary's top
+      put(labels.hosted, X(1170), Y(118), 0.5, 0.5);
+      put(labels.core, lens.c.x + M.LENS.x * cell, lens.c.y - lens.h / 2 - 28 * k, 0.5, 0.5); // over her
+    }
     return true;
   };
 
@@ -234,7 +297,8 @@
       g.lineWidth = (0.6 + 1.1 * pub) * LW; g.strokeStyle = `rgba(${NODE},${(0.55 * pub).toFixed(3)})`;
       g.beginPath(); g.arc(x, y, m.r + 14 * k * (1 - pub), 0, TAU); g.stroke();
     }
-    node(x + m.r, y, 0.9 + 0.5 * pub, a);
+    if (portraitFlow) node(x, y - m.r, 0.9 + 0.5 * pub, a);
+    else node(x + m.r, y, 0.9 + 0.5 * pub, a);
   };
   // The mink at any whole-number cell u, her eye lit by `glint` (the profile's glint pose), top-left at (x0, y0).
   const paintMinkAt = (x0, y0, u, glint = 0) => {
@@ -315,7 +379,10 @@
     const lit = (d) => { let l = 0; for (const R of reach) { const u = (d - R) / (WAVE.band * k); if (u > -3 && u < 3) l = Math.max(l, Math.exp(-u * u)); } return l; };
     // The boundary between local and hosted.
     const qb = k01(1.4, 0.6);
-    if (qb > 0) {
+    if (qb > 0 && boundary.horizontal) {
+      const end = boundary.x0 + (boundary.x1 - boundary.x0) * ease(qb);
+      for (let x = boundary.x0; x < end; x += 7 * k) dot(x, boundary.y, 0.75 * Math.max(0.8, k), NODE, 0.35 + 0.45 * lit(Math.hypot(x - lens.c.x, boundary.y - lens.c.y)));
+    } else if (qb > 0) {
       for (let y = boundary.y0; y < boundary.y0 + (boundary.y1 - boundary.y0) * ease(qb); y += 7 * k) dot(boundary.x, y, 0.75 * Math.max(0.8, k), NODE, 0.35 + 0.45 * lit(Math.hypot(boundary.x - lens.c.x, y - lens.c.y)));
     }
     // Everyone else: rays out of the core, and arcs of people widening out.

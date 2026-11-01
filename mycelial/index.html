@@ -656,6 +656,29 @@
   @media (max-width: 760px) and (orientation: portrait) and (max-height: 640px) {
     html[data-ver="f"] .pa-host { justify-content: flex-end; padding-top: 40px; }
   }
+  /* Portrait concept C: full-height flow on the right, with the headline in a quiet left rail. */
+  @media (max-width: 760px) and (orientation: portrait) {
+    html[data-ver="f"] .pa-host[data-pa="C"] { padding: 68px 16px 90px; justify-content: flex-start; }
+    html[data-ver="f"] .pa-host[data-pa="C"] > .split { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
+    html[data-ver="f"] .pa-host[data-pa="C"] > .split > :first-child { position: absolute; left: 16px; top: 38%; width: min(128px, 34vw); text-align: left; }
+    html[data-ver="f"] .pa-host[data-pa="C"] h1 { max-width: none; margin: 0; font-size: clamp(0.96rem, 4vw, 1.08rem); line-height: 1.24; text-wrap: pretty; }
+  }
+  /* Portrait concept B: copy leads; the business flow rises from devices at the foot toward the hosted crowd. */
+  @media (max-width: 760px) and (orientation: portrait) {
+    html[data-ver="f"] .pa-host[data-pa="B"] { justify-content: flex-start; padding: max(58px, 8svh) 20px 112px; }
+    html[data-ver="f"] .pa-host[data-pa="B"] > .split { grid-template-columns: minmax(0, 1fr); justify-items: center; width: 100%; }
+    html[data-ver="f"] .pa-host[data-pa="B"] > .split > :first-child { grid-column: 1; text-align: center; }
+    html[data-ver="f"] .pa-host[data-pa="B"] h1 { max-width: 34ch; margin: 0 auto; font-size: clamp(1.2rem, 5.4vw, 1.65rem); line-height: 1.22; }
+  }
+  /* Portrait concept A: a vertical business flow above a compact, bottom-set headline. */
+  @media (max-width: 760px) and (orientation: portrait) {
+    html[data-ver="f"] .pa-host[data-pa="A"] {
+      justify-content: flex-end; padding: 0 max(20px, 6vw) max(54px, calc(env(safe-area-inset-bottom) + 30px));
+    }
+    html[data-ver="f"] .pa-host[data-pa="A"] > .split { grid-template-columns: minmax(0, 1fr); justify-items: center; width: 100%; margin-top: auto; }
+    html[data-ver="f"] .pa-host[data-pa="A"] > .split > :first-child { text-align: center; }
+    html[data-ver="f"] .pa-host[data-pa="A"] h1 { max-width: 19ch; font-size: clamp(1.48rem, 6.4vw, 2.05rem); margin: 0 auto; }
+  }
   /* Version F, slide 6: where it goes (stack.js). The text on the left; on the right slide 5's product taken apart into
      one exploded stack of thin planes (preview, timeline, agent, tools & effects, models / runtime), tied by fine gold
      registration threads and rooted in the network. The planes keep slide 5's dusk palette; the mink perches on top. */
@@ -1682,7 +1705,7 @@
   </section>
 
   <section class="slide pa-host" data-v="f">
-    <div class="pa" data-astrid-pays role="img" aria-label="A few machines running Astrid locally feed the Astrid core; past a boundary, the core reaches a great many people using the hosted version"><canvas class="pa-canvas" aria-hidden="true"></canvas></div>
+    <div class="pa" data-astrid-pays role="img" aria-label="Local devices below feed Astrid in the middle; above it, the hosted service reaches a widening crowd"><canvas class="pa-canvas" aria-hidden="true"></canvas></div>
     <div class="num">07<span class="act">How it pays</span></div>
     <div class="split">
       <div>
