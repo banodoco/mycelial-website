@@ -2055,6 +2055,8 @@
     clearTimeout(turn.watchdog);
     retirePresentation(turn.context);
     slides[turn.to]?.setAttribute('data-settled', '');
+    const context = turn.context;
+    networkScene?.settled?.(context);
     turn = null;
     setPace(1);
     if (pendingTurns.length) queueMicrotask(() => {
@@ -2127,6 +2129,7 @@
           if (!turn.scenePending && turn.entryRequested) completePhase('entry', slides[context.to], context);
         });
       }
+      context.sealText();
       Promise.resolve(networkScene.enter(context)).then((result) => {
         if (result === 'completed') window.deckTurnDone(slides[context.to], context);
       });
@@ -2210,7 +2213,7 @@
   window.visualViewport?.addEventListener('resize', scheduleResize);
 
   // stepPace: an arrow, a click, a swipe or the back button, one slide at a time (never a jump), at the pace paceFor() chose.
-  const startTurn = (n, historyMode = 'push', stepPace = 0) => {
+  const startTurn = (n, historyMode = 'push', stepPace = 0, superseded = false) => {
     if (!booted) return;
     const stepped = stepPace > 0;
     const to = Math.max(0, Math.min(slides.length - 1, n));
@@ -2228,6 +2231,16 @@
     // With animations off every slide lands at rest, as on a jump back; the network and text land as in reduced motion.
     const back = !motionOff && stepped && dir < 0 && to === from - 1 && !reversePair;
     const disposers = new Set();
+    // Scene hooks can synchronously hold text until their picture clears it.
+    // The deadline uses wall time, independent of animation pace.
+    const textStarted = performance.now(), textHolds = new Set();
+    let textSealed = false, textDone = false, resolveText;
+    const textReady = new Promise((resolve) => { resolveText = resolve; });
+    const completeText = (result) => {
+      if (textDone) return;
+      textDone = true;
+      resolveText(result);
+    };
     let arrivalDone = false, resolveArrival;
     const arrived = new Promise((resolve) => { resolveArrival = resolve; });
     const context = Object.freeze({ generation: ++generation, from, to, dir,
@@ -2235,7 +2248,26 @@
       intro: from === null && to === 0 && !location.hash && !motionOff,
       rest: motionOff || (dir < 0 && !reversePair), back, signal: turnController.signal,
       now: window.deckNow, isCurrent: () => window.deckNav === context && !context.signal.aborted,
-      arrived,
+      arrived, textReady, superseded,
+      holdText(onDeadline) {
+        if (textSealed || textDone || !context.isCurrent()) throw new Error('Text holds must be declared synchronously during scene entry');
+        let live = true;
+        const release = () => {
+          if (!live) return;
+          live = false; clearTimeout(timer); textHolds.delete(release);
+          if (textSealed && !textHolds.size) completeText('completed');
+        };
+        textHolds.add(release);
+        const timer = setTimeout(() => {
+          if (!live || !context.isCurrent()) return;
+          try { onDeadline?.(); } finally { release(); }
+        }, Math.max(0, 600 - (performance.now() - textStarted)));
+        return release;
+      },
+      sealText() {
+        textSealed = true;
+        if (!textHolds.size) completeText('completed');
+      },
       present(slide, add = '', remove = '') {
         const state = presentations.get(context);
         if (!context.isCurrent() || !state.open) return;
@@ -2265,6 +2297,8 @@
     };
     turnController.signal.addEventListener('abort', () => {
       arrive('cancelled');
+      completeText('cancelled');
+      for (const release of [...textHolds]) release();
       for (const release of [...disposers]) {
         try { release(); } catch (error) { queueMicrotask(() => { throw error; }); }
       }
@@ -2308,6 +2342,14 @@
     if (target < 0 || target >= slides.length) return;
     const pace = paceFor(dir);
     if (!turn && !pendingTurns.length) { startTurn(i + dir, mode, pace); return; }
+    // A shared scene can continue from its current rendered position instead
+    // of replaying obsolete queued stages when a newer destination is requested.
+    const scene = turn && scenes.get(turn.context.from);
+    if (scene?.supersede && scene === scenes.get(turn.context.to) && scene === scenes.get(target)) {
+      pendingTurns.length = 0;
+      startTurn(target, mode, pace, true);
+      return;
+    }
     pendingTurns.push({ dir, mode, pace });
     backlogDeadline = performance.now() + 1500;
     hurry();

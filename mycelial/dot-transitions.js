@@ -162,7 +162,7 @@
     const h = {
       pts, len, total: len[len.length - 1], grown: 0, age: -(o.delay || 0), after: 0, done: false,
       width: o.width || 0.8, alpha: o.alpha || 0.45, speed: o.speed || 300, duration: o.duration || 0, tip: o.tip ?? 1,
-      keep: !!o.keep, rest: full ? 0 : o.rest ?? REST, glow: 1, smooth: !!o.smooth, fade: o.fade || 4.5, branches: o.branches || [], depth: o.depth || 0, onDone: o.onDone || null,
+      keep: !!o.keep, rest: full ? 0 : o.rest ?? REST, glow: 1, smooth: !!o.smooth, fade: o.fade || 4.5, branches: o.branches || [], depth: o.depth || 0, onDone: o.onDone || null, owner: o.owner || null,
     };
     if (h.keep || h.rest) note(pts);
     hyphae.push(h);
@@ -225,9 +225,9 @@
       if (b.done || h.grown < b.at) continue;
       b.done = true;
       const p = pointAt(h, b.at);
-      nodes.push({ x: p.x, y: p.y, age: 0, keep: h.keep, rest: h.rest });
+      nodes.push({ x: p.x, y: p.y, age: 0, keep: h.keep, rest: h.rest, owner: h.owner });
       const pts = curl(p.x, p.y, p.ang + b.side * (0.5 + rnd() * 0.6), b.length);
-      hypha(pts, { width: h.width * 0.7, alpha: h.alpha * 0.8, speed: 140 + rnd() * 90, keep: h.keep, rest: h.rest, depth: h.depth + 1, tip: h.tip,
+      hypha(pts, { width: h.width * 0.7, alpha: h.alpha * 0.8, speed: 140 + rnd() * 90, keep: h.keep, rest: h.rest, depth: h.depth + 1, tip: h.tip, owner: h.owner,
         branches: h.depth < 1 && rnd() < 0.55 ? plan(lengths(pts).at(-1), h.depth + 1) : [] });
     }
   };
@@ -413,12 +413,13 @@
     if (off) { c.shadowColor = '#000'; c.shadowBlur = 2 * P * 0.55; c.shadowOffsetX = off * dpr; }
     else c.filter = `blur(${P * 0.55}px)`;
     c.fillStyle = '#000';
+    // Blur the combined text silhouette once, including Safari's shadow fallback.
+    c.beginPath();
     for (const r of rs) {
       const py = r.height * r.trim;
-      c.beginPath();
       c.roundRect(r.left - x0 - P * 0.6 - off, r.top - y0 + py - P * 0.25, r.width + P * 1.2, r.height - 2 * py + P * 0.5, 10);
-      c.fill();
     }
+    c.fill();
     return { cv, x: x0, y: y0, w, h, a: 0, to: 1 };
   };
   // A soft disc, under the crown, so the mark reads cleanly over a full network.
@@ -787,7 +788,7 @@
         for (const p of spots(el, 7)) {
           const pts = wander(at, p);
           const d = lengths(pts).at(-1);
-          hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 1.1, rest: 0, smooth: true, delay: delay / 1000, duration: (duration / 1000) * clamp(d / (far - SOFT), 0.3, 1) });
+          hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 1.1, rest: 0, smooth: true, owner: context, delay: delay / 1000, duration: (duration / 1000) * clamp(d / (far - SOFT), 0.3, 1) });
         }
       }
       const lit = flashes(el, at, far, duration);
@@ -803,15 +804,14 @@
   };
   // Threads reach across the text and draw it back into the node.
   const GATHER = 400;
-  const gather = (s, at) => {
+  const gather = (s, at, context) => {
     const tw = [];
     for (const el of textOf(s)) {
       const far = reach(el, at);
       for (const p of spots(el, 6)) {
-        hypha(wander(p, at), { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38 });
+        hypha(wander(p, at), { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38, owner: context });
       }
-      const run = tween(GATHER, easeIn, (k) => { if (!s.classList.contains('on')) mask(el, at, (1 - k) * far); });
-      const context = window.deckNav;
+      const run = tween(GATHER, easeIn, (k) => { if (!s.classList.contains('on')) mask(el, at, (1 - k) * far); }, 0, context);
       run.then((result) => { if (result === 'completed' && context.isCurrent() && !s.classList.contains('on')) hideText(s); });
       tw.push(run);
     }
@@ -832,8 +832,8 @@
   // starts once the picture has gone by, this far into the turn (ms at the turn's pace; measured, see FX7, S6 and S6b).
   // Each turn not listed keeps overlap()'s start, and a step back with no picture coming back (dt-return) never waits.
   const PASSING = {
-    wide: { '6-5': 2300, '8-7': 1500, '11-10': 650 },
-    upright: { '7-6': 1900, '8-7': 1150, '9-8': 1550, '10-9': 750, '11-10': 550, '6-7': 800, '9-10': 350 },
+    wide: { '6-5': 2300, '8-7': 1500 },
+    upright: { '7-6': 1900, '8-7': 1150, '9-8': 1550, '6-7': 800 },
   };
   const passing = (prev, next) => {
     if (window.deckNav?.back && !next.matches('.dt-return, .fw-host')) return 0;
@@ -1150,7 +1150,9 @@
         landed?.('cancelled');
         tweens.forEach((tw) => tw.stop());
         anims.forEach((a) => a.cancel());
-        hyphae.forEach((h) => { h.onDone = null; });
+        // Retire only this interrupted turn's transient drawing, not ambient growth.
+        hyphae = hyphae.filter((h) => h.owner !== context);
+        nodes = nodes.filter((n) => n.owner !== context);
         context.present(prev, '', 'dt-leaving dt-release');
         context.present(next, '', 'dt-entering');
         clearText(current);
@@ -1172,7 +1174,7 @@
 
     // 1. Threads reach across the old text and draw it back into its node.
     context.present(prev, 'dt-leaving');
-    tweens.push(...gather(prev, from));
+    tweens.push(...gather(prev, from, context));
     context.present(next, 'dt-entering');
     clearText(next);
     current = next;
@@ -1196,12 +1198,6 @@
         finish(); finishNetwork(context);
       });
     };
-    const early = overlap(prev, from, to);
-    timers.push(window.deckLater(() => { // by now the slides' own scripts have marked a picture coming back
-      const wait = done ? 0 : passing(prev, next) - (context.now() - started);
-      if (wait > 0) timers.push(window.deckLater(grow, wait)); else grow();
-    }, Math.max(0, early - (context.now() - started)), context));
-
     // 3. Arrival: the node blooms (or, on the last slide, becomes the mark).
     const arrive = () => {
       if (done) return;
@@ -1221,7 +1217,7 @@
     };
 
     // 2. The network grows across to the next node, or simply re-blooms in place.
-    timers.push(window.deckLater(() => {
+    const travel = () => {
       if (done) return;
       release();
       sprawl(levelOf(next), from);
@@ -1232,9 +1228,30 @@
       const way = window.deckNav?.back ? trailBack(prev, next, from, to) : null;
       const pts = way || wander(from, to);
       const total = lengths(pts).at(-1);
-      hypha(pts, { width: 1.05, alpha: 0.55, duration: clamp(total / 950, 0.45, 1.05), onDone: arrive, ...(way ? { rest: 0, fade: 2.4 } : { branches: plan(total, 0) }) });
+      hypha(pts, { width: 1.05, alpha: 0.55, duration: clamp(total / 950, 0.45, 1.05), onDone: arrive, owner: context, ...(way ? { rest: 0, fade: 2.4 } : { branches: plan(total, 0) }) });
       if (!way && (window.deckNav?.dir || 0) > 0) trails.set(next, { prev, pts });
-    }, Math.max(0, 340 - (context.now() - started)), context));
+    };
+    const early = overlap(prev, from, to);
+    let travelDue = true, textDue = true;
+    // One clock owns both milestones. If the main thread wakes late, begin
+    // already-due travel before starting text work in this same task.
+    const advanceTurn = () => {
+      if (done || !context.isCurrent()) return;
+      let elapsed = context.now() - started;
+      if (travelDue && elapsed >= 340) { travelDue = false; travel(); }
+      elapsed = context.now() - started;
+      if (textDue && elapsed >= early) {
+        textDue = false;
+        const wait = passing(prev, next) - (context.now() - started);
+        const whenClear = () => context.textReady.then((result) => { if (result === 'completed' && context.isCurrent()) grow(); });
+        if (wait > 0) timers.push(window.deckLater(whenClear, wait, context)); else whenClear();
+      }
+      if (travelDue || textDue) {
+        const nextAt = Math.min(travelDue ? 340 : Infinity, textDue ? early : Infinity);
+        timers.push(window.deckLater(advanceTurn, Math.max(0, nextAt - (context.now() - started)), context));
+      }
+    };
+    timers.push(window.deckLater(advanceTurn, Math.max(0, Math.min(early, 340) - (context.now() - started)), context));
   };
 
   // Selection is output from the controller; it is no longer observed here.
@@ -1253,6 +1270,20 @@
     }
     endOpening();
     html.classList.remove('dt-font-wait');
+    if (context.superseded) {
+      // Retire the interrupted picture's text while its shared scene reaches
+      // a clear endpoint. Settle and draw before announcing node arrival.
+      if (prev) { context.present(prev, 'dt-leaving'); hideText(prev); }
+      context.present(next, 'dt-entering');
+      context.textReady.then((result) => {
+        if (result !== 'completed' || !context.isCurrent()) return;
+        settle(false, false, context, false);
+        window.deckArrived(context);
+        next.dispatchEvent(new CustomEvent('dt-arrive'));
+        finishNetwork(context);
+      });
+      return promise;
+    }
     if (context.direct) {
       settle(false, context.from === null, context);
       finishNetwork(context);
@@ -1368,5 +1399,8 @@
       } catch { launch(); }
     }
   };
-  window.deckRegisterNetwork({ enter, resize });
+  const settledText = (context) => {
+    if (context.isCurrent() && current === slides[context.to]) clearText(current);
+  };
+  window.deckRegisterNetwork({ enter, resize, settled: settledText });
 })();
