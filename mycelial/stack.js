@@ -92,7 +92,7 @@
       <div class="st-th">${I.film}<em>Frames</em></div><div class="st-lane">${FRAMES.map(([name, at]) => `<span class="st-clip" style="${span(at, 1)}"><img data-src="${media}/${name}-thumb.webp" alt=""></span>`).join('')}</div>
       <div class="st-th">${I.film}<em>Scene</em></div><div class="st-lane"><span class="st-clip" style="${span(0, SPAN)}"><img data-src="${media}/motion-guide.webp" alt=""><b>Lantern Valley · Three.js</b></span></div>`,
     agent: `<header class="st-chat-head"><span class="st-avatar"><img data-src="../assets/astrid/mink-profile.png" alt=""></span>Astrid</header>
-      <div class="st-rows"><div><span class="st-msg">Make realistic frames using Qwen Image 2.1.</span><span class="st-step">${I.check}<span>Captured four reference frames</span><code><b>Qwen Image 2.1</b> · WaveSpeed</code></span></div>
+      <div class="st-rows"><div><span class="st-msg">Make realistic frames using Qwen Image 2.1.</span><span class="st-step">${I.check}<span>Captured four reference frames</span><code><b>Qwen Image 2.1</b> · VibeComfy</code></span></div>
         <div><span class="st-msg">Use MiniMax H3 with the four frames and motion guide.</span><span class="st-step">${I.check}<span>Generated the final shot</span><code><b>MiniMax H3</b> · 14 s</code></span></div></div>
       <div class="st-composer"><span class="st-field">Ask Astrid to edit your project…<b>${I.send}</b></span></div>`,
     tools: `<span class="st-tile">${I.typeon}type-on</span><span class="st-tile">${I.card}text-card</span><span class="st-tile">${I.beat}<span>audio-reactive-<br>colour</span></span><span class="st-tile">${I.grain}film grain</span><span class="st-tag">community-made</span>`,
