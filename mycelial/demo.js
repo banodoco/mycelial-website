@@ -69,7 +69,7 @@
   const sceneEl = document.createElement('div');
   sceneEl.className = 'as-clip as-scene-clip is-ready';
   place(sceneEl, 0, SPAN);
-  sceneEl.innerHTML = '<img class="as-still" data-src="../assets/astrid/lantern-valley/motion-guide.webp" alt=""><span class="as-film" data-bg="../assets/astrid/lantern-valley/motion-guide.webp"></span><span class="as-name">Lantern Valley · Three.js</span><span class="as-kind">14 s</span>';
+  sceneEl.innerHTML = '<span class="as-film" data-bg="../assets/astrid/lantern-valley/guide-strip.webp"></span><span class="as-name">Lantern Valley · Three.js</span><span class="as-kind">14 s</span>';
   lanes.V1.appendChild(sceneEl);
   const anchorEls = FRAMES.map((frame) => {
     const el = document.createElement('div');
@@ -179,7 +179,7 @@
   const drawPic = (t) => {
     const cw = picCW < 0 ? pic.clientWidth : picCW, ch = picCH < 0 ? pic.clientHeight : picCH;
     if (Math.abs(cw * pdpr - pic.width) > 1 || Math.abs(ch * pdpr - pic.height) > 1) sizePic();
-    const src = view.mode === 'still' ? anchors[view.i] : view.mode === 'guide' ? guide : view.mode === 'play' ? videos[0] : null;
+    const src = view.mode === 'still' ? anchors[view.i] : (view.mode === 'guide' || view.mode === 'guide-hold') ? guide : view.mode === 'play' ? videos[0] : null;
     const ready = !!src && (src.tagName === 'VIDEO' ? src.readyState >= 2 && !src.seeking : src.complete && src.naturalWidth > 0);
     root.classList.toggle('has-frame', ready || hasPicFrame);
     const key = picFade || ((view.mode === 'play' || view.mode === 'guide') && ready) ? '' : `${view.mode}|${view.i}|${ready}`;
@@ -199,7 +199,8 @@
     }
     hasPicFrame = true;
   };
-  const showStill = (i) => { if (view.mode !== 'still' || view.i !== i) fadePic(); view.mode = 'still'; view.i = i; view.seq = -1; videos.forEach((v) => v.pause()); };
+  // Frame changes cut with the playhead: a dissolve would leave the old frame visible at the new time.
+  const showStill = (i) => { picFade = null; view.mode = 'still'; view.i = i; view.seq = -1; videos.forEach((v) => v.pause()); };
   // A play request can settle after this visit has stopped or the overview has opened.
   // Only the current, unpaused guide view may keep the shared element playing.
   const guideMayPlay = () => running && !paused && !motionBlocked() && entryCtx?.isCurrent?.() && view.mode === 'guide';
@@ -214,10 +215,10 @@
     guide.playbackRate = 2.5;
     playGuide();
   };
-  const playFrom = (seqT, rate, prepared = false) => { fadePic(); view.mode = 'play'; view.seq = seqT; view.rate = rate; view.i = -2; view.seekPending = !prepared; };
+  const playFrom = (seqT, rate, prepared = false) => { if (view.mode === 'still') picFade = null; else fadePic(); view.mode = 'play'; view.seq = seqT; view.rate = rate; view.i = -2; view.seekPending = !prepared; };
   const stepPlay = () => {
     if (view.mode === 'guide') {
-      if (guide.ended) headTo(SPAN, true);
+      if (guide.ended) { headTo(SPAN, true); view.mode = 'guide-hold'; }
       else {
         if (guide.paused && !paused && guide.readyState >= 2 && !guide.seeking) playGuide();
         if (Number.isFinite(guide.duration) && guide.duration > 0) headTo(clamp(guide.currentTime / guide.duration) * SPAN, true);
@@ -407,20 +408,20 @@
     const touch = (el, on) => el.classList.toggle('is-touched', on);
     if (bi === 0) {
       if (at(0)) { sceneEl.style.opacity = ''; sceneEl.classList.add('is-generating'); touch(sceneEl, true); total = SPAN; headTo(0, true); }
-      if (at(0.65)) { sceneEl.classList.remove('is-generating'); sceneEl.classList.add('is-ready'); showGuide(); headTo(0, true); }
+      if (at(0.65)) { sceneEl.classList.remove('is-generating'); sceneEl.classList.add('is-ready', 'is-animated'); showGuide(); headTo(0, true); }
       if (at(1.2)) touch(sceneEl, false);
     }
     if (bi === 1) {
       FRAMES.forEach((frame, i) => {
         const el = anchorEls[i], start = i * FRAME_STEP;
-        if (at(start)) { el.style.opacity = ''; el.classList.add('is-generating'); touch(el, true); headTo(frame.at + 0.5); }
-        if (at(start + 0.32)) { el.classList.remove('is-generating'); el.classList.add('is-ready'); showStill(i); total = SPAN; }
+        if (at(start)) { el.style.opacity = ''; el.classList.add('is-generating'); touch(el, true); }
+        if (at(start + 0.32)) { el.classList.remove('is-generating'); el.classList.add('is-ready'); headTo(frame.at, true); showStill(i); total = SPAN; }
         if (at(start + 0.5)) touch(el, false);
       });
     }
     if (bi === 2) {
-      if (at(0)) { resultEl.style.opacity = ''; resultEl.classList.add('is-generating'); touch(resultEl, true); total = SPAN; headTo(0); }
-      if (at(0.55)) { resultEl.classList.remove('is-generating'); resultEl.classList.add('is-ready', 'is-animated'); touch(resultEl, false); playFrom(0, 1, true); root.classList.add('is-playing'); }
+      if (at(0)) { resultEl.style.opacity = ''; resultEl.classList.add('is-generating'); touch(resultEl, true); total = SPAN; }
+      if (at(0.55)) { resultEl.classList.remove('is-generating'); resultEl.classList.add('is-ready', 'is-animated'); touch(resultEl, false); headTo(0, true); playFrom(0, 1, true); root.classList.add('is-playing'); }
     }
   };
   const settledState = () => { // everything as it ends, for reduced motion
@@ -431,7 +432,7 @@
       bubble('as-step is-done', `<i></i><span>${b.step[0]}</span><code><b>${b.step[1]}</b> ${b.step[2]}</code>`);
     });
     msgs.querySelectorAll('.as-in').forEach((el) => el.classList.remove('as-in'));
-    sceneEl.style.opacity = ''; sceneEl.classList.add('is-ready');
+    sceneEl.style.opacity = ''; sceneEl.classList.add('is-ready', 'is-animated');
     anchorEls.forEach((el) => { el.style.opacity = ''; el.classList.add('is-ready'); kind(el, 'Qwen'); });
     resultEl.style.opacity = ''; resultEl.classList.add('is-ready', 'is-animated');
     total = SPAN;
