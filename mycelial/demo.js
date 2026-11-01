@@ -294,7 +294,7 @@
     pg.clearRect(0, 0, pic.width, pic.height);
     root.classList.remove('has-frame');
     picKey = '';
-    msgs.innerHTML = '<div class="as-msg is-astrid as-welcome">This tour replays the finished Lantern Valley project. No new generation runs.</div>';
+    msgs.innerHTML = '';
     typed.textContent = ''; rows = [];
     root.classList.remove('is-typing', 'has-draft', 'is-working', 'is-playing', 'is-resetting');
     anchorEls.forEach((el) => { el.className = 'as-clip as-frame-clip'; el.style.opacity = '0'; kind(el, 'Qwen'); });
