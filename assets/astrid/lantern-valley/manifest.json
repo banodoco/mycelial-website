@@ -1,0 +1,48 @@
+{
+  "start-thumb": {
+    "file": "start-thumb.webp",
+    "source_sha256": "5d03a816af444891300bbf45311af6e93ef6c0ded1758a052bbec09737392c7d"
+  },
+  "start-preview": {
+    "file": "start-preview.webp",
+    "source_sha256": "5d03a816af444891300bbf45311af6e93ef6c0ded1758a052bbec09737392c7d"
+  },
+  "mountains-thumb": {
+    "file": "mountains-thumb.webp",
+    "source_sha256": "15da01205ca47324a8bb36e0ccb10ddb62b40adef81ae3acebd32b80aff148a1"
+  },
+  "mountains-preview": {
+    "file": "mountains-preview.webp",
+    "source_sha256": "15da01205ca47324a8bb36e0ccb10ddb62b40adef81ae3acebd32b80aff148a1"
+  },
+  "descent-thumb": {
+    "file": "descent-thumb.webp",
+    "source_sha256": "1340978c01a3721dfec4071b3371c156ae3cd1a46d2d50f835398dde4e36bd48"
+  },
+  "descent-preview": {
+    "file": "descent-preview.webp",
+    "source_sha256": "1340978c01a3721dfec4071b3371c156ae3cd1a46d2d50f835398dde4e36bd48"
+  },
+  "town-thumb": {
+    "file": "town-thumb.webp",
+    "source_sha256": "e2f106ce2e53434487e24da748ddac7eb28aee43afe2b6f768efbd901622d31f"
+  },
+  "town-preview": {
+    "file": "town-preview.webp",
+    "source_sha256": "e2f106ce2e53434487e24da748ddac7eb28aee43afe2b6f768efbd901622d31f"
+  },
+  "final": {
+    "file": "final.mp4",
+    "source_sha256": "9afbe1674750162fbf47587790728fc5526f26e6845744bda3e99f07573e12ef"
+  },
+  "final-poster": {
+    "file": "final-poster.webp",
+    "source_sha256": "9afbe1674750162fbf47587790728fc5526f26e6845744bda3e99f07573e12ef",
+    "source_time_seconds": 0
+  },
+  "motion-guide": {
+    "file": "motion-guide.webp",
+    "source_sha256": "f6829f7778fb9fdcda9159635a0444b81a6769e9518d326607fbd403e77c0ed2",
+    "source_time_seconds": 2
+  }
+}

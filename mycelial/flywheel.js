@@ -289,7 +289,8 @@
       // Text at the bottom (9): the picture sits above it, clear of the network's node over the label.
       // Text at the very top (10): the picture sits below it, clear of the deck's chrome at the foot.
       const atTop = hosts[s].classList.contains('fw-top');
-      const top = atTop ? c.bottom + (tall ? 20 : 34) : tall ? 46 : Math.max(26, H * 0.035);
+      const stat = hosts[s].querySelector('.fw-stat');
+      const top = atTop ? c.bottom + (tall ? 20 : 34) : stat.getBoundingClientRect().bottom + (tall ? 20 : 28);
       const bottom = atTop ? H - (tall ? 64 : 70) : c.top - (tall ? 26 : 56);
       const kh = Math.min((W / 2 - mx) / Math.max(cxRef - x0, x1 - cxRef), 1.15);
       const kv = (bottom - top) / (y1 - y0);
