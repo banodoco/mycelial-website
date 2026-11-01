@@ -287,7 +287,7 @@
       world.style.zoom = String(kz);
       world.style.transform = `translate(${(+view.ox.toFixed(1) / kz).toFixed(4)}px, ${(+view.oy.toFixed(1) / kz).toFixed(4)}px)`;
     } else world.style.transform = `translate(${view.ox.toFixed(1)}px, ${view.oy.toFixed(1)}px) scale(${k.toFixed(4)})`;
-    dpr = Math.min(2, devicePixelRatio || 1);
+    dpr = Math.min(2, Math.round(devicePixelRatio || 1) || 1);
     const pixelW = Math.round(W * dpr), pixelH = Math.round(H * dpr);
     if (cv.width !== pixelW || cv.height !== pixelH) { cv.width = pixelW; cv.height = pixelH; }
     cell = Math.max(1, Math.round(k * 3.4));
@@ -498,7 +498,18 @@
   };
 
   // ---- States ------------------------------------------------------------------------------------
-  let snapshotRelease = null;
+  let snapshotRelease = null, minkRelease = null;
+  // The travelling canvas owns the mink until it lands. Restore the editor on
+  // completion, resize or abort, even if another navigation interrupts the fold.
+  const releaseMink = () => { const release = minkRelease; minkRelease = null; release?.(); };
+  const takeMink = (ctx) => {
+    releaseMink();
+    const source = demo.querySelector('.as-mink');
+    if (!source) return;
+    const previous = source.style.visibility;
+    source.style.visibility = 'hidden';
+    minkRelease = ctx.defer(() => { source.style.visibility = previous; });
+  };
   const endCarry = () => {
     Object.assign(cy, { on: false, A: null, P: null, nw: 0, nh: 0, a: 1, back: false });
     carry.remove(); carry.style.display = 'none'; carry.classList.remove('is-back');
@@ -578,7 +589,9 @@
     takePicture(demo.querySelector(SRC[0]), rects[0]);
     const mr = q('.as-mink');
     const c5 = mr ? Math.max(1, Math.round(mr.width / MW)) : cell;
-    return { planes: Object.fromEntries(at.map((i, j) => [i, toWorld(rects[j])])), mink: mr ? { x: mr.left, y: mr.top + 3 * c5, c: c5 } : null }; // slide 5 keeps 3 spare rows above her
+    const frame = window.AstridDemo?.minkFrame() || { pose: 'profile', lift: 0, glint: 0 };
+    if (mr) takeMink(ctx);
+    return { planes: Object.fromEntries(at.map((i, j) => [i, toWorld(rects[j])])), mink: mr ? { x: mr.left, y: mr.top + (3 - frame.lift) * c5, c: c5, ...frame } : null }; // slide 5 keeps 3 spare rows above her
   };
   // The player's picture leaves its copy for the carry layer: its rect in the player, placed as slide 5 draws it
   // (demo.js: 16:9, 0.86 of the screen's fit, centred), and its pixels; and the plane's own picture box to land in.
@@ -659,6 +672,7 @@
       if (build.src.mink) {
         const a = build.src.mink, b = perchOf(st[0]), q = easeIO(k01(e, T.mink));
         const c = Math.round(lerp(a.c, b.c, q)), lift = Math.sin(Math.PI * q) * 40 * view.k;
+        mk.pose = q < 1 ? a.pose : 'profile'; mk.glint = q < 1 ? a.glint : 0; mk.lift = 0;
         paintMink(lerp(a.x, b.x, q), lerp(a.y, b.y, q) - lift, c);
       } else if (e >= T.mink[1]) { const m = perchOf(st[0]); paintMink(m.x, m.y, m.c); }
       minkCv.style.opacity = '1';
@@ -682,6 +696,7 @@
       const ctx = build.ctx;
       build = null;
       if (amb) { vis.sh = 1; vis.lb = PL.map(() => 1); vis.rt = 1; } else { settleAll(); amb = { t }; tourFrom(0, t + 1100); }
+      releaseMink();
       entryFinished = true;
       if (current(ctx)) entryCompletion?.(ctx, 'completed');
     }
@@ -880,6 +895,7 @@
     raf = 0;
     pendingBuild = false;
     build = null;
+    releaseMink();
     clearGhosts(); // transient editor snapshots must not outlive an interrupted hand-off
     if (!preserveScene) { amb = null; restMink(); }
     clearTimeout(leaving); Object.assign(hold, { hover: -1, focus: -1, pin: -1 }); guide.on = false; guide.a = 0; guide.last = 0;
@@ -954,6 +970,8 @@
     if (!build || !build.back) return;
     const ctx = build.ctx;
     build = null;
+    minkCv.style.opacity = '0';
+    releaseMink();
     clearGhosts(); // slide 5's own panels stand exactly where their copies were
     ctx.present(slide, 'dt-rewound', 'dt-rewind');
     ctx.present(slide5, '', 'dt-return dt-await');
@@ -969,7 +987,7 @@
       const ctx = activeCtx;
       if (raf) cancelAnimationFrame(raf); raf = 0;
       running = true; paused = false; pendingBuild = false; build = null; amb = null;
-      clearGhosts(); layout(); softenNet(ctx, true); settleAll(); stepHead();
+      releaseMink(); clearGhosts(); layout(); softenNet(ctx, true); settleAll(); stepHead();
       flags.forEach((f) => { f.tabIndex = 0; });
       show(view.mobile ? 0 : -1);
       entryFinished = true; entryCompletion?.(ctx, 'completed');
@@ -1001,7 +1019,71 @@
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
   const sceneEnter = (ctx) => start(ctx.from === 4 && !motionOff(), ctx);
+  // Stack owns its geometry and temporary styles in both directions.
+  let stackFlight = null, collapseSource = null;
+  const releaseStackFlight = () => { const release = stackFlight?.release; stackFlight = null; release?.(); };
+  const holdStackFlight = (ctx, rect) => {
+    releaseStackFlight();
+    const box = root.getBoundingClientRect();
+    if (!box.width || !box.height) return false;
+    const old = { transform: root.style.transform, origin: root.style.transformOrigin, opacity: root.style.opacity };
+    root.style.transformOrigin = `${(rect.left + rect.width / 2 - box.left) * root.offsetWidth / box.width}px ${(rect.top + rect.height / 2 - box.top) * root.offsetHeight / box.height}px`;
+    const release = ctx.defer(() => { root.style.transform = old.transform; root.style.transformOrigin = old.origin; root.style.opacity = old.opacity; });
+    stackFlight = { ctx, release };
+    return true;
+  };
+  const drawStackFlight = (q) => {
+    if (!stackFlight) return;
+    q = clamp(q);
+    root.style.transform = `scale(${Math.max(0.001, 1 - q ** 3)})`;
+    root.style.opacity = String(q < 0.98 ? 1 : (1 - q) / 0.02);
+  };
+  window.deckStackFlight = { hold: holdStackFlight, draw: drawStackFlight, release: releaseStackFlight,
+    source: (ctx) => collapseSource?.ctx === ctx ? collapseSource.rect : null,
+    collapsed: (ctx) => collapseSource?.ctx === ctx ? collapseSource.completed : Promise.resolve('completed'),
+    ready: (ctx) => { if (collapseSource?.ctx === ctx) collapseSource.copy.remove(); },
+  };
   const sceneExit = (ctx) => {
+    if (ctx.from === 5 && ctx.to === 6 && !ctx.direct && !ctx.rest && !motionOff()) {
+      activeCtx = ctx;
+      stop(ctx, true);
+      ctx.present(slide, 'dt-rewind dt-over');
+      const rect = minkCv.getBoundingClientRect(), box = root.getBoundingClientRect();
+      if (!rect.width || !box.width || !box.height) return undefined;
+      const copy = document.createElement('canvas');
+      copy.width = minkCv.width; copy.height = minkCv.height;
+      copy.getContext('2d').drawImage(minkCv, 0, 0);
+      Object.assign(copy.style, { position: 'fixed', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, imageRendering: 'pixelated', pointerEvents: 'none', zIndex: '3' });
+      document.body.appendChild(copy);
+      const visibility = minkCv.style.visibility;
+      minkCv.style.visibility = 'hidden';
+      if (!holdStackFlight(ctx, rect)) { copy.remove(); minkCv.style.visibility = visibility; return undefined; }
+      let finish, notifyCollapse, frame = 0, started = null, smallFrame = false;
+      const completed = new Promise((resolve) => { finish = resolve; });
+      const collapsed = new Promise((resolve) => { notifyCollapse = resolve; });
+      const settle = (result, arrival = result) => { cancelAnimationFrame(frame); notifyCollapse(arrival); finish(result); };
+      collapseSource = { ctx, rect, copy, completed: collapsed, settle };
+      const stepCollapse = () => {
+        if (!current(ctx)) return;
+        if (started === null) started = now();
+        let q = clamp((now() - started) / 500);
+        // A delayed frame must still show the stack small before it disappears.
+        if (q === 1 && !smallFrame) q = Math.cbrt(0.8);
+        drawStackFlight(q);
+        if (q < 1) {
+          if (1 - q ** 3 <= 0.2 + 1e-9) smallFrame = true;
+          frame = requestAnimationFrame(stepCollapse);
+        } else settle('completed');
+      };
+      frame = requestAnimationFrame(stepCollapse);
+      ctx.defer(() => {
+        copy.remove(); settle('cancelled');
+        minkCv.style.visibility = visibility;
+        releaseStackFlight();
+        if (collapseSource?.ctx === ctx) collapseSource = null;
+      });
+      return completed;
+    }
     if (ctx.from !== 5 || ctx.to !== 4 || !ctx.back || motionOff() || !entryFinished) {
       activeCtx = ctx;
       stop(ctx);
@@ -1014,11 +1096,12 @@
     return promise;
   };
   const sceneResize = (ctx) => {
+    if (collapseSource?.ctx === ctx) { collapseSource.settle('completed', 'cancelled'); collapseSource.copy.remove(); releaseStackFlight(); }
     if (build?.back && build.ctx === ctx) { endFold(); return; }
     if (slide.classList.contains('on') && activeCtx === ctx) {
       running = false; paused = false; pendingBuild = false;
       if (raf) cancelAnimationFrame(raf); raf = 0;
-      build = null; clearGhosts();
+      build = null; releaseMink(); clearGhosts();
       activeCtx = ctx; running = true;
       layout(); softenNet(ctx, true); settleAll(); stepHead();
       flags.forEach((f) => { f.tabIndex = 0; });

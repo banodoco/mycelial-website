@@ -97,7 +97,9 @@
   const HEAD = 3; // spare rows above her for the hop and the float
   let cell = 4, dpr = 1;
   const mink = { pose: 'profile', lift: 0, glint: 0, seq: null, hover: null };
+  let paintedMink = { pose: 'profile', lift: 0, glint: 0 };
   const paint = (pose, lift, glint) => {
+    paintedMink = { pose, lift, glint };
     const P = M.POSES[pose], w = P[0].length, h = P.length, u = cell * dpr;
     mg.clearRect(0, 0, minkCv.width, minkCv.height);
     const fill = (rows, only) => {
@@ -680,7 +682,7 @@
     Object.assign(mink, { pose: 'profile', lift: 0, glint: 0 });
     videos.forEach((v) => v.pause());
   };
-  window.AstridDemo = { turn, root };
+  window.AstridDemo = { turn, root, minkFrame: () => ({ ...paintedMink }) };
 
   // ---- Going back to slide 4 ------------------------------------------------------------------
   // A step back: the morph from slide 4 played backwards. The panels fade as their frames fold back into the two
