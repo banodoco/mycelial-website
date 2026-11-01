@@ -6,7 +6,7 @@
   const slide = root.closest('.slide');
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const motionOff = () => still || window.deckStill?.();
-  let entryCtx = null, reverseCtx = null;
+  let entryCtx = null, reverseCtx = null, entryCompletion = null, reverseCompletion = null;
   const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
   const ease = (k) => 1 - Math.pow(1 - k, 3);
   const easeIO = (q) => (q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2);
@@ -45,7 +45,6 @@
   const pic = root.querySelector('.as-pic'), pg = pic.getContext('2d');
   const tl = root.querySelector('.as-tl');
   const timeEl = root.querySelector('.as-time');
-  const seat = root.querySelector('.as-seat');
   const minkCv = root.querySelector('.as-mink'), mg = minkCv.getContext('2d');
 
   // The timeline
@@ -132,7 +131,8 @@
   const TURN = [[0, 'facing'], [500, 'focus'], [1900, 'facing'], [2400, 'profile']];
   const turn = () => { if (!mink.seq) { mink.seq = { t0: now() }; wake(); } };
   const stepMink = (t) => {
-    let { pose, lift, glint } = mink;
+    let { pose, lift } = mink;
+    let glint = 0;
     if (mink.seq) {
       const e = Math.max(0, t - mink.seq.t0), cur = TURN.filter(([at]) => e >= at).pop();
       pose = cur[1];
@@ -144,7 +144,7 @@
       const e = Math.max(0, t - mink.hover) / 2600;
       glint = e >= 1 ? 0 : Math.sin(Math.PI * e) ** 2;
       if (e >= 1) mink.hover = null;
-    } else glint = 0;
+    }
     if (pose !== mink.pose || lift !== mink.lift || Math.abs(glint - mink.glint) > 0.01) {
       Object.assign(mink, { pose, lift, glint });
       paint(pose, lift, glint);
@@ -266,11 +266,11 @@
       gradedVideos.forEach((v, j) => { if (v && j !== i) v.pause(); });
       view.i = i;
       const v = videos[i];
-      try { v.currentTime = local; } catch (e) { /* not loaded */ }
+      try { v.currentTime = local; } catch { /* not loaded */ }
       v.playbackRate = view.rate;
       const graded = gradedVideos[i];
       if (graded) {
-        try { graded.currentTime = local; } catch (e) { /* not loaded */ }
+        try { graded.currentTime = local; } catch { /* not loaded */ }
         graded.playbackRate = view.rate;
       }
     }
@@ -279,7 +279,7 @@
     if (graded) {
       graded.playbackRate = view.rate;
       if (graded.readyState >= 1 && Math.abs(graded.currentTime - videos[i].currentTime) > 0.1) {
-        try { graded.currentTime = videos[i].currentTime; } catch (e) { /* not loaded */ }
+        try { graded.currentTime = videos[i].currentTime; } catch { /* not loaded */ }
       }
       if (graded.paused) graded.play().catch(() => {});
     }
@@ -417,8 +417,8 @@
     total = 28; view.colour = true; view.sweep = 1;
     if (still) {
       view.mode = 'play'; view.i = 1; view.seq = 12;
-      try { videos[1].currentTime = 4; } catch (e) { /* not loaded */ }
-      try { gradedVideos[1].currentTime = 4; } catch (e) { /* not loaded */ }
+      try { videos[1].currentTime = 4; } catch { /* not loaded */ }
+      try { gradedVideos[1].currentTime = 4; } catch { /* not loaded */ }
     } else showStill(1);
     headTo(12, true); stepHead(0);
   };
@@ -458,7 +458,7 @@
   const skySize = () => [Math.round(innerWidth * Math.min(2, devicePixelRatio || 1)), Math.round(innerHeight * Math.min(2, devicePixelRatio || 1))];
   const freeSky = () => { sky.width = 0; sky.height = 0; };
   const startMorph = (snap, back = false, ctx = back ? reverseCtx : entryCtx) => {
-    const W = innerWidth, H = innerHeight, d = Math.min(2, devicePixelRatio || 1);
+    const d = Math.min(2, devicePixelRatio || 1);
     const [sw, sh] = skySize();
     if (sky.width === sw && sky.height === sh && sg.reset) sg.reset(); else { sky.width = sw; sky.height = sh; }
     sky.style.display = 'block';
@@ -585,7 +585,7 @@
   const endMorph = () => {
     const completed = morph;
     morph = null;
-    if (completed && !completed.back) window.deckEntryDone?.(slide, completed.ctx);
+    if (completed && !completed.back) entryCompletion?.(completed.ctx, 'completed');
     sg.setTransform(1, 0, 0, 1, 0, 0);
     sg.clearRect(0, 0, sky.width, sky.height);
     sky.style.display = 'none';
@@ -622,19 +622,20 @@
   };
   const layout = () => { sizeMink(); sizePic(); measureTl(); placeHead(); if (slide.classList.contains('on')) softenNet(true, entryCtx); };
   new ResizeObserver((es) => { for (const e of es) if (e.target === tl) { measureTl(e.contentRect.width); placeHead(); } }).observe(tl);
-  const start = (fromCore, ctx = window.deckNav) => {
+  const start = (fromCore, ctx) => {
     entryCtx = ctx;
     if (document.hidden || document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingStart = fromCore; return; }
     pendingStart = null;
     bindMediaHandlers(ctx);
+    slide.removeAttribute('data-as-rewind');
     root.classList.remove('as-unmorph', 'is-morphing', 'is-minkless'); // folded away on the way back to slide 4
     // Also warm direct #5 entry.
     window.warmDeckMedia(slide);
     running = true;
     layout();
-    if (motionOff() || ctx?.rest) {
+    if (motionOff() || ctx?.rest || ctx?.direct) {
       settledState(); paint('profile', 0, 0); oneFrame = requestAnimationFrame(() => { oneFrame = 0; if (ctx?.isCurrent?.()) drawPic(now()); });
-      window.deckEntryDone?.(slide, ctx);
+      entryCompletion?.(ctx, 'completed');
       // Back at rest: the finished editor, its preview playing, until the loop's own reset starts the demo again.
       if (!motionOff()) { playFrom(12, 1); td = beatTimes(BEATS[BEATS.length - 1]).done; wait = 0; root.classList.add('is-playing'); wake(); }
       return;
@@ -643,10 +644,11 @@
     td = 0; wait = 0;
     const snap = fromCore && window.AstridCore && window.AstridCore.snapshot();
     if (snap) { startMorph(snap); wait = MORPH.demo; }
-    else window.deckLater(() => { if (ctx?.isCurrent?.()) window.deckEntryDone?.(slide, ctx); }, 1800);
+    else window.deckLater(() => { if (ctx?.isCurrent?.()) entryCompletion?.(ctx, 'completed'); }, 1800, ctx); // deliberate entry stage when no Core picture is available
     wake();
   };
   const stop = () => {
+    slide.removeAttribute('data-as-rewind');
     clearPicFade();
     running = false;
     clearMediaHandlers();
@@ -668,18 +670,15 @@
   // A step back: the morph from slide 4 played backwards. The panels fade as their frames fold back into the two
   // rings, the chat and editor layers shrink back into them, the mink dissolves from the neck up as her outline
   // rises back into the lens's, and the community's motes come home; then slide 4's own picture stands in its place.
-  const fold = () => {
-    reverseCtx = window.deckNav;
-    entryCtx = reverseCtx;
+  const fold = (ctx) => {
+    reverseCtx = ctx;
     const snap = window.AstridCore && window.AstridCore.snapshot(); // slide 4 has settled before this runs
     if (!snap) return false;
     startMorph(snap, true, reverseCtx); // the same paths, measured from the editor as it stands (it hides slide 4's picture)
     morph.back = { e: MORPH.end - 1e-3, last: 0, shown: false };
     morph.steps = { resolve: true, handoff: true, turn: true };
-    slide.classList.add('dt-rewind');
-    coreSlide.classList.add('dt-return', 'dt-await');
-    window.deckRewinding?.(coreSlide, reverseCtx);
-    reverseCtx?.signal?.addEventListener('abort', () => { if (morph?.back) { endUnmorph(); stop(); } }, { once: true });
+    ctx.present(slide, 'dt-rewind');
+    ctx.present(coreSlide, 'dt-return dt-await');
     if (raf) cancelAnimationFrame(raf);
     raf = 0; last = now();
     wake();
@@ -694,61 +693,27 @@
     if (e < MORPH.resolve + 0.5) root.classList.add('as-unmorph'); // the panels fade as their frames come back (as they faded in)
     root.classList.toggle('is-morphing', e < MORPH.resolve);
     root.classList.toggle('is-minkless', e < MORPH.handoff);
-    if (!b.shown && e <= 0.7) { b.shown = true; coreSlide.classList.remove('dt-await'); } // its labels come back as it forms
+    if (!b.shown && e <= 0.7) { b.shown = true; reverseCtx.present(coreSlide, '', 'dt-await'); } // its labels come back as it forms
     morph.t0 = t - e * 1000;
     drawMorph(t);
-    if (e <= 0) { endUnmorph(); leave(); return false; }
+    if (e <= 0) { endUnmorph(); reverseCompletion?.(reverseCtx, 'completed'); stop(); return false; }
     return true;
   };
   const endUnmorph = () => {
     if (!morph?.back) return;
+    slide.removeAttribute('data-as-rewind');
     window.AstridCore?.show(); // the very picture the flight layer has just drawn
     endMorph(); // the sky is kept while slide 4 or 5 is up: the next turn between them flies on it
     root.classList.add('is-minkless'); // the editor and its mink stay folded away as slide 5 fades (until it next starts)
-    slide.classList.replace('dt-rewind', 'dt-rewound');
-    coreSlide.classList.remove('dt-return', 'dt-await');
-    window.deckRewound?.(coreSlide, reverseCtx);
+    reverseCtx.present(slide, 'dt-rewound', 'dt-rewind');
+    reverseCtx.present(coreSlide, '', 'dt-return dt-await');
   };
 
   const coreHost = document.querySelector('[data-astrid-core]');
   const coreSlide = coreHost && coreHost.closest('.slide');
-  const leave = () => {
-    if (slide.classList.contains('on')) return;
-    stop();
-    const signal = window.deckNav?.signal;
-    const timer = setTimeout(() => { if (!slide.classList.contains('on')) clearAll(); }, 700);
-    signal?.addEventListener('abort', () => clearTimeout(timer), { once: true });
-  };
-  let wasOn = false;
-  const watch = new MutationObserver((records) => {
-    const on = slide.classList.contains('on');
-    if (on === wasOn) return;
-    wasOn = on;
-    if (morph?.back) { endUnmorph(); if (on) stop(); }
-    if (on) { entryCtx = window.deckNav; start(!!coreSlide && !coreSlide.classList.contains('on') && records.some((r) => r.target === coreSlide), entryCtx); }
-    else if (coreSlide?.classList.contains('on') && window.deckNav?.back && !motionOff() && running && !paused && !morph && fold()) { /* folding back into slide 4 */ }
-    else leave();
-  });
-  watch.observe(slide, { attributes: true, attributeFilter: ['class'] });
-  if (coreSlide) watch.observe(coreSlide, { attributes: true, attributeFilter: ['class'] });
-  if (coreSlide && !motionOff()) { // the sky, ready while slide 4 or 5 is up; let go once both are left (unless a morph flies on it)
-    const idleSoon = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 100));
-    const near45 = () => coreSlide.classList.contains('on') || slide.classList.contains('on');
-    const keepSky = () => {
-      if (near45()) setTimeout(() => idleSoon(() => {
-        if (!near45() || morph) return;
-        const [sw, sh] = skySize();
-        if (sky.width !== sw || sky.height !== sh) { sky.width = sw; sky.height = sh; }
-      }), 1500);
-      else setTimeout(() => { if (!near45() && !morph) freeSky(); }, 700);
-    };
-    const keep = new MutationObserver(keepSky);
-    [coreSlide, slide].forEach((s) => keep.observe(s, { attributes: true, attributeFilter: ['class'] }));
-    keepSky();
-  }
   const syncMotion = () => {
-    if (motionOff() && slide.classList.contains('on')) { stop(); settledState(); drawPic(now()); window.deckEntryDone?.(slide, entryCtx); return; }
-    if (motionBlocked() && morph?.back) { endUnmorph(); leave(); return; } // a reverse never waits behind the overview
+    if (motionOff() && slide.classList.contains('on')) { stop(); settledState(); drawPic(now()); entryCompletion?.(entryCtx, 'completed'); return; }
+    if (motionBlocked() && morph?.back) { endUnmorph(); reverseCompletion?.(reverseCtx, 'completed'); stop(); return; } // a reverse never waits behind the overview
     if (motionBlocked()) {
       if (!running || paused) return;
       paused = true;
@@ -775,26 +740,65 @@
   document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
-  window.deckOnSettle?.((ctx) => {
-    if (morph?.back) { endUnmorph(); leave(); } // its paths were measured on the old screen
-    if (!slide.classList.contains('on')) return;
+  const makeCompletion = (ctx, setter, cleanup) => {
+    let resolve, settled = false;
+    const promise = new Promise((done) => { resolve = done; });
+    const finish = (owner, result) => {
+      if (owner !== ctx || settled) return;
+      settled = true;
+      setter(null);
+      resolve(result);
+    };
+    setter((owner, result) => finish(owner, result));
+    ctx.defer(() => { finish(ctx, 'cancelled'); cleanup(); });
+    return promise;
+  };
+  const enter = (ctx) => {
+    const promise = makeCompletion(ctx, (fn) => { entryCompletion = fn; }, () => {
+      if (entryCtx === ctx) { stop(); freeSky(); }
+    });
     entryCtx = ctx;
-    stop();
-    settledState(); td = -1; wait = 0;
-    layout();
-    drawPic(now());
-    window.deckEntryDone?.(slide, ctx);
-    bindMediaHandlers(ctx);
-    if (!motionOff()) {
-      if (motionBlocked()) { settlePreviewPending = true; running = true; paused = true; }
-      else {
+    start(ctx.from === 3, ctx);
+    return promise;
+  };
+  const exit = (ctx) => {
+    if (ctx.from !== 4 || ctx.to !== 3 || !ctx.back || motionOff()) return undefined;
+    const promise = makeCompletion(ctx, (fn) => { reverseCompletion = fn; }, () => {
+      if (reverseCtx === ctx) {
+        if (morph?.back) endUnmorph();
+        stop(); freeSky();
+      }
+    });
+    reverseCtx = ctx;
+    slide.setAttribute('data-as-rewind', '');
+    queueMicrotask(() => {
+      if (reverseCtx !== ctx || !ctx.isCurrent() || !reverseCompletion) return;
+      entryCtx = ctx; running = true; paused = false;
+      if (!fold(ctx)) { slide.removeAttribute('data-as-rewind'); reverseCompletion?.(ctx, 'completed'); stop(); }
+    });
+    return promise;
+  };
+  const resize = (ctx) => {
+    if (morph?.back && reverseCtx === ctx) {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      endUnmorph(); reverseCompletion?.(ctx, 'completed'); stop();
+    } else if (reverseCtx === ctx && reverseCompletion) {
+      slide.removeAttribute('data-as-rewind'); reverseCompletion(ctx, 'completed'); stop();
+    } else if (slide.classList.contains('on') && entryCtx === ctx) {
+      stop();
+      settledState(); td = -1; wait = 0;
+      layout(); drawPic(now());
+      entryCompletion?.(ctx, 'completed');
+      bindMediaHandlers(ctx);
+      if (!motionOff() && !motionBlocked()) {
         playFrom(12, 1); td = beatTimes(BEATS[BEATS.length - 1]).done; wait = 0;
         root.classList.add('is-playing'); running = true; wake();
       }
     }
-  });
+  };
+  window.deckRegisterScene?.([4], { enter, exit, resize });
   // Clicks on the demos stay here; they never turn the slide.
   root.addEventListener('click', (e) => { if (e.target.closest('.as-panel, .as-mink, .as-try')) e.stopPropagation(); }); // the link opens its tab and the slide stays
   clearAll();
-  if (slide.classList.contains('on')) { wasOn = true; start(false, window.deckNav); }
 })();

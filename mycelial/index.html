@@ -154,8 +154,11 @@
     transition: opacity 0.6s ease, transform 0.6s ease; transform: translateY(12px);
   }
   .slide.on { opacity: 1; pointer-events: auto; transform: none; }
-  /* Only the slide on screen takes clicks: inactive slides are merely transparent, so anything inside them that
-     turns its own clicks back on (a mink, a plane, a headline) would otherwise catch clicks meant for this one. */
+  /* Paint ownership is independent of opacity. Retired slides retain measurable
+     geometry, but neither their subtree nor composited media may stay visible. */
+  .slide:not(.on):not([data-deck-present]), .slide:not(.on):not([data-deck-present]) * { visibility: hidden !important; }
+  /* Outgoing handoff pictures can still be visible, but only the active slide
+     takes clicks, including descendants that enable their own pointer events. */
   .slide:not(.on), .slide:not(.on) * { pointer-events: none !important; }
   .num { font: italic 400 1rem/1 "Cormorant Garamond", serif; color: var(--gold); letter-spacing: 0.08em; margin-bottom: 2.2rem; }
   .act { color: var(--soft); font-style: normal; margin-left: 0.8em; opacity: 0.7; }
@@ -334,7 +337,7 @@
   .slide.dt-leaving > :not(.num):not(.split), .slide.dt-leaving > .split > :not(:first-child) { opacity: 0; transition: opacity .45s ease; }
   .slide.dt-entering > .split > :first-child { opacity: 0; }
   /* A step back: the slide being left holds its picture on screen while it plays its hand-off in reverse (dt-rewind,
-     set by its own script, which swaps it for dt-rewound to let the slide fade); its text, drawn in as usual, stays
+     granted by the navigation context, then swapped for dt-rewound to let the slide fade); its text, drawn in as usual, stays
      out of sight until the slide next comes on. The earlier slide's picture can wait, hidden, for that motion to come
      back into it (dt-await), then fade in (dt-return). */
   .slide.dt-rewind:not(.on) { opacity: 1; transition: none; }
@@ -487,6 +490,10 @@
   .as-try:hover span, .as-try:focus-visible span { transform: translateX(3px); }
   .as-try:focus-visible { outline: 1px solid #ecc57e88; outline-offset: 4px; border-radius: 3px; }
   .as.is-morphing .as-try { opacity: 0; transition: none; }
+  /* The inactive editor stays measurable for copies, but only demo's own
+     reverse to slide 4 may keep painting outside the selected slide. */
+  .as-host:not(.on):not([data-as-rewind]) [data-astrid-demo],
+  .as-host.dt-await [data-astrid-demo] { visibility: hidden; }
   .as-chat { grid-column: 1; grid-row: 2; }
   .as-edit { grid-column: 2; grid-row: 2; }
   .as-panel { position: relative; min-height: 0; border-radius: 12px; border: 1px solid rgb(240 200 119 / .2); background: var(--as-panel); color: var(--as-ink);
@@ -1863,7 +1870,7 @@
   const ov = document.getElementById('overview'), list = document.getElementById('list');
   let i = 0;
   let progressNav = null;
-  let initialized = false, turnController = null, generation = 0;
+  let initialized = false, booted = false, turnController = null, generation = 0;
   window.deckNav = null;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const pendingTurns = [];
@@ -2014,9 +2021,22 @@
     toldTimer = setTimeout(() => motionBtn.classList.remove('is-told'), 1800);
   });
   let transactionDepth = 0;
+  const handoffClasses = new Set(['dt-rewind', 'dt-rewound', 'dt-return', 'dt-await', 'dt-leaving', 'dt-release', 'dt-over', 'dt-entering']);
+  const presentations = new WeakMap();
+  const retirePresentation = (context) => {
+    const state = presentations.get(context);
+    if (!state || !state.open) return;
+    state.open = false;
+    for (const [slide, grants] of state.grants) {
+      slide.classList.remove(...grants);
+      slide.removeAttribute('data-deck-present');
+    }
+    state.grants.clear();
+  };
   const finishTurn = () => {
     if (transactionDepth || !turn || !turn.network || !turn.entry) return;
     clearTimeout(turn.watchdog);
+    retirePresentation(turn.context);
     slides[turn.to]?.setAttribute('data-settled', '');
     turn = null;
     setPace(1);
@@ -2030,14 +2050,22 @@
   const ownsTurn = (slideEl, context) => !!context && context.isCurrent() &&
     turn?.context === context && slides[context.to] === slideEl;
   const completePhase = (phase, slideEl, context) => {
-    if (!ownsTurn(slideEl, context) || turn[phase] || (phase === 'entry' && turn.rewinding)) return false;
+    if (!ownsTurn(slideEl, context) || turn[phase]) return false;
+    if (phase === 'entry') {
+      if (turn.rewinding) return false;
+      turn.entryRequested = true;
+      if (turn.scenePending) return true;
+    }
     turn[phase] = true;
     dispatchEvent(new CustomEvent('deck-phase', { detail: { generation: context.generation, phase } }));
     finishTurn(); hurry();
     return true;
   };
   window.deckTurnDone = (slideEl, context) => completePhase('network', slideEl, context);
+  window.deckArrived = (context) => { if (turn?.context === context && context.isCurrent()) turn.arrive('completed'); };
   window.deckEntryDone = (slideEl, context) => completePhase('entry', slideEl, context);
+  // Compatibility for source scenes not yet registered. Registered exit work is
+  // joined before entry runs, so it needs no late reverse claim.
   window.deckRewinding = (slideEl, context) => {
     if (!ownsTurn(slideEl, context)) return false;
     turn.rewinding = true; turn.entry = false;
@@ -2047,6 +2075,48 @@
     if (!ownsTurn(slideEl, context) || !turn.rewinding) return false;
     turn.rewinding = false;
     return completePhase('entry', slideEl, context);
+  };
+
+  // A static dispatcher, not another slide-selection authority. Legacy scenes
+  // continue using their phase callbacks until their observers are migrated.
+  const scenes = new Map();
+  let networkScene = null;
+  window.deckRegisterScene = (ids, scene) => {
+    if (booted) throw new Error('Register scenes before deck boot');
+    ids.forEach((id) => {
+      if (scenes.has(id)) throw new Error(`Slide ${id + 1} already registered`);
+      scenes.set(id, scene);
+    });
+  };
+  window.deckRegisterNetwork = (scene) => {
+    if (booted || networkScene) throw new Error('Register the network once before deck boot');
+    networkScene = scene;
+  };
+  const scenePair = (context) => [...new Set([scenes.get(context.from), scenes.get(context.to)])].filter(Boolean);
+  const dispatchScenes = (context) => {
+    const source = scenes.get(context.from), target = scenes.get(context.to);
+    const work = [];
+    if (source && source !== target && source.exit) work.push({ scene: source, hook: 'exit' });
+    if (target) work.push({ scene: target, hook: 'enter' });
+    // Join every source/target participant before any hook can report completion.
+    turn.scenePending = work.length;
+    transactionDepth++;
+    try {
+      for (const { scene, hook } of work) {
+        Promise.resolve(scene[hook](context)).then((result) => {
+          if (!context.isCurrent() || turn?.context !== context || result === 'cancelled') return;
+          if (hook === 'enter') turn.entryRequested = true;
+          turn.scenePending--;
+          if (!turn.scenePending && turn.entryRequested) completePhase('entry', slides[context.to], context);
+        });
+      }
+      Promise.resolve(networkScene.enter(context)).then((result) => {
+        if (result === 'completed') window.deckTurnDone(slides[context.to], context);
+      });
+    } finally {
+      transactionDepth--;
+      finishTurn();
+    }
   };
 
   // Geometry listeners and scene settlement are separate participants in one
@@ -2084,9 +2154,12 @@
         netMask = null; paintNetMask('');
       } else {
         resizeSubscribers.forEach((fn) => fn(context, reason));
+        networkScene?.resize(context);
+        scenePair(context).forEach((scene) => scene.resize?.(context));
         settleSubscribers.forEach((fn) => fn(context, reason));
       }
     } finally {
+      retirePresentation(context);
       transactionDepth--;
       dispatchEvent(new CustomEvent('deck-transaction', { detail: {
         reason, generation: context.generation,
@@ -2121,6 +2194,7 @@
 
   // stepPace: an arrow, a click, a swipe or the back button, one slide at a time (never a jump), at the pace paceFor() chose.
   const startTurn = (n, historyMode = 'push', stepPace = 0) => {
+    if (!booted) return;
     const stepped = stepPace > 0;
     const to = Math.max(0, Math.min(slides.length - 1, n));
     if (initialized && to === i) return;
@@ -2136,12 +2210,52 @@
     // a jump back (hash, overview, history, Home) just lands at rest.
     // With animations off every slide lands at rest, as on a jump back; the network and text land as in reduced motion.
     const back = !motionOff && stepped && dir < 0 && to === from - 1 && !reversePair;
+    const disposers = new Set();
+    let arrivalDone = false, resolveArrival;
+    const arrived = new Promise((resolve) => { resolveArrival = resolve; });
     const context = Object.freeze({ generation: ++generation, from, to, dir,
+      direct: from === null || !stepped,
+      intro: from === null && to === 0 && !location.hash && !motionOff,
       rest: motionOff || (dir < 0 && !reversePair), back, signal: turnController.signal,
-      now: window.deckNow, isCurrent: () => window.deckNav === context && !context.signal.aborted });
+      now: window.deckNow, isCurrent: () => window.deckNav === context && !context.signal.aborted,
+      arrived,
+      present(slide, add = '', remove = '') {
+        const state = presentations.get(context);
+        if (!context.isCurrent() || !state.open) return;
+        if (slide !== slides[from] && slide !== slides[to]) throw new Error('Presentation belongs to this navigation’s source or target');
+        const additions = add.split(/\s+/).filter(Boolean), removals = remove.split(/\s+/).filter(Boolean);
+        if ([...additions, ...removals].some((name) => !handoffClasses.has(name))) throw new Error('Unknown handoff presentation class');
+        const grants = state.grants.get(slide) || new Set();
+        for (const name of removals) { slide.classList.remove(name); grants.delete(name); }
+        for (const name of additions) { slide.classList.add(name); grants.add(name); }
+        if (grants.size) { state.grants.set(slide, grants); slide.setAttribute('data-deck-present', ''); }
+        else { state.grants.delete(slide); slide.removeAttribute('data-deck-present'); }
+      },
+      defer(dispose) {
+        let live = true;
+        const release = () => {
+          if (!live) return;
+          live = false; disposers.delete(release); dispose();
+        };
+        if (context.signal.aborted) release(); else disposers.add(release);
+        return release;
+      },
+    });
+    presentations.set(context, { open: true, grants: new Map() });
+    const arrive = (result) => {
+      if (arrivalDone) return;
+      arrivalDone = true; resolveArrival(result);
+    };
+    turnController.signal.addEventListener('abort', () => {
+      arrive('cancelled');
+      for (const release of [...disposers]) {
+        try { release(); } catch (error) { queueMicrotask(() => { throw error; }); }
+      }
+    }, { once: true });
     window.deckNav = context;
     const basePace = motionOff && !reduced ? STILL_PACE : stepPace || 1;
-    turn = { context, to, dir: stepped ? dir : 0, basePace, network: reduced, entry: reduced, watchdog: null, started: window.deckNow(), rewinding: false,
+    turn = { context, arrive, to, dir: stepped ? dir : 0, basePace, network: false, entry: false,
+      entryRequested: reduced && !scenes.has(to), scenePending: 0, watchdog: null, started: window.deckNow(), rewinding: false,
       budget: from === null ? 6500 : turnBudgets[to] };
     setPace(basePace);
     document.documentElement.dataset.dir = String(dir);
@@ -2149,7 +2263,6 @@
     initialized = true;
     // Only the slide on screen can be tabbed into or read out; the others are inert until they come on.
     slides.forEach((s, k) => { s.classList.toggle('on', k === i); s.inert = k !== i; s.removeAttribute('data-settled'); });
-    slides[i].classList.remove('dt-rewound');
     if (!(i === 0 && document.documentElement.classList.contains('dt-intro'))) warmMedia(slides[i]);
     warmMedia(slides[i + 1]);
     count.textContent = `${i + 1} / ${slides.length}`;
@@ -2161,8 +2274,8 @@
     if (historyMode !== 'none' || location.hash || history.state?.deckSlide !== i + 1) {
       history.replaceState({ ...history.state, deckSlide: i + 1 }, '', url);
     }
-    if (!reduced) turn.watchdog = watchTurn(context, from === null ? 18000 : 12000);
-    else finishTurn();
+    turn.watchdog = watchTurn(context, from === null ? 18000 : 12000);
+    dispatchScenes(context);
   };
   const go = (n, historyMode = 'push') => {
     const to = Math.max(0, Math.min(slides.length - 1, n));
@@ -2192,6 +2305,7 @@
   const setup = () => {
     document.documentElement.dataset.ver = ver;
     slides = all;
+    slides.forEach((s) => { s.classList.remove('on'); s.inert = true; });
     slides.forEach((s, k) => { s.querySelector('.num').firstChild.nodeValue = String(k + 1).padStart(2, '0'); });
     list.innerHTML = '';
     slides.forEach((s, k) => {
@@ -2301,9 +2415,13 @@
     intro.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     setTimeout(() => { intro.disconnect(); warmOpening(); }, 9000);
   } else warmOpening();
-  fromHash('replace');
-  showMotion();
-  if (!document.documentElement.classList.contains('dt-intro')) warmOpening();
+  window.deckBoot = () => {
+    if (booted) return;
+    if (!networkScene) throw new Error('Network participant missing at boot');
+    booted = true;
+    fromHash('replace');
+    showMotion();
+  };
 </script>
 <script src="scatter-field.js"></script>
 <script src="collage.js"></script>
@@ -2316,5 +2434,6 @@
 <script src="pays.js"></script>
 <script src="flowers.js"></script>
 <script src="flywheel.js"></script>
+<script>window.deckBoot();</script>
 </body>
 </html>

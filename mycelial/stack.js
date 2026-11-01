@@ -17,7 +17,6 @@
   const M = window.AstridMink;
   if (!root || !M) return;
   const slide = root.closest('.slide');
-  const html = document.documentElement;
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const motionOff = () => still || window.deckStill?.();
   const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
@@ -124,7 +123,7 @@
   // Ghosts: arriving from slide 5, the rendering, timeline and agent planes first carry exact copies of its panels.
   const SRC = { 0: '.as-player', 1: '.as-timeline', 3: '.as-chat' };
   const ghosts = PL.map((_, i) => { if (!SRC[i]) return null; const el = document.createElement('div'); el.className = 'st-ghost'; return el; });
-  [...planes].reverse().forEach((el, j) => { world.appendChild(el); const i = 4 - j; if (ghosts[i]) world.appendChild(ghosts[i]); }); // the upper planes paint over the lower
+  [...planes].reverse().forEach((el) => world.appendChild(el)); // snapshot ghosts attach only during their handoff
   // The player's picture rides between slide 5 and the top plane on a layer of its own, the plane's box under the
   // plane's own turn: slide 5's exact frame, eased from its place in slide 5's player to the plane's picture box as
   // the plane morphs, then dissolving where it stands into the plane's own film (and the other way back).
@@ -135,7 +134,6 @@
   const carryCv = document.createElement('canvas'), carryG = carryCv.getContext('2d');
   carryPic.append(carryCv, planes[0].querySelector('.st-pic span').cloneNode(true)); // the film's caption, for the way back
   carry.appendChild(carryPic);
-  world.appendChild(carry);
   // on: carrying; A: the picture's rect in slide 5's player (px, as its copy is laid out); P: the plane's picture box
   // in the plane's own content (its px); a: the layer's opacity; back: the plane's frame, on its way back to slide 5.
   const cy = { on: false, A: null, nw: 0, nh: 0, P: null, a: 1, back: false };
@@ -295,7 +293,7 @@
     const corners = cw.map((c) => Object.fromEntries(Object.entries(c).map(([key, p]) => [key, toS(p)])));
     const callX = toS({ x: callXw, y: 0 }).x;
     flags.forEach((el) => { el.style.left = `${callX.toFixed(1)}px`; });
-    cards.forEach((c, i) => {
+    cards.forEach((c) => {
       if (view.mobile) { c.style.left = '16px'; c.style.top = `${slotT.toFixed(1)}px`; return; }
       c.style.left = `${(right ? Math.min(W - 8 - cw0, callX - 4) : Math.max(8, callX + 4 - cw0)).toFixed(1)}px`;
     });
@@ -498,8 +496,25 @@
   };
 
   // ---- States ------------------------------------------------------------------------------------
-  const endCarry = () => { cy.on = false; carry.style.display = 'none'; planes[0].classList.remove('is-carrying'); };
-  const clearGhosts = () => { ghosts.forEach((gh) => { if (gh) { gh.replaceChildren(); gh.style.display = 'none'; } }); endCarry(); };
+  let snapshotRelease = null;
+  const endCarry = () => {
+    Object.assign(cy, { on: false, A: null, P: null, nw: 0, nh: 0, a: 1, back: false });
+    carry.remove(); carry.style.display = 'none'; carry.classList.remove('is-back');
+    carryPic.style.removeProperty('width'); carryPic.style.removeProperty('height');
+    carryCv.width = carryCv.height = 0;
+    planes[0].classList.remove('is-carrying');
+  };
+  const retireGhosts = () => ghosts.forEach((gh, i) => {
+    if (!gh) return;
+    gh.remove(); gh.replaceChildren(); gh.removeAttribute('style');
+    delete gh.dataset.w; delete gh.dataset.h; delete shown[i].g;
+  });
+  const clearGhosts = () => {
+    const release = snapshotRelease;
+    snapshotRelease = null;
+    if (release) release(); else retireGhosts();
+    endCarry();
+  };
   const hideAll = () => {
     clearGhosts();
     st.forEach((s, i) => Object.assign(s, settledOf(PL[i]), { o: 0 }));
@@ -535,7 +550,8 @@
   const wide = () => view.right && !view.low; // a desktop or tablet, not a phone on its side
   const demo = document.querySelector('[data-astrid-demo]');
   const slide5 = demo && demo.closest('.slide');
-  const snapFrom5 = () => {
+  const snapFrom5 = (ctx) => {
+    clearGhosts();
     const q = (sel) => { const el = demo.querySelector(sel); const r = el && el.getBoundingClientRect(); return r && r.width > 4 && r.height > 4 ? r : null; };
     const at = Object.keys(SRC).map(Number), rects = at.map((i) => q(SRC[i]));
     if (rects.some((r) => !r)) return null;
@@ -550,11 +566,13 @@
       c.style.width = `${r.width}px`; c.style.height = `${r.height}px`;
       c.querySelectorAll('.as-in').forEach((n) => n.classList.remove('as-in'));
       const from = src.querySelectorAll('canvas'), to = c.querySelectorAll('canvas');
-      from.forEach((cs, j) => { to[j].width = cs.width; to[j].height = cs.height; try { to[j].getContext('2d').drawImage(cs, 0, 0); } catch (e) { /* empty */ } });
+      from.forEach((cs, j) => { to[j].width = cs.width; to[j].height = cs.height; try { to[j].getContext('2d').drawImage(cs, 0, 0); } catch { /* empty */ } });
       wrap.appendChild(c);
       gh.replaceChildren(wrap);
       gh.dataset.w = r.width; gh.dataset.h = r.height;
+      world.insertBefore(gh, planes[i].nextSibling);
     });
+    snapshotRelease = ctx.defer(() => { retireGhosts(); endCarry(); });
     takePicture(demo.querySelector(SRC[0]), rects[0]);
     const mr = q('.as-mink');
     const c5 = mr ? Math.max(1, Math.round(mr.width / MW)) : cell;
@@ -569,21 +587,21 @@
     const dx = Math.round((w - dw) / 2), dy = Math.round((h - dh) / 2), u = b.width / w;
     Object.assign(cy, { A: { x: b.left - r.left + dx * u, y: b.top - r.top + dy * u, w: dw * u }, nw: r.width, nh: r.height });
     carryCv.width = Math.round(dw); carryCv.height = Math.round(dh);
-    try { carryG.drawImage(pic, dx, dy, dw, dh, 0, 0, carryCv.width, carryCv.height); } catch (e) { /* empty */ }
+    try { carryG.drawImage(pic, dx, dy, dw, dh, 0, 0, carryCv.width, carryCv.height); } catch { /* empty */ }
     copy.getContext('2d').clearRect(0, 0, copy.width, copy.height); copy.dataset.carried = '1';
     const pe = planes[0].querySelector('.st-pic'), scr = pe.parentElement, n = (PL[0].w - 2) / (inners[0].offsetWidth || 1); // laid out unscaled
     cy.P = { x: (scr.offsetLeft + pe.offsetLeft - pe.offsetWidth / 2) * n, y: (scr.offsetTop + pe.offsetTop - pe.offsetHeight / 2) * n, w: pe.offsetWidth * n, h: pe.offsetHeight * n };
     carryPic.style.width = `${cy.P.w.toFixed(2)}px`; carryPic.style.height = `${cy.P.h.toFixed(2)}px`;
     Object.assign(cy, { on: true, back: false, a: 1 }); carry.classList.remove('is-back'); carry.style.display = 'block';
+    world.appendChild(carry);
   };
   const begin = (from5, layoutReady = false) => {
     if (!layoutReady) layout();
     const t0 = now();
     if (from5) {
       hideAll();
-      const src = snapFrom5();
+      const src = snapFrom5(activeCtx);
       if (src) {
-        demo.classList.add('is-minkless'); // the captured mink is handed to this slide in the same frame
         build = { t0, from5: true, src, ctx: activeCtx };
         step(t0);
         return;
@@ -659,7 +677,8 @@
       const ctx = build.ctx;
       build = null;
       if (amb) { vis.sh = 1; vis.lb = PL.map(() => 1); vis.rt = 1; } else { settleAll(); amb = { t }; tourFrom(0, t + 1100); }
-      if (current(ctx)) window.deckEntryDone?.(slide, ctx);
+      entryFinished = true;
+      if (current(ctx)) entryCompletion?.(ctx, 'completed');
     }
   };
 
@@ -791,7 +810,7 @@
     window.deckSetNetMask?.(ctx, 'stack', { image: mask, mode: 'luminance', size: '100% 100%' });
   };
 
-  let waitArrive = null, timers = [], pendingBuild = false;
+  let pendingBuild = false, entryCompletion = null, reverseCompletion = null, entryFinished = false;
   const beginWhenReady = (ctx = activeCtx) => {
     if (!current(ctx)) return;
     if (!running || build || amb) return;
@@ -799,17 +818,28 @@
     pendingBuild = false;
     begin(false, true); play(); wake();
   };
-  const clearTimers = () => { timers.forEach(window.deckCancelLater); timers = []; if (waitArrive) { waitArrive.disconnect(); waitArrive = null; } };
-  const start = (from5, ctx = window.deckNav) => {
-    if (!current(ctx) || ctx.to !== 5) return;
+  const makeCompletion = (ctx, setter, cleanup) => {
+    let resolve, settled = false;
+    const promise = new Promise((done) => { resolve = done; });
+    const finish = (owner, result) => {
+      if (owner !== ctx || settled) return;
+      settled = true; setter(null); resolve(result);
+    };
+    setter((owner, result) => finish(owner, result));
+    ctx.defer(() => { finish(ctx, 'cancelled'); cleanup(); });
+    return promise;
+  };
+  const start = (from5, ctx) => {
+    if (!current(ctx) || ctx.to !== 5) return Promise.resolve('cancelled');
+    const promise = makeCompletion(ctx, (fn) => { entryCompletion = fn; }, () => stop(ctx, true));
     activeCtx = ctx;
-    ctx.signal.addEventListener('abort', () => queueMicrotask(() => {
-      if (activeCtx !== ctx) return;
-      const next = window.deckNav;
-      if (next?.from === 5 && next.to === 4 && next.back && slide5?.classList.contains('on') && amb && !build && !motionOff()) fold(next);
-      else stop(ctx);
-    }), { once: true });
-    if (document.hidden || document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingStart = from5; pendingCtx = ctx; return; }
+    entryFinished = false;
+    if (document.hidden || document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingStart = from5; pendingCtx = ctx; return promise; }
+    launch(from5, ctx);
+    return promise;
+  };
+  const launch = (from5, ctx) => {
+    if (!current(ctx) || activeCtx !== ctx) return;
     window.warmDeckMedia?.(slide);
     pendingStart = null; pendingCtx = null;
     running = true;
@@ -817,44 +847,38 @@
     slide.classList.remove('st-arrive');
     softenNet(ctx, true);
     flags.forEach((f) => { f.tabIndex = 0; });
-    if (motionOff() || ctx.rest) {
+    if (motionOff() || ctx.rest || ctx.direct) {
       settleAll(); stepHead();
       if (view.mobile) show(0);
-      window.deckEntryDone?.(slide, ctx);
+      entryFinished = true; entryCompletion?.(ctx, 'completed');
       // Landing at rest: the first card is open as it lands (on a wider screen, once the words are in).
       if (!motionOff()) { amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0)); play(); wake(); }
       return;
     }
     if (from5) { // the product moves at once; the slide must not fade in under it
       slide.classList.add('st-arrive');
-      timers.push(window.deckLater(() => { if (current(ctx)) slide.classList.remove('st-arrive'); }, 900));
-      try { video.currentTime = 2; } catch (e) { /* not loaded */ }
+      window.deckLater(() => { if (current(ctx)) slide.classList.remove('st-arrive'); }, 900, ctx);
+      try { video.currentTime = 2; } catch { /* not loaded */ }
       begin(true, true); play(); wake();
       return;
     }
     hideAll();
-    const go = () => beginWhenReady(ctx);
-    if (html.classList.contains('dt-intro')) { // a first load: the Mycelial mark plays first
-      waitArrive = new MutationObserver(() => { if (!current(ctx)) { clearTimers(); return; } if (!html.classList.contains('dt-intro')) { waitArrive.disconnect(); waitArrive = null; timers.push(window.deckLater(go, 250)); } });
-      waitArrive.observe(html, { attributes: true, attributeFilter: ['class'] });
-      return;
-    }
-    (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { if (current(ctx)) timers.push(window.deckLater(go, 1300)); }); // if the network never says it has arrived
+    Promise.resolve(ctx.arrived).then((result) => {
+      if (result === 'completed' && current(ctx)) beginWhenReady(ctx);
+    });
   };
-  slide.addEventListener('dt-arrive', () => { const ctx = activeCtx; if (current(ctx) && running && !build && !amb && !motionOff() && !ctx.rest && !html.classList.contains('dt-intro')) { clearTimers(); beginWhenReady(ctx); } });
-  const stop = (ctx = activeCtx) => {
+  const stop = (ctx = activeCtx, preserveScene = false) => {
     if (ctx && activeCtx && activeCtx !== ctx) return;
     running = false;
     paused = false; pendingStart = null; pendingCtx = null; pausedVideos = [];
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
-    clearTimers();
     pendingBuild = false;
-    build = null; amb = null;
+    build = null;
     clearGhosts(); // transient editor snapshots must not outlive an interrupted hand-off
-    restMink();
+    if (!preserveScene) { amb = null; restMink(); }
     clearTimeout(leaving); Object.assign(hold, { hover: -1, focus: -1, pin: -1 }); guide.on = false; guide.a = 0; guide.last = 0;
-    show(-1); lit.fill(0);
+    if (!preserveScene) { show(-1); lit.fill(0); }
     flags.forEach((f) => { f.tabIndex = -1; });
     slide.classList.remove('st-arrive');
     softenNet(ctx, false);
@@ -869,28 +893,26 @@
   const fold = (ctx) => {
     if (!current(ctx)) return;
     activeCtx = ctx;
+    running = true; paused = false;
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
-    clearTimers();
     clearTimeout(leaving); Object.assign(hold, { hover: -1, focus: -1, pin: -1 }); guide.on = false; guide.a = 0;
     show(-1); lit.fill(0);
     flags.forEach((f) => { f.tabIndex = -1; });
     restMink();
-    slide.classList.add('dt-rewind');
-    slide5.classList.add('dt-return', 'dt-await');
-    window.deckRewinding?.(slide5, ctx);
+    ctx.present(slide, 'dt-rewind');
+    ctx.present(slide5, 'dt-return dt-await');
     // From the settled stack, the arrival's clock runs back from its end.
     amb = null; // the tour is over: the planes are the build's again
     video.pause(); // its film holds its frame as the plane folds back into slide 5's preview
     const t = now();
     build = { back: true, from5: true, src: null, t0: t, e: FROM5.end - 1e-3, startAt: t, shown: false, ctx };
-    ctx.signal.addEventListener('abort', () => { if (build?.back && build.ctx === ctx) abortFold(); }, { once: true });
     wake();
   };
   const unfold = (t) => {
     const b = build;
     if (!b.src) { // slide 5 has drawn its settled editor by now: copy its panels as they stand
-      b.src = snapFrom5();
+      b.src = snapFrom5(b.ctx);
       if (!b.src) { endFold(); return false; }
       if (cy.on && video.readyState >= 2) { // folding back, the plane's own frame rides back (its film holds as it folds)
         const w = Math.round(cy.A.w * dpr);
@@ -903,7 +925,7 @@
     if (!b.fresh && b.e <= 1.1) { b.fresh = true; repaintGhosts(); }
     b.e = Math.max(0, FROM5.end - 1e-3 - (t - b.startAt) / 1000);
     // Slide 5 fades in under the copies as they settle onto its panels; once it is whole, the copies go.
-    if (!b.shown && b.e <= 0.3) { b.shown = true; b.shownAt = t; slide5.classList.remove('dt-await'); }
+    if (!b.shown && b.e <= 0.3) { b.shown = true; b.shownAt = t; b.ctx.present(slide5, '', 'dt-await'); }
     if (b.e <= 0 && t - (b.shownAt ?? Infinity) >= 650) { endFold(); return false; }
     b.t0 = t - b.e * 1000;
     stepBuild(t);
@@ -912,14 +934,15 @@
   };
   const repaintGhosts = () => Object.keys(SRC).forEach((i) => {
     const from = demo.querySelector(SRC[i])?.querySelectorAll('canvas') || [], to = ghosts[i].querySelectorAll('canvas');
-    from.forEach((cs, j) => { const c = to[j]; if (!c || c.dataset.carried || c.width !== cs.width || c.height !== cs.height) return; try { const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.drawImage(cs, 0, 0); } catch (e) { /* empty */ } });
+    from.forEach((cs, j) => { const c = to[j]; if (!c || c.dataset.carried || c.width !== cs.width || c.height !== cs.height) return; try { const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.drawImage(cs, 0, 0); } catch { /* empty */ } });
   });
   const abortFold = () => {
     if (!build?.back) return;
+    const ctx = build.ctx;
     build = null;
     clearGhosts();
-    slide.classList.remove('dt-rewind', 'dt-rewound');
-    slide5?.classList.remove('dt-return', 'dt-await');
+    ctx.present(slide, '', 'dt-rewind dt-rewound');
+    ctx.present(slide5, '', 'dt-return dt-await');
     stop(activeCtx);
   };
   const endFold = () => {
@@ -927,37 +950,25 @@
     const ctx = build.ctx;
     build = null;
     clearGhosts(); // slide 5's own panels stand exactly where their copies were
-    slide.classList.replace('dt-rewind', 'dt-rewound');
-    slide5?.classList.remove('dt-return', 'dt-await');
-    if (slide5 && current(ctx)) window.deckRewound?.(slide5, ctx);
+    ctx.present(slide, 'dt-rewound', 'dt-rewind');
+    ctx.present(slide5, '', 'dt-return dt-await');
+    if (current(ctx)) reverseCompletion?.(ctx, 'completed');
     if (slide.classList.contains('on')) return;
     stop();
     hideAll();
   };
 
-  let wasOn = false;
-  const watch = new MutationObserver(() => {
-    const on = slide.classList.contains('on');
-    if (on === wasOn) return;
-    wasOn = on;
-    const ctx = window.deckNav;
-    if (!on) {
-      if (build?.back && build.ctx === ctx) return;
-      const to5 = !!slide5 && slide5.classList.contains('on') && ctx?.from === 5 && ctx.to === 4 && ctx.back && !motionOff() && running && !paused && amb && !build;
-      if (to5) { fold(ctx); return; }
-      const old = activeCtx;
-      stop(old);
-      if (current(ctx)) timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) hideAll(); }, 700, ctx));
-      return;
-    }
-    const from5 = !motionOff() && ctx?.from === 4 && ctx.to === 5;
-    start(from5, ctx);
-  });
-  watch.observe(slide, { attributes: true, attributeFilter: ['class'] });
-  if (slide5) watch.observe(slide5, { attributes: true, attributeFilter: ['class'] });
   const syncMotion = () => {
     if (motionBlocked() && build?.back) endFold(); // a reverse never waits behind the overview
-    if (motionOff() && slide.classList.contains('on')) { const ctx = activeCtx; stop(ctx); start(false, ctx || window.deckNav); }
+    if (motionOff() && slide.classList.contains('on') && activeCtx) {
+      const ctx = activeCtx;
+      if (raf) cancelAnimationFrame(raf); raf = 0;
+      running = true; paused = false; pendingBuild = false; build = null; amb = null;
+      clearGhosts(); layout(); softenNet(ctx, true); settleAll(); stepHead();
+      flags.forEach((f) => { f.tabIndex = 0; });
+      show(view.mobile ? 0 : -1);
+      entryFinished = true; entryCompletion?.(ctx, 'completed');
+    }
     else if (motionBlocked()) {
       if (!running || paused) return;
       paused = true;
@@ -971,7 +982,7 @@
         return;
       }
       // An entry deferred behind the overview has no scene to resume yet.
-      if (pendingStart !== null) { start(pendingStart, pendingCtx); return; }
+      if (pendingStart !== null) { const from5 = pendingStart, ctx = pendingCtx; pendingStart = null; pendingCtx = null; launch(from5, ctx); return; }
       if (!paused) return;
       paused = false;
       guide.last = 0;
@@ -984,36 +995,35 @@
   document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
-  window.deckOnSettle((ctx) => {
-    if (!current(ctx)) return;
-    clearTimers(); pendingBuild = false; pendingStart = null; pendingCtx = null;
-    if (ctx.to === 5 && slide.classList.contains('on')) {
-      activeCtx = ctx; running = true; paused = false;
+  const sceneEnter = (ctx) => start(ctx.from === 4 && !motionOff(), ctx);
+  const sceneExit = (ctx) => {
+    if (ctx.from !== 5 || ctx.to !== 4 || !ctx.back || motionOff() || !entryFinished) {
+      activeCtx = ctx;
+      stop(ctx);
+      // Keep the settled pixels available to Pays' legacy snapshot reader.
+      // The controller retires this slide's paint after the outgoing fade.
+      return undefined;
+    }
+    const promise = makeCompletion(ctx, (fn) => { reverseCompletion = fn; }, () => abortFold());
+    fold(ctx);
+    return promise;
+  };
+  const sceneResize = (ctx) => {
+    if (build?.back && build.ctx === ctx) { endFold(); return; }
+    if (slide.classList.contains('on') && activeCtx === ctx) {
+      running = false; paused = false; pendingBuild = false;
       if (raf) cancelAnimationFrame(raf); raf = 0;
-      build = null; amb = null; slide.classList.remove('st-arrive', 'dt-rewind', 'dt-rewound');
-      slide5?.classList.remove('dt-return', 'dt-await');
-      clearGhosts();
+      build = null; clearGhosts();
+      activeCtx = ctx; running = true;
       layout(); softenNet(ctx, true); settleAll(); stepHead();
       flags.forEach((f) => { f.tabIndex = 0; });
       show(view.mobile ? 0 : -1);
       amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0));
-      window.deckEntryDone?.(slide, ctx);
+      entryFinished = true; entryCompletion?.(ctx, 'completed');
       if (!document.hidden && !document.getElementById('overview')?.classList.contains('on') && !window.deckStill?.()) wake();
-      return;
     }
-    if (ctx.from === 5 && ctx.to === 4) {
-      build = null; amb = null; clearGhosts();
-      slide.classList.replace('dt-rewind', 'dt-rewound');
-      slide5?.classList.remove('dt-return', 'dt-await');
-      stop(activeCtx);
-      hideAll();
-      if (current(ctx)) window.deckRewound?.(slide5, ctx);
-      return;
-    }
-    if (!slide.classList.contains('on') || ctx.from === 5) {
-      stop(activeCtx); hideAll();
-    }
-  });
+  };
+  window.deckRegisterScene?.([5], { enter: sceneEnter, exit: sceneExit, resize: sceneResize });
   // Clicks on the stack stay here; they never turn the slide.
   root.addEventListener('click', (e) => { if (e.target.closest('.st-plane, .st-mink, .st-flag, .st-card, .st-hit')) e.stopPropagation(); });
   // Flags: hover (a mouse) or keyboard focus shows a layer's card; a click or tap pins it (again to let go).
@@ -1040,5 +1050,4 @@
 
   layout();
   hideAll();
-  if (slide.classList.contains('on')) { wasOn = true; start(false); }
 })();

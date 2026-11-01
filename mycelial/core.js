@@ -138,7 +138,7 @@
   const orbAt = (phi, da = 0, db = 0) => P(ORB.cx + (ORB.a + da) * Math.cos(phi), ORB.cy + (ORB.b + db) * Math.sin(phi));
 
   // Built by layout().
-  let C0, rings = [], lens = null, cons = null, panels = null, sides = [], orbit = [], feed = null, nodeAt = null;
+  let C0, rings = [], lens = null, cons = null, panels = null, sides = [], orbit = [], feed = null;
   let seed = 1;
   const rnd = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
 
@@ -304,7 +304,6 @@
     const lineR = rects.filter((r) => Math.abs(r.top - rects[0].top) < 6);
     const nx = lineR.length ? (Math.min(...lineR.map((r) => r.left)) + Math.max(...lineR.map((r) => r.right))) / 2 - b.left : W / 2;
     const ny = (rects.length ? rects[0].top : nb.top) - 13 - b.top;
-    nodeAt = { x: nx, y: ny };
     const up = bot0.y - ny;
     feed = line(bez({ x: nx, y: ny - 3 }, { x: nx + 9 * k, y: ny + up * 0.35 }, { x: bot0.x - 8 * k, y: bot0.y - up * 0.6 }, { x: bot0.x, y: bot0.y }, 32));
 
@@ -524,7 +523,7 @@
       stroke(p.down, 0, p.down.total * qf, 1.1 * LW, LINE, 0.8);
       const qc = smooth(k01(tf + 0.35 / pace, 0.45 / pace));
       if (qc > 0) {
-        const xm = (p.l + p.r) / 2, w = p.r - p.l, hh = p.b - p.t;
+        const w = p.r - p.l, hh = p.b - p.t;
         g.lineWidth = 1 * LW;
         g.strokeStyle = `rgba(${LINE},${(0.75 * qc).toFixed(3)})`;
         g.beginPath();
@@ -808,7 +807,7 @@
     reset();
     if (!layout()) return false;
     visits++;
-    if (motionOff() || ctx?.rest) { ta = 0; settle(); draw(); window.deckEntryDone?.(slide, ctx); if (!motionOff()) { html.classList.add('ac-quiet'); start(ctx); } return false; }
+    if (motionOff() || ctx?.rest || ctx?.direct) { ta = 0; settle(); draw(); window.deckEntryDone?.(slide, ctx); if (!motionOff()) { html.classList.add('ac-quiet'); start(ctx); } return false; }
     pace = visits > 1 ? 0.7 : 1;
     ta = -9; // dark until the network arrives
     if (fromGap && launch()) pace = 1;
@@ -839,6 +838,7 @@
     entryCtx = ctx;
     settledCtx = null;
     bindArrival(ctx);
+    if (ctx?.direct || ctx?.rest) { prepare(false, ctx); return; }
     // On a first load the Mycelial mark plays first; grow once it has landed.
     if (html.classList.contains('dt-intro')) {
       if (waiting) return;
@@ -890,8 +890,8 @@
     sides.forEach((sd) => sd.slots.forEach((x) => { if (x.state !== 'none') { x.shown = 0; if (x.state === 'full') x.filledAt = 0; } x.flash = 0; }));
     pace = 0.7; // the pace of a second visit
     ta = Math.min(ta, T.orbit + 0.85); // the last of the orbit is in by here
-    slide.classList.add('dt-rewind');
-    gapSlide.classList.add('dt-return', 'dt-await');
+    ctx.present(slide, 'dt-rewind');
+    ctx.present(gapSlide, 'dt-return dt-await');
     window.deckRewinding?.(gapSlide, ctx);
     unbuilding = { last: window.deckNow?.() ?? performance.now(), raf: 0, seeded: false, shown: false, at: 0 };
     signal?.addEventListener('abort', endUnbuild, { once: true });
@@ -910,12 +910,12 @@
     if (!u.seeded && ta <= 0) { // the node lifts off as the ring, the arrival's flight played backwards
       u.seeded = true;
       html.classList.remove('ac-quiet');
-      slide.classList.replace('dt-rewind', 'dt-rewound');
+      reverseCtx.present(slide, 'dt-rewound', 'dt-rewind');
       if (launch()) seedEl.getAnimations({ subtree: true }).forEach((a) => a.reverse());
     }
     if (u.seeded) {
       u.at += dt;
-      if (!u.shown && u.at >= FLIGHT - 0.6) { u.shown = true; gapSlide.classList.remove('dt-await'); } // the chart fades in as it arrives
+      if (!u.shown && u.at >= FLIGHT - 0.6) { u.shown = true; reverseCtx.present(gapSlide, '', 'dt-await'); } // the chart fades in as it arrives
       const flying = seedEl ? seedEl.getAnimations({ subtree: true }) : []; // the engine hurries the seed with the turn
       if (u.at >= FLIGHT + 0.05 && flying.every((a) => a.playState === 'finished')) { endUnbuild(); return; }
     }
@@ -927,8 +927,8 @@
     if (!u) return;
     unbuilding = null;
     if (u.raf) cancelAnimationFrame(u.raf);
-    slide.classList.replace('dt-rewind', 'dt-rewound');
-    gapSlide.classList.remove('dt-return', 'dt-await');
+    reverseCtx.present(slide, 'dt-rewound', 'dt-rewind');
+    reverseCtx.present(gapSlide, '', 'dt-return dt-await');
     html.classList.remove('ac-quiet');
     dropSeed();
     if (!slide.classList.contains('on')) reset();

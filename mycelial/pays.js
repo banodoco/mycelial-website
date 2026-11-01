@@ -221,7 +221,7 @@
   };
 
   // ---- Time ----------------------------------------------------------------------------
-  const END = 3.2, AMBIENT = 3.6;
+  const END = 3.2;
   // The first builder publishes as their threads finish drawing, so the first wave goes out as the people
   // appear; after that someone publishes every second or two. A wave is a ripple out of the core
   // (v: px a second, band: its width, both times k) that brightens whatever it passes.
@@ -498,7 +498,7 @@
     entryCtx = ctx;
     reset();
     if (!layout()) return;
-    if (motionOff() || ctx?.rest) { ta = 9; nextPulse = ta + 0.3; root.classList.add('is-labelled'); draw(); window.deckEntryDone?.(slide, ctx); if (!motionOff()) { document.documentElement.classList.add('pa-quiet'); start(ctx); } return; }
+    if (motionOff() || ctx?.rest || ctx?.direct) { ta = 9; nextPulse = ta + 0.3; root.classList.add('is-labelled'); draw(); window.deckEntryDone?.(slide, ctx); if (!motionOff()) { document.documentElement.classList.add('pa-quiet'); start(ctx); } return; }
     ta = -0.2; nextPulse = FIRST;
     timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && slide.classList.contains('on')) document.documentElement.classList.add('pa-quiet'); }, 150, ctx));
     timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, 1400, ctx));
@@ -506,6 +506,7 @@
   };
   const enter = (ctx = window.deckNav) => {
     entryCtx = ctx;
+    if (ctx?.direct || ctx?.rest) { armed = false; begin(ctx); return; }
     if (arriveListener) slide.removeEventListener('dt-arrive', arriveListener);
     arriveListener = () => { if (ctx?.isCurrent?.() && armed && slide.classList.contains('on')) { armed = false; begin(ctx); } };
     slide.addEventListener('dt-arrive', arriveListener);
@@ -560,8 +561,8 @@
     fly = { t0, x, y, c: u0, motes, landed: t0 + FLY.charge + FLY.travel, back: true };
     ta = Math.min(ta, END);
     stMink = el; el.style.visibility = 'hidden'; // she is drawn here until she is back on her perch
-    slide.classList.add('dt-rewind', 'dt-over'); // over the stack, which waits for her
-    stackSlide.classList.add('dt-return', 'dt-await');
+    reverseCtx.present(slide, 'dt-rewind dt-over'); // over the stack, which waits for her
+    reverseCtx.present(stackSlide, 'dt-return dt-await');
     window.deckRewinding?.(stackSlide, reverseCtx);
     unflying = { last: window.deckNow?.() ?? performance.now(), raf: 0, shown: false, aimed: false };
     signal?.addEventListener('abort', endUnfly, { once: true });
@@ -586,7 +587,7 @@
     }
     if (hn < FLY.charge + FLY.travel + 0.4) root.classList.remove('is-labelled');
     if (hn < 0.4) document.documentElement.classList.remove('pa-quiet');
-    if (!u.shown && hn <= FLY.charge) { u.shown = true; stackSlide.classList.remove('dt-await'); } // she is over her perch
+    if (!u.shown && hn <= FLY.charge) { u.shown = true; reverseCtx.present(stackSlide, '', 'dt-await'); } // she is over her perch
     if (hn <= 0) { endUnfly(); return; }
     draw();
     u.raf = requestAnimationFrame(unstep);
@@ -598,9 +599,8 @@
     if (u.raf) cancelAnimationFrame(u.raf);
     fly = null;
     showStackMink();
-    slide.classList.remove('dt-over');
-    slide.classList.replace('dt-rewind', 'dt-rewound');
-    stackSlide.classList.remove('dt-return', 'dt-await');
+    reverseCtx.present(slide, 'dt-rewound', 'dt-rewind dt-over');
+    reverseCtx.present(stackSlide, '', 'dt-return dt-await');
     document.documentElement.classList.remove('pa-quiet');
     if (!slide.classList.contains('on')) reset();
     window.deckRewound?.(stackSlide, reverseCtx);
@@ -615,7 +615,7 @@
     if (on) {
       entryCtx = window.deckNav;
       const ctx = entryCtx;
-      if (ctx?.rest) { begin(ctx); return; }
+      if (ctx?.rest || ctx?.direct) { begin(ctx); return; }
       const fromStack = stackSlide && !stackSlide.classList.contains('on') && records.some((r) => r.target === stackSlide);
       if (fromStack && flyIn(ctx)) return;
       reset(); layout(); draw(); enter(ctx);
