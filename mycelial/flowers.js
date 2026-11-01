@@ -606,8 +606,9 @@
     if (apps.length && tc >= apps[0].T + 0.05) root.classList.add('is-counting'); // fades in as the first reach rolls up
   };
 
-  let entryCtx = null, reverseCtx = null;
-  const advance = (dt, ctx = entryCtx) => { ta += dt; if (ta - off >= END) window.deckEntryDone?.(slide, ctx); };
+  let entryCtx = null, reverseCtx = null, entryDone = null, reverseDone = null;
+  const finishEntry = (ctx) => { if (entryDone?.ctx === ctx) { entryDone.resolve('completed'); entryDone = null; } };
+  const advance = (dt, ctx = entryCtx) => { ta += dt; if (ta - off >= END) finishEntry(ctx); };
 
   // ---- Coming and going ----------------------------------------------------------------------------------------
   const tick = (ctx, now) => {
@@ -631,6 +632,7 @@
     dots.forEach((d) => { delete d.src; delete d.handed; });
     canvas.style.transition = ''; canvas.style.opacity = '';
     pool.forEach((p) => { p.el.style.transition = ''; p.el.style.opacity = '0'; p.o = 0; });
+    coreLabel.style.transition = count.style.transition = '';
     coreLabel.style.opacity = ''; count.style.opacity = '';
     countV.textContent = '0'; countU.textContent = '';
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height);
@@ -648,8 +650,8 @@
   const quiet = (ctx = entryCtx) => timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && slide.classList.contains('on')) html.classList.add('fl-quiet'); }, 120, ctx));
   const begin = (ctx = entryCtx) => {
     entryCtx = ctx;
-    if (!layout()) return;
-    if (motionOff() || ctx?.rest || ctx?.direct) { ta = 40; root.classList.add('is-labelled'); draw(); labels(); window.deckEntryDone?.(slide, ctx); if (!motionOff()) { html.classList.add('fl-quiet'); start(ctx); } return; }
+    if (!layout()) { finishEntry(ctx); return; }
+    if (motionOff() || ctx?.rest || ctx?.direct) { ta = 40; root.classList.add('is-labelled'); draw(); labels(); finishEntry(ctx); if (!motionOff()) { html.classList.add('fl-quiet'); start(ctx); } return; }
     ta = -0.15;
     timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, 900, ctx));
     quiet(ctx);
@@ -658,7 +660,7 @@
   // From slide 7: carry its picture on.
   const handoff = (snap, ctx = entryCtx) => {
     entryCtx = ctx;
-    if (!layout()) return;
+    if (!layout()) { finishEntry(ctx); return; }
     const b = root.getBoundingClientRect(), v = (p) => ({ ...p, x: p.x - b.left, y: p.y - b.top });
     off = 0.9;
     // Slide 7 gives its mink's centre (else paints her at its lens centre + (4, 8) × its k); she eases to her place here.
@@ -691,10 +693,10 @@
   const BACK7 = 2.2; // the hand-off is complete by here
   let back7 = null;
   const crowdA = () => (back7 ? smooth(clamp((ta - 0.9) / (BACK7 - 0.9))) : 1);
-  const unhand7 = () => {
+  const unhand7 = (ctx) => {
     const snap = window.AstridPays.snapshot();
     if (!snap) return false;
-    reverseCtx = window.deckNav;
+    reverseCtx = ctx;
     const signal = reverseCtx?.signal;
     timers.forEach(window.deckCancelLater); timers = [];
     const tc0 = ta - off;
@@ -713,7 +715,6 @@
     window.AstridPays.holdCore?.(true); // the core is drawn here until it has landed in slide 7's lens
     reverseCtx.present(slide, 'dt-rewind');
     reverseCtx.present(paysSlide, 'dt-return dt-await');
-    window.deckRewinding?.(paysSlide, reverseCtx);
     back7 = { tc0, shown: false, since: 0 };
     signal?.addEventListener('abort', end7, { once: true });
     stop(); entryCtx = reverseCtx; start(reverseCtx);
@@ -742,50 +743,72 @@
       stop(); html.classList.remove('fl-quiet');
       timers.push(window.deckLater(() => { if (reverseCtx?.isCurrent?.() && !slide.classList.contains('on')) reset(); }, 700, reverseCtx));
     }
-    window.deckRewound?.(paysSlide, reverseCtx);
+    if (reverseDone) { reverseDone('completed'); reverseDone = null; }
   };
-  slide.addEventListener('dt-arrive', () => { const ctx = entryCtx; if (ctx?.isCurrent?.() && armed && slide.classList.contains('on')) { armed = false; whenOpen(ctx, begin); } });
-  let wasOn = false;
-  const watch = new MutationObserver((records) => {
-    const on = slide.classList.contains('on');
-    if (on === wasOn) return;
-    wasOn = on;
-    const ctx = window.deckNav;
+  const enter = (ctx) => {
     end7();
-    if (on) {
-      reset();
-      entryCtx = ctx;
-      if (ctx?.direct || ctx?.rest) { begin(ctx); return; }
-      const fromPays = !motionOff() && paysSlide && !paysSlide.classList.contains('on') && records.some((r) => r.target === paysSlide);
-      const snap = fromPays && window.AstridPays && window.AstridPays.snapshot();
-      if (snap) { handoff(snap, ctx); return; }
-      layout(); draw(); armed = true;
-      timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && armed) { armed = false; whenOpen(ctx, begin); } }, 1500, ctx));
-    } else {
-      slide.classList.remove('fl-arrive'); // it fades as it leaves, however soon
-      if (motionOff()) { armed = false; gen++; stop(); reset(); html.classList.remove('fl-quiet'); return; }
-      const to7 = !!paysSlide && paysSlide.classList.contains('on') && window.deckNav?.back && !motionOff() && running && !handed && ta - off >= END && ta >= BACK7 && !!window.AstridPays; // any hand-off in is long done
-      if (to7) { armed = false; gen++; if (waiting) { waiting.disconnect(); waiting = null; } if (unhand7()) return; }
-      armed = false; gen++; stop(); html.classList.remove('fl-quiet');
+    reset();
+    entryCtx = ctx;
+    let resolve;
+    const done = new Promise((r) => { resolve = r; });
+    entryDone = { ctx, resolve };
+    ctx.defer(() => {
+      if (entryDone?.ctx === ctx) { entryDone = null; resolve('cancelled'); }
+      gen++;
       if (waiting) { waiting.disconnect(); waiting = null; }
-      timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && !slide.classList.contains('on')) reset(); }, 700, ctx));
+    });
+    if (ctx.direct || ctx.rest) { begin(ctx); return done; }
+    const snap = ctx.from === 6 && !motionOff() && window.AstridPays?.snapshot();
+    if (snap) { handoff(snap, ctx); return done; }
+    layout(); draw(); armed = true;
+    ctx.arrived.then((result) => {
+      if (result === 'completed' && ctx.isCurrent() && armed) { armed = false; whenOpen(ctx, begin); }
+    });
+    return done;
+  };
+  const exit = (ctx) => {
+    slide.classList.remove('fl-arrive');
+    const to7 = ctx.to === 6 && ctx.back && !motionOff() && running && !handed && ta - off >= END && ta >= BACK7 && !!window.AstridPays;
+    armed = false; gen++;
+    if (waiting) { waiting.disconnect(); waiting = null; }
+    if (to7) {
+      let resolve;
+      const done = new Promise((r) => { resolve = r; });
+      reverseDone = resolve;
+      ctx.defer(() => { if (back7) end7(); if (reverseDone) { reverseDone('cancelled'); reverseDone = null; } });
+      if (unhand7(ctx)) return done;
+      reverseDone = null;
     }
-  });
-  watch.observe(slide, { attributes: true, attributeFilter: ['class'] });
-  if (paysSlide) watch.observe(paysSlide, { attributes: true, attributeFilter: ['class'] });
+    stop(); html.classList.remove('fl-quiet');
+    // Flywheel snapshots after arrival. Keep the source intact until it takes
+    // ownership, or until this navigation is cancelled.
+    if (ctx.to === 8 && !ctx.direct && !motionOff() && core && ta - off >= END) {
+      ctx.present(slide, 'dt-rewind');
+      // The picture waits for Flywheel, but its labels leave with the copy.
+      pool.forEach((p) => { p.el.style.transition = 'opacity .45s ease'; p.el.style.opacity = '0'; p.o = 0; });
+      coreLabel.style.transition = count.style.transition = 'opacity .45s ease';
+      coreLabel.style.opacity = count.style.opacity = '0';
+      ctx.defer(() => { if (!slide.classList.contains('on')) reset(); });
+    } else if (motionOff()) reset();
+    else timers.push(window.deckLater(() => { if (ctx.isCurrent() && !slide.classList.contains('on')) reset(); }, 700, ctx));
+  };
+  let paused = false;
   const syncMotion = () => {
     if (motionOff()) {
       end7(); stop(); reset();
       const ctx = entryCtx;
-      if (ctx?.isCurrent?.() && slide.classList.contains('on') && layout()) { ta = 40; root.classList.add('is-labelled'); draw(); labels(); window.deckEntryDone?.(slide, ctx); }
+      if (ctx?.isCurrent?.() && slide.classList.contains('on')) {
+        if (layout()) { ta = 40; root.classList.add('is-labelled'); draw(); labels(); }
+        finishEntry(ctx);
+      }
     }
-    else if (document.hidden || document.getElementById('overview')?.classList.contains('on')) { end7(); stop(); }
-    else if (slide.classList.contains('on') && ta > 0) start();
+    else if (document.hidden || document.getElementById('overview')?.classList.contains('on')) { paused ||= running; end7(); stop(); }
+    else if (slide.classList.contains('on') && (paused || ta > 0 || (ta < 0 && entryDone?.ctx === entryCtx))) { paused = false; start(); }
   };
   document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
-  window.deckOnSettle?.((ctx) => {
+  const resize = (ctx) => {
     end7(); // its people's way back was measured on the old screen
     if (!slide.classList.contains('on')) return;
     entryCtx = ctx;
@@ -804,8 +827,10 @@
       root.classList.add('is-labelled');
       html.classList.add('fl-quiet');
     }
-    if (layout()) { draw(); labels(); window.deckEntryDone?.(slide, ctx); start(ctx); }
-  });
+    if (layout()) { draw(); labels(); start(ctx); }
+    finishEntry(ctx);
+  };
+  window.deckRegisterScene([7], { enter, exit, resize });
 
   // For slide 9: the core and the visible communities' people, in viewport pixels, so the wheel can grow out of them.
   // The most recent communities go first, then an even sample of the rest, at most HAND people in all.
@@ -829,13 +854,18 @@
     // Slide 9 brings the core back on a step back: this picture leaves it out until it has landed, then takes it
     // back in the same frame, so only one mink is ever on screen.
     holdCore(on) { coreHeld = on; if (!on && core && slide.classList.contains('on')) draw(); },
-    hide() { // fade out as the next slide's picture takes over; its people are drawn there from now on
+    hide(ctx) { // fade out as the next slide's picture takes over; its people are drawn there from now on
       handed = true; coreHeld = true; draw(); // the core goes at once: slide 9 draws it from this frame, in the same place
       canvas.style.transition = 'opacity .5s ease'; canvas.style.opacity = '0';
       pool.forEach((p) => { p.el.style.transition = 'opacity .4s ease'; p.el.style.opacity = '0'; p.o = 0; });
       coreLabel.style.opacity = '0'; count.style.opacity = '0';
+      timers.push(window.deckLater(() => {
+        if (ctx?.isCurrent?.() && !slide.classList.contains('on')) {
+          ctx.present(slide, '', 'dt-rewind');
+          reset();
+        }
+      }, 700, ctx));
     },
   };
 
-  if (slide.classList.contains('on')) { wasOn = true; entryCtx = window.deckNav; layout(); whenOpen(entryCtx, begin); }
 })();

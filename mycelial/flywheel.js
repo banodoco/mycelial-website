@@ -1129,7 +1129,7 @@
     hand = { core: snap.core, k: snap.k, mo: minkIn(snap), dots: [], done: false };
     settleCur();
     hand.dots = assign(snap.people, snap.core.x);
-    window.AstridFlowers.hide();
+    window.AstridFlowers.hide(ctx);
     root.style.transition = 'none'; setVisible(true); void root.offsetWidth; root.style.transition = '';
     frame();
     start(ctx);
@@ -1233,7 +1233,7 @@
       finishOperation(ctx, 'cancelled');
     });
     if (ctx.to === 7 && ctx.back && !motionOff() && activeStage === 0 && begun && !morph && m === 0 && window.AstridFlowers) {
-      await Promise.resolve(); // legacy Flowers lays out its target on the selection flip
+      await Promise.resolve(); // Flowers prepares the target during its entry hook
       if (!ctx.isCurrent()) return 'cancelled';
       if (resizedCtx === ctx) return 'completed';
       unhanding = { snapped: false, shown: false, fade: 0 };
