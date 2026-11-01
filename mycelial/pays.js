@@ -187,7 +187,7 @@
   // appear; after that someone publishes every second or two. A wave is a ripple out of the core
   // (v: px a second, band: its width, both times k) that brightens whatever it passes.
   const FIRST = 1.9, EVERY = [1.3, 2.6], WAVE = { v: 520, band: 34, life: 2.4 };
-  let ta = 0, running = false, raf = 0, last = 0, armed = false, timers = [];
+  let ta = 0, running = false, raf = 0, last = 0, armed = false, timers = [], entryCtx = null, reverseCtx = null;
   let coreHeld = false; // slide 8 is drawing the core (on its way out, or on its way back here): this picture leaves it out
   let pulses = [], waves = [], nextPulse = 0, lastFrom = -1, glintAt = -9;
   const k01 = (t0, d) => clamp((ta - t0) / d);
@@ -416,9 +416,9 @@
   };
   const smooth = (q) => q * q * (3 - 2 * q);
 
-  const advance = (dt) => {
+  const advance = (dt, ctx = entryCtx) => {
     ta += dt;
-    if (ta >= END && !fly) window.deckEntryDone?.(slide);
+    if (ta >= END && !fly) window.deckEntryDone?.(slide, ctx);
     if (ta < FIRST) return;
     // A builder publishes something; it reaches the core; a wave goes out to everyone.
     if (ta >= nextPulse && !(window.deckPace?.() > 1)) { // (none sets off while the entry is hurried on)
@@ -435,16 +435,17 @@
   };
 
   // ---- Coming and going -----------------------------------------------------------------
-  const tick = (now) => {
+  const tick = (ctx, now) => {
     raf = 0;
-    if (!running) return;
-    const dt = Math.min(0.05, (now - (last || now)) / 1000) * (window.deckPace?.() || 1);
-    last = now;
-    advance(dt);
+    if (!running || ctx !== entryCtx || !ctx?.isCurrent?.()) return;
+    const clock = window.deckNow?.() ?? now;
+    const dt = Math.max(0, (clock - (last || clock)) / 1000);
+    last = clock;
+    advance(dt, ctx);
     draw();
-    raf = requestAnimationFrame(tick);
+    raf = requestAnimationFrame((t) => tick(ctx, t));
   };
-  const start = () => { if (running || still || document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; running = true; last = 0; raf = requestAnimationFrame(tick); };
+  const start = (ctx = entryCtx) => { if (running || still || document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now(); raf = requestAnimationFrame((t) => tick(ctx, t)); };
   const stop = () => { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; };
   const reset = () => {
     timers.forEach(window.deckCancelLater); timers = [];
@@ -453,27 +454,33 @@
     canvas.style.transition = ''; canvas.style.opacity = ''; Object.values(labels).forEach((el) => { el.style.opacity = ''; });
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height);
   };
-  const begin = () => {
+  const begin = (ctx = entryCtx) => {
+    entryCtx = ctx;
     reset();
     if (!layout()) return;
-    if (motionOff() || window.deckNav?.rest) { ta = 9; nextPulse = ta + 0.3; root.classList.add('is-labelled'); draw(); window.deckEntryDone?.(slide); if (!motionOff()) { document.documentElement.classList.add('pa-quiet'); start(); } return; }
+    if (motionOff() || ctx?.rest) { ta = 9; nextPulse = ta + 0.3; root.classList.add('is-labelled'); draw(); window.deckEntryDone?.(slide, ctx); if (!motionOff()) { document.documentElement.classList.add('pa-quiet'); start(ctx); } return; }
     ta = -0.2; nextPulse = FIRST;
-    timers.push(window.deckLater(() => { if (slide.classList.contains('on')) document.documentElement.classList.add('pa-quiet'); }, 150));
-    timers.push(window.deckLater(() => root.classList.add('is-labelled'), 1400));
-    start();
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && slide.classList.contains('on')) document.documentElement.classList.add('pa-quiet'); }, 150, ctx));
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, 1400, ctx));
+    start(ctx);
   };
-  const enter = () => {
+  const enter = (ctx = window.deckNav) => {
+    entryCtx = ctx;
+    if (arriveListener) slide.removeEventListener('dt-arrive', arriveListener);
+    arriveListener = () => { if (ctx?.isCurrent?.() && armed && slide.classList.contains('on')) { armed = false; begin(ctx); } };
+    slide.addEventListener('dt-arrive', arriveListener);
     armed = true;
     // Grow once the network has reached this slide's node (or soon after, if it never says).
-    timers.push(window.deckLater(() => { if (armed) { armed = false; begin(); } }, 1500));
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && armed) { armed = false; begin(ctx); } }, 1500, ctx));
   };
-  slide.addEventListener('dt-arrive', () => { if (armed && slide.classList.contains('on')) { armed = false; begin(); } });
+  let arriveListener = null;
   // From slide 6: its mink (stack.js paints her on .st-mink) powers up and crosses into this slide's lens.
   // She is read from her canvas at the moment of leaving; slide 6's own copy is hidden while ours flies.
   const stackSlide = document.querySelector('.st-host');
   let stMink = null;
   const showStackMink = () => { if (stMink) { stMink.style.visibility = ''; stMink = null; } };
-  const flyIn = () => {
+  const flyIn = (ctx = entryCtx) => {
+    entryCtx = ctx;
     const el = stackSlide && stackSlide.querySelector('.st-mink');
     if (motionOff() || !el) return false;
     const r = el.getBoundingClientRect(), u0 = Math.round(r.width / 23);
@@ -486,24 +493,24 @@
     fly = { t0: ta, x, y, c: u0, motes, landed: ta + FLY.charge + FLY.travel };
     stMink = el; el.style.visibility = 'hidden';
     slide.classList.add('pa-arrive');
-    timers.push(window.deckLater(() => slide.classList.remove('pa-arrive'), 900));
-    timers.push(window.deckLater(showStackMink, (FLY.charge + FLY.travel) * 1000 + 200)); // slide 6 has faded away by then
-    timers.push(window.deckLater(() => { if (slide.classList.contains('on')) document.documentElement.classList.add('pa-quiet'); }, 400));
-    timers.push(window.deckLater(() => root.classList.add('is-labelled'), (FLY.charge + FLY.travel + 0.4) * 1000));
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) slide.classList.remove('pa-arrive'); }, 900, ctx));
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) showStackMink(); }, (FLY.charge + FLY.travel) * 1000 + 200, ctx));
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && slide.classList.contains('on')) document.documentElement.classList.add('pa-quiet'); }, 400, ctx));
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, (FLY.charge + FLY.travel + 0.4) * 1000, ctx));
     nextPulse = FIRST;
-    start();
+    start(ctx);
     return true;
   };
   // ---- Going back to slide 6 --------------------------------------------------------------
   // A step back: the arrival from slide 6 played backwards. The picture ungrows (the people, the rays, the boundary,
   // the builders' threads and machines) back to the lens around the mink; she lights up, lifts out of it as the lens
   // untraces, flies back along her arc to her perch on the stack, and powers down there as the stack fades back in.
-  const pace = () => window.deckPace?.() || 1;
   let unflying = null;
   const unfly = () => {
     const el = stackSlide.querySelector('.st-mink'), r = el.getBoundingClientRect(), u0 = Math.round(r.width / 23);
     if (!r.width || !u0) return false;
-    const signal = window.deckNav?.signal;
+    reverseCtx = window.deckNav;
+    const signal = reverseCtx?.signal;
     stop();
     timers.forEach(window.deckCancelLater); timers = [];
     pulses = []; waves = []; glintAt = -9;
@@ -515,8 +522,8 @@
     stMink = el; el.style.visibility = 'hidden'; // she is drawn here until she is back on her perch
     slide.classList.add('dt-rewind', 'dt-over'); // over the stack, which waits for her
     stackSlide.classList.add('dt-return', 'dt-await');
-    window.deckRewinding?.(stackSlide);
-    unflying = { last: 0, raf: 0, shown: false, aimed: false };
+    window.deckRewinding?.(stackSlide, reverseCtx);
+    unflying = { last: window.deckNow?.() ?? performance.now(), raf: 0, shown: false, aimed: false };
     signal?.addEventListener('abort', endUnfly, { once: true });
     unflying.raf = requestAnimationFrame(unstep);
     return true;
@@ -525,8 +532,9 @@
     const u = unflying;
     if (!u) return;
     u.raf = 0;
-    const dt = Math.min(0.05, (now - (u.last || now)) / 1000) * pace();
-    u.last = now;
+    const clock = window.deckNow?.() ?? now;
+    const dt = Math.max(0, (clock - (u.last || clock)) / 1000);
+    u.last = clock;
     const h = ta - fly.t0;
     // The picture ungrows a little quicker than it grew (as a second visit would); her flight keeps its own time.
     ta -= h > FLY.charge + FLY.travel + FLY.land ? dt / 0.7 : dt;
@@ -555,7 +563,7 @@
     stackSlide.classList.remove('dt-return', 'dt-await');
     document.documentElement.classList.remove('pa-quiet');
     if (!slide.classList.contains('on')) reset();
-    window.deckRewound?.(stackSlide);
+    window.deckRewound?.(stackSlide, reverseCtx);
   };
 
   let wasOn = false;
@@ -565,10 +573,12 @@
     wasOn = on;
     if (unflying) endUnfly();
     if (on) {
-      if (window.deckNav?.rest) { begin(); return; }
+      entryCtx = window.deckNav;
+      const ctx = entryCtx;
+      if (ctx?.rest) { begin(ctx); return; }
       const fromStack = stackSlide && !stackSlide.classList.contains('on') && records.some((r) => r.target === stackSlide);
-      if (fromStack && flyIn()) return;
-      reset(); layout(); draw(); enter();
+      if (fromStack && flyIn(ctx)) return;
+      reset(); layout(); draw(); enter(ctx);
     } else {
       const to6 = stackSlide && stackSlide.classList.contains('on') && window.deckNav?.back && !motionOff() && running && !fly && lens && ta >= END;
       if (to6) { slide.classList.remove('pa-arrive'); armed = false; if (unfly()) return; }
@@ -587,20 +597,22 @@
   document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
-  window.deckOnResize(() => {
+  window.deckOnSettle?.((ctx) => {
     endUnfly(); // her way back was measured on the old screen
     if (!slide.classList.contains('on')) return;
+    entryCtx = ctx;
+    stop();
     const interrupted = armed || !!fly || ta < END;
     if (interrupted) {
       timers.forEach(window.deckCancelLater); timers = [];
       armed = false; fly = null; showStackMink();
       slide.classList.remove('pa-arrive');
-      ta = Math.max(ta, AMBIENT);
+      ta = END + 0.2;
       root.classList.add('is-labelled');
       document.documentElement.classList.add('pa-quiet');
     }
     pulses = []; waves = [];
-    if (layout()) { draw(); start(); }
+    if (layout()) { draw(); window.deckEntryDone?.(slide, ctx); start(ctx); }
   });
   root.addEventListener('click', (e) => e.stopPropagation());
 

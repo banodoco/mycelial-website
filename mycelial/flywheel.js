@@ -402,7 +402,7 @@
 
   // ---- Time and state ----------------------------------------------------------------------------
   // ta: seconds since the picture began; m: where it stands between the slides (0 = 9, 1 = 10, 2 = 11).
-  let ta = 0, m = 0, morph = null, begun = false, running = false, raf = 0, last = 0, armed = false, timers = [];
+  let ta = 0, m = 0, morph = null, begun = false, running = false, raf = 0, last = 0, armed = false, timers = [], entryCtx = null, reverseCtx = null, arrivalCleanup = [];
   let attach = { dir: 0, t0: 0 }, boost = 0, spin = 0, motes = [], nextMote = 0, flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], ring: 0 };
   let cur = null, lastM = -1, pulsed = chips.map(() => false);
   const T_FRESH = { lens: 0.05, ring: 0.25, art: 0.35, artT: 0.75, grpT: 1.05, grp: 1.3, link: 1.8, labels: 1.5, motes: 2.0, chips: 2.3 };
@@ -929,7 +929,7 @@
     else if (mo.kind === 'hop') flashes.grp[mo.b + 1] = 1;
     else flashes.ring = 1;
   };
-  const advance = (dt) => {
+  const advance = (dt, ctx = entryCtx) => {
     ta += dt;
     // The morph between slides.
     if (morph) {
@@ -937,7 +937,7 @@
       m = lerp(morph.from, morph.to, easeIO(q));
       if (q >= 1) { m = morph.to; morph = null; }
     }
-    if (!morph && begun && ta >= T.chips) window.deckEntryDone?.(hosts[stageOf()]);
+    if (!morph && begun && ta >= T.chips) window.deckEntryDone?.(hosts[stageOf()], ctx);
     // Once the initiatives are on, the wheel turns a little faster and brighter; on 11, gently again.
     const target = m >= 0.9 ? (m > 1.5 ? 0.6 : 1) : 0;
     boost += (target - boost) * (1 - Math.exp(-dt / 0.9));
@@ -973,18 +973,21 @@
   };
 
   // ---- Coming and going ------------------------------------------------------------------------------
-  const tick = (now) => {
+  const tick = (ctx, now) => {
     raf = 0;
-    if (!running) return;
-    const dt = Math.min(0.05, (now - (last || now)) / 1000) * (window.deckPace?.() || 1);
-    last = now;
-    if (unhanding) { if (!unstep(dt)) return; } else advance(dt);
+    if (!running || ctx !== entryCtx || !ctx?.isCurrent?.()) return;
+    const clock = window.deckNow?.() ?? now;
+    const dt = Math.max(0, (clock - (last || clock)) / 1000);
+    last = clock;
+    if (unhanding) { if (!unstep(dt)) return; } else advance(dt, ctx);
     frame();
-    raf = requestAnimationFrame(tick);
+    raf = requestAnimationFrame((t) => tick(ctx, t));
   };
-  const start = () => { if (running || still || document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; running = true; last = 0; raf = requestAnimationFrame(tick); };
+  const start = (ctx = entryCtx) => { if (running || still || document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now(); raf = requestAnimationFrame((t) => tick(ctx, t)); };
   const stop = () => { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; };
   const reset = () => {
+    arrivalCleanup.forEach(([s, fn]) => s.removeEventListener('dt-arrive', fn));
+    arrivalCleanup = [];
     timers.forEach(window.deckCancelLater); timers = [];
     if (waiting) { waiting.disconnect(); waiting = null; }
     stop();
@@ -999,7 +1002,8 @@
     chips.forEach((c) => { c.style.opacity = '0'; });
   };
   // Draw the picture in, from nothing: lens and ring, artists, everyone else, then the motes (and, on 10 or 11, the initiatives).
-  const begin = () => {
+  const begin = (ctx = entryCtx) => {
+    entryCtx = ctx;
     if (stageOf() < 0 || !layout()) return;
     begun = true;
     m = Math.max(0, stageOf());
@@ -1010,38 +1014,52 @@
       if (m >= 1) [[0, 0.5], [1, 0.3], [2, 0.6], [3, 0.4], [4, 0.45], [5, 0.35]].forEach(([c, u]) => motes.push({ kind: 'plug', c, span: Math.PI, t0: 30 - u, dur: 1 }));
       else [['in', 1, 0, 0.42], ['in', 4, 1, 0.66], ['in', 6, 2, 0.3], ['eq', 2, 2, 0.5], ['eq', 5, 0, 0.72], ['hop', 0, 0, 0.5]].forEach(([kind, a, b, u]) => motes.push({ kind, a, b, t0: 30 - u, dur: 1 }));
       frame();
-      window.deckEntryDone?.(hosts[stageOf()]);
+      window.deckEntryDone?.(hosts[stageOf()], ctx);
       return;
     }
     ta = -0.15; nextMote = T.motes;
     if (m >= 1) attach = { dir: 1, t0: T.chips };
-    start();
+    start(ctx);
   };
   let waiting = null;
-  const whenOpen = (fn) => { // on a first load, wait for the Mycelial mark to land
-    if (!html.classList.contains('dt-intro')) { fn(); return; }
-    waiting = new MutationObserver(() => { if (!html.classList.contains('dt-intro')) { waiting.disconnect(); waiting = null; fn(); } });
+  const whenOpen = (ctx, fn) => { // on a first load, wait for the Mycelial mark to land
+    if (!html.classList.contains('dt-intro')) { if (ctx?.isCurrent?.()) fn(ctx); return; }
+    waiting = new MutationObserver(() => { if (!html.classList.contains('dt-intro')) { waiting.disconnect(); waiting = null; if (ctx?.isCurrent?.()) fn(ctx); } });
     waiting.observe(html, { attributes: true, attributeFilter: ['class'] });
   };
-  const arm = () => {
+  const listenArrival = (ctx) => {
+    arrivalCleanup.forEach(([s, fn]) => s.removeEventListener('dt-arrive', fn));
+    arrivalCleanup = hosts.map((s) => {
+      const fn = () => {
+        if (!ctx?.isCurrent?.() || !s.classList.contains('on') || !armed) return;
+        armed = false;
+        arrivalCleanup.forEach(([target, handler]) => target.removeEventListener('dt-arrive', handler));
+        arrivalCleanup = [];
+        whenOpen(ctx, begin);
+      };
+      s.addEventListener('dt-arrive', fn);
+      return [s, fn];
+    });
+  };
+  const arm = (ctx = entryCtx) => {
     const on = hosts[stageOf()];
-    if (on && arrived.s === on && performance.now() - arrived.t < 80) { whenOpen(begin); return; } // already there (a settle, or reduced motion)
-    if (motionOff() || window.deckNav?.rest) { whenOpen(begin); return; }
+    if (on && arrived.s === on && (window.deckNow?.() ?? performance.now()) - arrived.t < 80) { whenOpen(ctx, begin); return; } // already there (a settle, or reduced motion)
+    if (motionOff() || ctx?.rest) { whenOpen(ctx, begin); return; }
     armed = true;
-    timers.push(window.deckLater(() => { if (armed) { armed = false; whenOpen(begin); } }, 1500));
+    listenArrival(ctx);
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && armed) { armed = false; whenOpen(ctx, begin); } }, 1500, ctx));
   };
   let arrived = { s: null, t: -1e9 };
   hosts.forEach((s) => s.addEventListener('dt-arrive', () => {
-    arrived = { s, t: performance.now() };
-    if (!s.classList.contains('on')) return;
-    if (armed) { armed = false; whenOpen(begin); }
+    arrived = { s, t: window.deckNow?.() ?? performance.now() };
   }));
 
   // Slide 8 hands its core and its communities on (window.AstridFlowers), as slide 7 hands its own to slide 8.
   const flHost = document.querySelector('[data-astrid-flowers]'), flSlide = flHost && flHost.closest('.slide');
   // Where slide 8's mink stands in its lens, from the lens's centre (as slide 8 gives it; before, (3, 6) × its k).
   const minkIn = (snap) => (snap.mink ? { x: snap.mink.x - snap.core.x, y: snap.mink.y - snap.core.y } : { x: 3 * snap.k, y: 6 * snap.k });
-  const handoff = (snap) => {
+  const handoff = (snap, ctx = entryCtx) => {
+    entryCtx = ctx;
     begun = true; T = T_HAND; ta = 0; nextMote = T.motes; lastM = -1;
     hand = { core: snap.core, k: snap.k, mo: minkIn(snap), dots: [], done: false };
     settleCur();
@@ -1049,7 +1067,7 @@
     window.AstridFlowers.hide();
     root.style.transition = 'none'; root.classList.add('is-on'); void root.offsetWidth; root.style.transition = ''; // at full strength at once
     frame();
-    start();
+    start(ctx);
   };
   // ---- Going back to slide 8 ----------------------------------------------------------------------
   // A step back: the hand-off from slide 8 played backwards. The circulation dies away, the links, the groups and
@@ -1058,16 +1076,17 @@
   const HAND_END = 2.6; // everything of the hand-off is in by here
   let unhanding = null;
   const unhand = () => {
-    const signal = window.deckNav?.signal;
+    reverseCtx = window.deckNav;
+    const signal = reverseCtx?.signal;
     timers.forEach(window.deckCancelLater); timers = [];
     armed = false; hov.fill(0); hoT.fill(0);
     T = T_HAND; ta = Math.min(ta, HAND_END);
     unhanding = { snapped: false, shown: false, fade: 0 };
     window.AstridFlowers.holdCore?.(true); // the core is drawn here until it has landed in slide 8's lens
     flSlide.classList.add('dt-return', 'dt-await');
-    window.deckRewinding?.(flSlide);
+    window.deckRewinding?.(flSlide, reverseCtx);
     signal?.addEventListener('abort', endUnhand, { once: true });
-    start();
+    stop(); entryCtx = reverseCtx; start(reverseCtx);
   };
   const unstep = (dt) => {
     const u = unhanding;
@@ -1093,12 +1112,12 @@
     window.AstridFlowers?.holdCore?.(false);
     if (stageOf() < 0) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height); }
     flSlide.classList.remove('dt-return', 'dt-await');
-    window.deckRewound?.(flSlide);
+    window.deckRewound?.(flSlide, reverseCtx);
     if (stageOf() >= 0) return;
     root.classList.remove('is-on');
     html.classList.remove('fw-quiet');
     stop(); armed = false;
-    timers.push(setTimeout(() => { if (stageOf() < 0) reset(); }, 700));
+    timers.push(window.deckLater(() => { if (reverseCtx?.isCurrent?.() && stageOf() < 0) reset(); }, 700, reverseCtx));
   };
 
   // Slide 10's glow (the quiet core at the middle of the wheel), for the deck's mark to grow out of on the way to 11
@@ -1107,18 +1126,21 @@
 
   let shown = -1;
   const follow = (records) => {
+    const ctx = window.deckNav;
     const now = stageOf();
     if (now === shown) return;
     const was = shown;
     shown = now;
+    entryCtx = ctx;
     endUnhand();
+    arrivalCleanup.forEach(([s, fn]) => s.removeEventListener('dt-arrive', fn)); arrivalCleanup = [];
     if (now < 0) { // left the three slides
       const to8 = was === 0 && flSlide && flSlide.classList.contains('on') && window.deckNav?.back && !motionOff() && begun && !morph && m === 0 && running && window.AstridFlowers;
       if (to8) { unhand(); return; }
       root.classList.remove('is-on');
       html.classList.remove('fw-quiet');
       stop(); armed = false;
-      timers.push(window.deckLater(() => { if (stageOf() < 0) reset(); }, 700));
+      timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && stageOf() < 0) reset(); }, 700, ctx));
       return;
     }
     html.classList.toggle('fw-quiet', now < 2); // not on 11, where the deck's Mycelial mark forms
@@ -1129,38 +1151,41 @@
       layout(); m = now; settleCur();
       const fromFlowers = now === 0 && was < 0 && !motionOff() && flSlide && !flSlide.classList.contains('on') && (records || []).some((r) => r.target === flSlide);
       const snap = fromFlowers && window.AstridFlowers && window.AstridFlowers.snapshot();
-      if (snap) { handoff(snap); return; }
+      if (snap) { handoff(snap, ctx); return; }
       root.classList.add('is-on');
       draw();
-      arm();
+      arm(ctx);
       return;
     }
     root.classList.add('is-on');
     // From one of these slides to another: the same picture moves.
     if (motionOff()) {
       m = now; attach = now >= 1 ? { dir: 1, t0: ta - 9 } : { dir: 0, t0: 0 }; boost = now >= 1 ? 1 : 0; lastM = -1; frame();
-      window.deckEntryDone?.(hosts[now]); window.deckTurnDone?.(hosts[now]);
+      entryCtx = ctx;
+      window.deckEntryDone?.(hosts[now], ctx);
       return;
     }
     morph = { from: m, to: now, t0: ta, dur: 1.15 + 0.45 * Math.abs(now - m) };
     if (now >= 1 && attach.dir <= 0) attach = { dir: 1, t0: Math.max(ta + 0.9, T.chips) };
     if (now === 0 && attach.dir > 0) { attach = { dir: -1, t0: ta, from: chips.map((_, i) => chipQ(i)) }; pulsed = [false, false, false]; }
-    start();
+    stop(); entryCtx = ctx; start(ctx);
   };
   const watch = new MutationObserver(follow);
   [...hosts, flSlide].filter(Boolean).forEach((s) => watch.observe(s, { attributes: true, attributeFilter: ['class'] }));
   const syncMotion = () => {
     if (motionOff() && stageOf() >= 0) { endUnhand(); stop(); begun = false; begin(); }
     else if (document.hidden || document.getElementById('overview')?.classList.contains('on')) { endUnhand(); stop(); }
-    else if (stageOf() >= 0 && begun) start();
+    else if (stageOf() >= 0 && begun) start(entryCtx);
   };
   document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
-  window.deckOnResize(() => {
+  window.deckOnSettle?.((ctx) => {
     endUnhand();
     const target = stageOf();
     if (target < 0 || !layout()) return;
+    entryCtx = ctx;
+    stop();
     if (armed || hand || morph || !begun) {
       timers.forEach(window.deckCancelLater); timers = [];
       if (waiting) { waiting.disconnect(); waiting = null; }
@@ -1170,7 +1195,8 @@
       if (m >= 1) { attach = { dir: 1, t0: ta - T.chips - 1 }; boost = 1; pulsed = chips.map(() => true); }
     }
     lastM = -1; minkAt = null; flyCell = 0;
-    frame(); start();
+    m = target; morph = null; ta = Math.max(ta, T.chips + 1);
+    frame(); window.deckEntryDone?.(hosts[target], ctx); start(ctx);
   });
 
   // An icon opens into its card while it's hovered or focused; a tap opens it (and closes the others). On slide 10
@@ -1207,7 +1233,7 @@
   hosts.forEach((s) => s.querySelectorAll('a[href]').forEach((a) => a.addEventListener('click', (e) => e.stopPropagation())));
 
   // Loaded straight onto one of these slides: the network is already at the node (or the mark is about to land there).
-  if (stageOf() >= 0) { follow(); if (armed) { armed = false; whenOpen(begin); } }
+  if (stageOf() >= 0) { follow(); if (armed) { armed = false; whenOpen(entryCtx, begin); } }
 })();
 
 // Slide 11's three questions: hover or focus opens a little more detail; a tap keeps one card open until dismissed.

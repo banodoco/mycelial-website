@@ -106,18 +106,28 @@
   sky.setAttribute('aria-hidden', 'true');
   document.body.appendChild(sky);
   const g = sky.getContext('2d');
-  let flights = [], flying = false, timers = [];
+  let flights = [], flying = false, timers = [], forwardRaf = 0, visitCtx = null, forwardGeneration = 0;
   // The flight layer is kept (sized) only while slide 2 or 3 is up, the turns that fly on it, and shown only in flight;
   // elsewhere it is let go, so the other slides neither hold nor composite a full-screen canvas. size() brings it back.
   const near = () => slide.classList.contains('on') || !!fieldSlide?.classList.contains('on');
   const show = (on) => { sky.style.display = on ? '' : 'none'; };
+  const retireForward = (keepCanvas = false) => {
+    forwardGeneration++;
+    if (forwardRaf) cancelAnimationFrame(forwardRaf);
+    forwardRaf = 0; flying = false; flights = [];
+    g.clearRect(0, 0, innerWidth, innerHeight);
+    if (!keepCanvas) {
+      show(false);
+      if (!near()) sky.width = sky.height = 0;
+    }
+  };
   const idleSoon = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 100));
   const MORPH = 0.5; // seconds from landing to the settled logo
 
   const reset = () => {
+    retireForward(Boolean(backs.length || backRaf || departRaf));
     timers.forEach(window.deckCancelLater);
     timers = [];
-    flights = [];
     root.classList.remove('is-drawn', 'is-labelled');
     tools.forEach((el) => { el.classList.remove('is-in', 'is-open'); el.style.removeProperty('--m'); });
     empty.classList.remove('is-open');
@@ -146,29 +156,38 @@
   };
   const tint = (el) => rgb(getComputedStyle(el).getPropertyValue('--c').trim() || '#e0ab5e');
   let flightTime = 0, flightLast = 0;
-  const fire = () => { flightTime = 0; flightLast = 0; if (!flying) { flying = true; show(true); requestAnimationFrame(fly); } };
+  const fire = (ctx) => {
+    flightTime = 0; flightLast = window.deckNow?.() ?? performance.now();
+    if (!flying) {
+      flying = true; show(true);
+      const generation = ++forwardGeneration;
+      forwardRaf = requestAnimationFrame((t) => fly(t, ctx, generation));
+    }
+  };
 
   // Without the field to fly from: the axes draw, then the tools bloom one by one.
-  const enter = (lead = 0) => {
+  const enter = (lead = 0, ctx = window.deckNav) => {
+    visitCtx = ctx;
     reset();
     size();
-    if (motionOff() || window.deckNav?.rest) { root.classList.add('is-drawn', 'is-labelled'); tools.forEach((el) => el.classList.add('is-in')); window.deckEntryDone?.(slide); return; }
+    if (motionOff() || ctx?.rest) { root.classList.add('is-drawn', 'is-labelled'); tools.forEach((el) => el.classList.add('is-in')); window.deckEntryDone?.(slide, ctx); return; }
     const dy = lift();
     tools.forEach((el, i) => {
       const p = disc(el, dy);
       flights.push({ el, ...p, x0: p.x1, y0: p.y1, cx: p.x1, cy: p.y1, r0: 1, c0: tint(el), c1: tint(el),
         delay: lead + 0.45 + i * 0.03, dur: 0.42, dot: true });
     });
-    later(150, () => root.classList.add('is-drawn'));
-    later(900 + lead * 1000, () => root.classList.add('is-labelled'));
-    fire();
+    later(150, () => { if (ctx?.isCurrent?.()) root.classList.add('is-drawn'); });
+    later(900 + lead * 1000, () => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); });
+    fire(ctx);
   };
 
   // From the field: its dots become the tools, its dust becomes the axes.
-  const arrive = () => {
+  const arrive = (ctx = visitCtx) => {
+    visitCtx = ctx;
     reset();
     const snap = field && field.snapshot ? field.snapshot() : null;
-    if (!snap || motionOff()) { enter(); return; }
+    if (!snap || motionOff()) { enter(0, ctx); return; }
     size();
     const dy = lift();
     const sources = snap.named.slice().sort((a, b) => b.p - a.p);
@@ -199,9 +218,9 @@
         r0: 1.1, r1: 1.1, c0: rgb(d.color), c1: [224, 171, 94], delay: rnd() * 0.25, dur: 0.75 + rnd() * 0.35, dot: false,
       });
     });
-    later(950, () => root.classList.add('is-drawn'));
-    later(1500, () => root.classList.add('is-labelled'));
-    fire();
+    later(950, () => { if (ctx?.isCurrent?.()) root.classList.add('is-drawn'); });
+    later(1500, () => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); });
+    fire(ctx);
   };
 
   const smooth = (k) => k * k * (3 - 2 * k);
@@ -226,9 +245,12 @@
     const c = f.c0.map((v, j) => Math.round(v + (f.c1[j] - v) * (f.dot ? w : e)));
     return { x, y, r, c };
   };
-  const fly = (now) => {
-    flightTime += Math.min(0.05, (now - (flightLast || now)) / 1000) * (window.deckPace?.() || 1);
-    flightLast = now;
+  const fly = (now, ctx = visitCtx, generation = forwardGeneration) => {
+    if (generation !== forwardGeneration || ctx !== visitCtx || !ctx?.isCurrent?.()) return;
+    forwardRaf = 0;
+    const clock = window.deckNow?.() ?? now;
+    flightTime += Math.max(0, (clock - (flightLast || clock)) / 1000);
+    flightLast = clock;
     const t = flightTime;
     g.clearRect(0, 0, innerWidth, innerHeight);
     const drawn = t > 0.95; // once the axes start drawing, the settled dust fades into them
@@ -252,21 +274,21 @@
       orb(x, y, r, c, a, f.dot ? a * 0.35 : 0);
       return true;
     });
-    if (flights.length) requestAnimationFrame(fly);
-    else { g.clearRect(0, 0, innerWidth, innerHeight); flying = false; if (!backs.length) show(false); window.deckEntryDone?.(slide); }
+    if (flights.length) forwardRaf = requestAnimationFrame((t) => fly(t, ctx, generation));
+    else { g.clearRect(0, 0, innerWidth, innerHeight); flying = false; if (!backs.length) show(false); window.deckEntryDone?.(slide, ctx); }
   };
 
   // ---- Going back ----------------------------------------------------------
   // A step back to slide 2: the arrival from the field, played backwards. Each logo melts back into its orb, which
   // flies back along a curve to one of the field's dots, shrinking and taking on its colour as it goes; the dust
   // lifts off the axes as they fade and flies back out into the field, which waits, still, for its dots.
-  const pace = () => window.deckPace?.() || 1;
-  let backs = [], backT = 0, backLast = 0, backRaf = 0;
+  let backs = [], backT = 0, backLast = 0, backRaf = 0, departRaf = 0, reverseCtx = null;
   const unfly = (now) => {
     backRaf = 0;
-    const dt = Math.min(0.05, (now - (backLast || now)) / 1000);
-    backLast = now;
-    backT += dt * pace();
+    const clock = window.deckNow?.() ?? now;
+    const dt = Math.max(0, (clock - (backLast || clock)) / 1000);
+    backLast = clock;
+    backT += dt;
     g.clearRect(0, 0, innerWidth, innerHeight);
     backs = backs.filter((f) => {
       const t = f.end - backT; // the arrival's own clock, running backwards
@@ -289,20 +311,24 @@
     else endDepart();
   };
   const endDepart = () => {
+    if (departRaf) cancelAnimationFrame(departRaf);
+    departRaf = 0;
     if (backRaf) cancelAnimationFrame(backRaf);
     backRaf = 0; backs = [];
     g.clearRect(0, 0, innerWidth, innerHeight);
     if (!flying) { show(false); if (!near()) { sky.width = 0; sky.height = 0; } } // kept while slide 2 or 3 is up (size() brings it back)
     if (!slide.classList.contains('on')) reset();
-    if (fieldSlide) window.deckRewound?.(fieldSlide);
+    if (fieldSlide) window.deckRewound?.(fieldSlide, reverseCtx);
   };
   const depart = () => {
-    const signal = window.deckNav?.signal;
-    window.deckRewinding?.(fieldSlide);
-    signal?.addEventListener('abort', endDepart, { once: true });
+    const ctx = window.deckNav;
+    reverseCtx = ctx;
+    const signal = ctx?.signal;
+    window.deckRewinding?.(fieldSlide, ctx);
     field.hold?.(2.2);
     // Once the field has drawn a frame, its dots are where they will be met.
-    requestAnimationFrame(() => {
+    departRaf = requestAnimationFrame(() => {
+      departRaf = 0;
       if (signal?.aborted || slide.classList.contains('on') || !fieldSlide.classList.contains('on')) return;
       const snap = field.snapshot();
       size();
@@ -329,10 +355,11 @@
         backs.push({ x0: d.x, y0: d.y, x1: p.x, y1: p.y, ...curve(d.x, d.y, p.x, p.y), r0: 1.1, r1: 1.1, c0: rgb(d.color), c1: [224, 171, 94],
           delay: rnd() * 0.25, dur: 0.75 + rnd() * 0.35, dot: false, end: 1.65 });
       });
-      backT = 0; backLast = 0;
+      backT = 0; backLast = window.deckNow?.() ?? performance.now();
       show(true);
       backRaf = requestAnimationFrame(unfly);
     });
+    signal?.addEventListener('abort', endDepart, { once: true });
   };
 
   // Act only when the slide itself comes or goes, not on every class change.
@@ -345,27 +372,29 @@
       clearInterval(asking);
       focus(null);
       const toField = fieldSlide && fieldSlide.classList.contains('on') && field.snapshot && window.deckNav?.back && !motionOff() && tools.every((el) => el.classList.contains('is-in'));
-      if (toField) { timers.forEach(window.deckCancelLater); timers = []; flights = []; depart(); return; }
-      flights = flights.filter((f) => !f.dot);
+      if (toField) { timers.forEach(window.deckCancelLater); timers = []; retireForward(true); depart(); return; }
+      retireForward();
       later(700, () => { if (!slide.classList.contains('on')) reset(); });
       return;
     }
+    visitCtx = window.deckNav;
     if (backs.length || backRaf) endDepart();
     const fromField = fieldSlide && !fieldSlide.classList.contains('on') && records.some((r) => r.target === fieldSlide);
-    if (window.deckNav?.rest) enter();
-    else fromField ? arrive() : begin();
+    const ctx = visitCtx;
+    if (ctx?.rest) enter(0, ctx);
+    else fromField ? arrive(ctx) : begin(ctx);
   });
   // On a first load the Mycelial mark plays first (dot-transitions.js): the tools bloom once it has landed.
   const html = document.documentElement;
   let waiting = null;
-  const begin = () => {
+  const begin = (ctx = visitCtx) => {
     if (waiting) { waiting.disconnect(); waiting = null; }
-    if (!html.classList.contains('dt-intro')) { enter(); return; }
+    if (!html.classList.contains('dt-intro')) { enter(0, ctx); return; }
     reset();
     waiting = new MutationObserver(() => {
       if (html.classList.contains('dt-intro')) return;
       waiting.disconnect(); waiting = null;
-      if (slide.classList.contains('on')) enter(0.4); // as the chart fades up
+      if (slide.classList.contains('on') && ctx?.isCurrent?.()) enter(0.4, ctx); // as the chart fades up
     });
     waiting.observe(html, { attributes: true, attributeFilter: ['class'] });
   };
@@ -374,18 +403,21 @@
   const keep = new MutationObserver(keepSky);
   keep.observe(slide, { attributes: true, attributeFilter: ['class'] });
   if (fieldSlide) keep.observe(fieldSlide, { attributes: true, attributeFilter: ['class'] });
-  if (slide.classList.contains('on')) begin();
-  window.addEventListener('deck-motion', () => { if (motionOff() && slide.classList.contains('on')) enter(); });
-  window.deckOnResize(() => {
+  if (slide.classList.contains('on')) { visitCtx = window.deckNav; begin(visitCtx); }
+  window.addEventListener('deck-motion', () => { if (motionOff() && slide.classList.contains('on')) enter(0, visitCtx); });
+  window.deckOnSettle?.((ctx) => {
+    if (backs.length || backRaf || departRaf) endDepart();
+    if (waiting) { waiting.disconnect(); waiting = null; }
+    retireForward(Boolean(backs.length || backRaf || departRaf));
+    timers.forEach(window.deckCancelLater); timers = [];
     if (near()) size();
     if (!slide.classList.contains('on')) return;
-    if (!flying) return;
     // Flight endpoints were measured in the old viewport. Finish at the new
     // chart instead of leaving old pixel coordinates suspended over it.
-    timers.forEach(window.deckCancelLater); timers = [];
-    flights = []; flying = false; show(false);
+    show(false);
     g.clearRect(0, 0, innerWidth, innerHeight);
     root.classList.add('is-drawn', 'is-labelled');
     tools.forEach((el) => { el.classList.add('is-in'); el.style.removeProperty('--m'); });
+    window.deckEntryDone?.(slide, ctx);
   });
 })();

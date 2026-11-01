@@ -323,7 +323,7 @@
   // One clock, ta, in seconds from the moment the network reaches the slide's node.
   const T = { rings: 0.05, ringDur: 1.1, core: 0.6, feed: 1.1, cons: 1.0, panels: 1.05, drop: 1.8, orbit: 2.2, end: 3.4 };
   const AMBIENT = 4.0;
-  let ta = 0, pace = 1, visits = 0, running = false, loop = 0, frameRaf = 0, last = 0, timers = [];
+  let ta = 0, pace = 1, visits = 0, running = false, loop = 0, frameRaf = 0, last = 0, timers = [], entryCtx = null, reverseCtx = null;
   let gifts = [], pend = [], plan = 0, pulses = [], flare = 0, nextGift = 0, nextUse = 0;
   let hot = null, pinned = null, touched = false, seedEl = null, labelled = 0;
 
@@ -381,9 +381,9 @@
     pulses.push({ h: homeOf(x), t0: ta });
   };
 
-  const advance = (dt) => {
+  const advance = (dt, ctx = entryCtx) => {
     ta += ta < T.end ? dt / pace : dt;
-    if (ta >= T.end) window.deckEntryDone?.(slide);
+    if (ta >= T.end) window.deckEntryDone?.(slide, ctx);
     flare *= Math.exp(-dt / 0.9);
     if (labelled < 1 && ta >= 0.8) { labelled = 1; root.classList.add('is-labelled'); }
     if (labelled < 2 && ta >= T.orbit + 0.3) { labelled = 2; root.classList.add('is-community'); }
@@ -714,23 +714,24 @@
   };
 
   // ---- Coming and going -----------------------------------------------------------
-  const frameLoop = (id) => {
-    const tick = (now) => {
+  const frameLoop = (id, ctx) => {
+    const tick = () => {
       frameRaf = 0;
-      if (id !== loop || !running) return;
+      if (id !== loop || !running || !ctx?.isCurrent?.()) return;
       frameRaf = requestAnimationFrame(tick);
-      const dt = Math.min(0.05, (now - (last || now)) / 1000) * (window.deckPace?.() || 1);
+      const now = window.deckNow?.() ?? performance.now();
+      const dt = Math.max(0, (now - (last || now)) / 1000);
       last = now;
-      advance(dt);
+      advance(dt, ctx);
       draw();
     };
     frameRaf = requestAnimationFrame(tick);
   };
-  const start = () => {
+  const start = (ctx = entryCtx) => {
     if (document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return;
     if (running || still || waiting || document.hidden || !slide.classList.contains('on') || !rings.length) return;
-    running = true; last = 0;
-    frameLoop(++loop);
+    running = true; last = window.deckNow?.() ?? performance.now();
+    frameLoop(++loop, ctx);
   };
   const stop = () => { running = false; loop++; if (frameRaf) cancelAnimationFrame(frameRaf); frameRaf = 0; };
 
@@ -753,7 +754,7 @@
     seedEl.setAttribute('aria-hidden', 'true');
     seedEl.innerHTML = '<i></i><em>?</em><b></b>';
     document.body.appendChild(seedEl);
-    launchAt = performance.now();
+    launchAt = window.deckNow?.() ?? performance.now();
     ring.style.visibility = 'hidden';
     const steps = 24;
     seedEl.animate(Array.from({ length: steps + 1 }, (_, i) => {
@@ -801,52 +802,60 @@
     root.classList.add('is-labelled', 'is-community');
   };
 
-  let waiting = null, armed = false;
-  const prepare = (fromGap) => {
+  let waiting = null, armed = false, settledCtx = null, arriveListener = null;
+  const prepare = (fromGap, ctx = entryCtx) => {
+    entryCtx = ctx;
     reset();
     if (!layout()) return false;
     visits++;
-    if (motionOff() || window.deckNav?.rest) { ta = 0; settle(); draw(); window.deckEntryDone?.(slide); if (!motionOff()) { html.classList.add('ac-quiet'); start(); } return false; }
+    if (motionOff() || ctx?.rest) { ta = 0; settle(); draw(); window.deckEntryDone?.(slide, ctx); if (!motionOff()) { html.classList.add('ac-quiet'); start(ctx); } return false; }
     pace = visits > 1 ? 0.7 : 1;
     ta = -9; // dark until the network arrives
     if (fromGap && launch()) pace = 1;
     draw();
     armed = true;
-    if (!fromGap && performance.now() - lastArrive < 400) { arrive(); return true; } // the network got here first (a jump)
+    if (!fromGap && (window.deckNow?.() ?? performance.now()) - lastArrive < 400) { arrive(ctx); return true; } // the network got here first (a jump)
     // If the network never says it has arrived (e.g. it was interrupted), grow anyway.
-    timers.push(window.deckLater(() => arrive(), fromGap ? 1700 : 1500));
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) arrive(ctx); }, fromGap ? 1700 : 1500));
     return true;
   };
-  const arrive = () => {
+  const arrive = (ctx = entryCtx) => {
     if (!armed || !slide.classList.contains('on')) return;
     armed = false;
     const seedAge = seedEl?.getAnimations()[0]?.currentTime;
-    ta = seedEl ? -Math.max(0.15, FLIGHT - (typeof seedAge === 'number' ? seedAge : performance.now() - launchAt) / 1000) : -0.3; // the seed lands on the eye at 0
+    ta = seedEl ? -Math.max(0.15, FLIGHT - (typeof seedAge === 'number' ? seedAge : ((window.deckNow?.() ?? performance.now()) - launchAt)) / 1000) : -0.3; // the seed lands on the eye at 0
     nextGift = AMBIENT + 0.2; nextUse = AMBIENT + PLAN.length * GAP + 4; plan = 0;
     // The network that brought us here steps back so the picture reads.
-    timers.push(window.deckLater(() => { if (slide.classList.contains('on')) html.classList.add('ac-quiet'); }, 150));
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && slide.classList.contains('on')) html.classList.add('ac-quiet'); }, 150));
     start();
   };
   let lastArrive = -1e9;
-  slide.addEventListener('dt-arrive', () => { lastArrive = performance.now(); arrive(); });
-  const enter = (fromGap) => {
+  const bindArrival = (ctx) => {
+    if (arriveListener) slide.removeEventListener('dt-arrive', arriveListener);
+    arriveListener = () => { if (!ctx?.isCurrent?.()) return; lastArrive = window.deckNow?.() ?? performance.now(); arrive(ctx); };
+    slide.addEventListener('dt-arrive', arriveListener);
+  };
+  const enter = (fromGap, ctx = window.deckNav) => {
+    entryCtx = ctx;
+    settledCtx = null;
+    bindArrival(ctx);
     // On a first load the Mycelial mark plays first; grow once it has landed.
     if (html.classList.contains('dt-intro')) {
       if (waiting) return;
       waiting = new MutationObserver(() => {
         if (html.classList.contains('dt-intro')) return;
         waiting.disconnect(); waiting = null;
-        if (slide.classList.contains('on') && prepare(false)) arrive();
+        if (slide.classList.contains('on') && ctx?.isCurrent?.() && prepare(false, ctx)) arrive(ctx);
       });
       waiting.observe(html, { attributes: true, attributeFilter: ['class'] });
       return;
     }
     // Labels and the text are measured, so lay out once the fonts are in (the ring cannot wait).
     if (document.fonts && document.fonts.status !== 'loaded' && !fromGap) {
-      document.fonts.ready.then(() => { if (slide.classList.contains('on') && !running && prepare(false)) arrive(); });
+      document.fonts.ready.then(() => { if (ctx?.isCurrent?.() && ctx !== settledCtx && slide.classList.contains('on') && !running && prepare(false, ctx)) arrive(ctx); });
       return;
     }
-    prepare(fromGap);
+    prepare(fromGap, ctx);
   };
   const leave = () => {
     stop();
@@ -865,10 +874,12 @@
   // A step back: the arrival played backwards. The picture ungrows in reverse order (the orbit, the extensions, the
   // panels and the constellation, the outline, the rings) down to the bright node in the lens; then the node lifts
   // off as the empty ring and flies back to its corner of the chart, which fades back in to meet it.
-  const unpace = () => window.deckPace?.() || 1;
   let unbuilding = null;
   const unbuild = () => {
-    const signal = window.deckNav?.signal;
+    const ctx = window.deckNav;
+    reverseCtx = ctx;
+    entryCtx = ctx;
+    const signal = ctx?.signal;
     stop();
     timers.forEach(window.deckCancelLater); timers = [];
     armed = false;
@@ -881,8 +892,8 @@
     ta = Math.min(ta, T.orbit + 0.85); // the last of the orbit is in by here
     slide.classList.add('dt-rewind');
     gapSlide.classList.add('dt-return', 'dt-await');
-    window.deckRewinding?.(gapSlide);
-    unbuilding = { last: 0, raf: 0, seeded: false, shown: false, at: 0 };
+    window.deckRewinding?.(gapSlide, ctx);
+    unbuilding = { last: window.deckNow?.() ?? performance.now(), raf: 0, seeded: false, shown: false, at: 0 };
     signal?.addEventListener('abort', endUnbuild, { once: true });
     unbuilding.raf = requestAnimationFrame(unstep);
   };
@@ -890,8 +901,9 @@
     const u = unbuilding;
     if (!u) return;
     u.raf = 0;
-    const dt = Math.min(0.05, (now - (u.last || now)) / 1000) * unpace();
-    u.last = now;
+    const clock = window.deckNow?.() ?? now;
+    const dt = Math.max(0, (clock - (u.last || clock)) / 1000);
+    u.last = clock;
     ta -= dt / pace;
     if (labelled > 1 && ta < T.orbit + 0.3) { labelled = 1; root.classList.remove('is-community'); }
     if (labelled > 0 && ta < 0.8) { labelled = 0; root.classList.remove('is-labelled'); }
@@ -920,7 +932,7 @@
     html.classList.remove('ac-quiet');
     dropSeed();
     if (!slide.classList.contains('on')) reset();
-    window.deckRewound?.(gapSlide);
+    window.deckRewound?.(gapSlide, reverseCtx);
   };
 
   const idleSoon = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 100));
@@ -937,12 +949,13 @@
       return;
     }
     const fromGap = !motionOff() && gapSlide && !gapSlide.classList.contains('on') && records.some((r) => r.target === gapSlide);
-    enter(!!fromGap);
+    entryCtx = window.deckNav;
+    enter(!!fromGap, entryCtx);
   });
   watch.observe(slide, { attributes: true, attributeFilter: ['class'] });
   if (gapSlide) watch.observe(gapSlide, { attributes: true, attributeFilter: ['class'] });
   const syncMotion = () => {
-    if (motionOff() && slide.classList.contains('on')) { stop(); settle(); draw(); window.deckEntryDone?.(slide); }
+    if (motionOff() && slide.classList.contains('on')) { stop(); settle(); draw(); window.deckEntryDone?.(slide, entryCtx); }
     else if (document.hidden || document.getElementById('overview')?.classList.contains('on')) stop();
     else if (slide.classList.contains('on')) start();
   };
@@ -950,8 +963,14 @@
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
 
-  window.deckOnResize(() => {
-    if (!slide.classList.contains('on') || !rings.length) return;
+  window.deckOnSettle?.((ctx) => {
+    if (unbuilding) endUnbuild();
+    if (!slide.classList.contains('on')) return;
+    if (!rings.length && !layout()) return;
+    entryCtx = ctx;
+    settledCtx = ctx;
+    stop();
+    timers.forEach(window.deckCancelLater); timers = [];
     const interrupted = armed || ta < T.end || !!seedEl;
     const state = sides.map((sd) => sd.slots.map((x) => ({ state: x.state, shown: x.shown, filledAt: x.filledAt, flash: x.flash })));
     // A contribution in flight lands at its own socket; the rest of the
@@ -974,7 +993,10 @@
     hot = pinned = null;
     card.classList.remove('is-on');
     draw();
-    start();
+    if (waiting) { waiting.disconnect(); waiting = null; }
+    armed = false;
+    window.deckEntryDone?.(slide, ctx);
+    start(ctx);
   });
 
   // ---- Hovering ---------------------------------------------------------------------
@@ -1088,5 +1110,5 @@
   const keep = new MutationObserver(keepLayers);
   [slide, demoSlide].filter(Boolean).forEach((s) => keep.observe(s, { attributes: true, attributeFilter: ['class'] }));
   keepLayers();
-  if (slide.classList.contains('on')) { wasOn = true; enter(false); }
+  if (slide.classList.contains('on')) { wasOn = true; enter(false, window.deckNav); }
 })();

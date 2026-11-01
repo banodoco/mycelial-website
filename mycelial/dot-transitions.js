@@ -563,7 +563,8 @@
   const tick = (now) => {
     netRaf = 0;
     if (document.hidden || document.getElementById('overview')?.classList.contains('on')) { netOn = false; netLast = 0; return; }
-    const dt = Math.min(0.05, (now - (netLast || now)) / 1000) * (window.deckPace?.() || 1);
+    now = window.deckNow();
+    const dt = Math.max(0, (now - (netLast || now)) / 1000);
     netLast = now;
     step(dt);
     draw();
@@ -572,7 +573,7 @@
   };
   function wake() {
     if (document.hidden || document.getElementById('overview')?.classList.contains('on')) return;
-    if (!netOn) { netOn = true; netLast = 0; netRaf = requestAnimationFrame(tick); }
+    if (!netOn) { netOn = true; netLast = window.deckNow(); netRaf = requestAnimationFrame(tick); }
   }
   const syncNetMotion = () => {
     if (document.hidden || document.getElementById('overview')?.classList.contains('on')) {
@@ -712,35 +713,38 @@
   };
   const seep = (k) => 0.5 - 0.5 * Math.cos(Math.PI * k); // gentle in, gentle out
   const easeIn = (k) => k * k * (3 - 2 * k) * k;
-  const tween = (duration, ease, step, delay = 0) => {
+  const textTweens = new Set();
+  const tween = (duration, ease, step, delay = 0, context = window.deckNav) => {
     let raf = 0, stopped = false, resolve;
-    const signal = window.deckNav?.signal;
+    const signal = context.signal;
     const p = new Promise((r) => { resolve = r; });
-    let elapsed = -delay, last = 0;
+    const started = context.now();
     const blocked = () => document.hidden || document.getElementById('overview')?.classList.contains('on');
-    const tick = (now) => {
+    const tick = () => {
       raf = 0;
       if (stopped || blocked()) return;
-      elapsed += (now - (last || now)) * (window.deckPace?.() || 1);
-      last = now;
+      if (!context.isCurrent()) { p.stop(); return; }
+      const elapsed = context.now() - started - delay;
       const k = clamp(elapsed / duration);
       if (elapsed >= 0) step(ease(k));
-      if (k < 1) raf = requestAnimationFrame(tick); else { stopped = true; resolve(true); }
+      if (k < 1) raf = requestAnimationFrame(tick); else { stopped = true; resolve('completed'); }
     };
     // Text can still be revealing when a slide's build is paused.
     const syncMotion = () => {
       if (stopped) return;
-      if (blocked()) { cancelAnimationFrame(raf); raf = 0; last = 0; }
+      if (blocked()) { cancelAnimationFrame(raf); raf = 0; }
       else if (!raf) raf = requestAnimationFrame(tick);
     };
     document.addEventListener('visibilitychange', syncMotion);
     window.addEventListener('deck-overview', syncMotion);
     p.then(() => {
+      textTweens.delete(p);
       document.removeEventListener('visibilitychange', syncMotion);
       window.removeEventListener('deck-overview', syncMotion);
     });
     syncMotion();
-    p.stop = () => { if (stopped) return; stopped = true; cancelAnimationFrame(raf); resolve(false); };
+    p.stop = () => { if (stopped) return; stopped = true; cancelAnimationFrame(raf); resolve('cancelled'); };
+    textTweens.add(p);
     if (signal) {
       signal.addEventListener('abort', p.stop, { once: true });
       p.then(() => signal.removeEventListener('abort', p.stop));
@@ -775,7 +779,7 @@
 
   // Threads run from the node down into the text, and the words appear where
   // they reach. The circle's edge keeps pace with the threads' tips.
-  const reveal = (s, at, delay = 0) => {
+  const reveal = (s, at, delay = 0, context = window.deckNav) => {
     s.classList.remove('dt-entering');
     const tw = [];
     for (const el of textOf(s)) {
@@ -795,8 +799,8 @@
         if (!s.classList.contains('on')) return;
         mask(el, at, k * far);
         for (const f of lit) if (!f.lit && k >= f.from) { f.lit = true; flash(f); }
-      }, delay);
-      run.then((ok) => { if (ok) { if (s.classList.contains('on')) unmask(el); else hideText(s); } });
+      }, delay, context);
+      run.then((result) => { if (result === 'completed' && context.isCurrent()) { if (s.classList.contains('on')) unmask(el); else hideText(s); } });
       tw.push(run);
     }
     return tw;
@@ -811,7 +815,8 @@
         hypha(wander(p, at), { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38 });
       }
       const run = tween(GATHER, easeIn, (k) => { if (!s.classList.contains('on')) mask(el, at, (1 - k) * far); });
-      run.then((ok) => { if (ok && !s.classList.contains('on')) hideText(s); });
+      const context = window.deckNav;
+      run.then((result) => { if (result === 'completed' && context.isCurrent() && !s.classList.contains('on')) hideText(s); });
       tw.push(run);
     }
     return tw;
@@ -893,7 +898,7 @@
     if (still && active()) {
       endOpening();
       settle(true);
-      if (current) window.deckEntryDone?.(current);
+      if (current === slides[0]) window.deckEntryDone?.(current, window.deckNav);
     }
     syncIdle();
   });
@@ -993,20 +998,22 @@
   // name, then rides a growing thread out to the slide's node, shrinking and
   // shedding its nodes into the network; the name settles into the corner;
   // where the mark lands the text is revealed and the slide fades in.
-  let opening = null;
+  let opening = null, openingPending = true;
   const endOpening = () => {
+    openingPending = false;
     window.__deckIntro?.clearGate();
     window.__deckIntro?.showChrome();
+    html.classList.remove('dt-intro', 'dt-unveil');
     if (!opening) return;
     opening.timers.forEach(window.deckCancelLater);
     if (opening.trail) opening.trail.onDone = null;
     opening = null;
     mark = null;
-    html.classList.remove('dt-intro', 'dt-unveil');
     dot.classList.remove('is-moving');
     nameRest();
   };
   const open = () => {
+    const context = window.deckNav, target = current;
     if (!active() || still || !current || !anchor) return false;
     const intro = window.__deckIntro, gate = intro?.gate;
     const placed = gate && gate.w === innerWidth && gate.h === innerHeight &&
@@ -1036,16 +1043,19 @@
       html.style.background = '';
     }
     const land = () => {
+      if (!context.isCurrent()) return;
       opening = null;
       mark = null;
       html.classList.add('dt-unveil'); // fade in from here on, never out
       html.classList.remove('dt-intro');
-      setTimeout(() => html.classList.remove('dt-unveil'), 1300);
+      window.deckLater(() => html.classList.remove('dt-unveil'), 1300, context);
       place(anchor);
       dot.classList.remove('is-moving'); pulse(1.8); bloom(anchor);
       if (current === lastSlide()) crown(anchor);
-      if (current === slides[0]) window.deckEntryDone?.(current); // slide 1 has no separate picture build
-      Promise.all(reveal(current, anchor, 60)).then(() => window.deckTurnDone?.(current));
+      if (target === slides[0]) window.deckEntryDone?.(target, context); // slide 1 has no separate picture build
+      Promise.all(reveal(target, anchor, 60, context)).then((results) => {
+        if (results.every((result) => result === 'completed')) window.deckTurnDone?.(target, context);
+      });
       sprawl(levelOf(current), anchor, 0.15);
     };
     opening.timers.push(window.deckLater(() => {
@@ -1080,8 +1090,9 @@
     ripen();
   };
   // wipe: start the network afresh (first load, switching version); otherwise the ground stays (a resize, a jump).
-  const settle = (grow, wipe) => {
+  const settle = (grow, wipe, context = window.deckNav) => {
     if (turning) turning.cancel();
+    textTweens.forEach((tw) => tw.stop());
     if (active()) adopt(); else restore();
     slides.forEach((sl) => sl.classList.remove('dt-leaving', 'dt-release', 'dt-entering'));
     slides.forEach((sl) => sl === current ? clearText(sl) : hideText(sl));
@@ -1102,8 +1113,8 @@
     if (!on) return;
     place(anchor);
     current.dispatchEvent(new CustomEvent('dt-arrive'));
-    if (current === slides[0]) window.deckEntryDone?.(current);
-    if (still) window.deckTurnDone?.(current);
+    if (current === slides[0]) window.deckEntryDone?.(current, context);
+    if (still) window.deckTurnDone?.(current, context);
     if (still) { // the network at this slide's reach, at once, and the crown already formed on the last slide
       sprawl(levelOf(current), anchor);
       ripen();
@@ -1118,9 +1129,10 @@
   };
 
   const turn = (prev, next) => {
+    const context = window.deckNav, started = context.now();
     if (turning) turning.cancel();
     const tweens = [], timers = [], anims = [];
-    let done = false;
+    let done = false, landed;
     const finish = () => { if (!done) { done = true; turning = null; } };
     const transition = {
       cancel() {
@@ -1131,6 +1143,7 @@
         if (!prev.classList.contains('on')) hideText(prev);
         if (done) return;
         done = true;
+        landed?.('cancelled');
         tweens.forEach((tw) => tw.stop());
         anims.forEach((a) => a.cancel());
         hyphae.forEach((h) => { h.onDone = null; });
@@ -1145,7 +1158,7 @@
       },
     };
     turning = transition;
-    window.deckNav?.signal?.addEventListener('abort', () => transition.cancel(), { once: true });
+    context.signal.addEventListener('abort', () => transition.cancel(), { once: true });
     const from = { x: (anchor ? anchor.x : 0) + drift.x, y: (anchor ? anchor.y : 0) + drift.y };
     clearText(prev);
     const glow = (s) => !still && window.AstridFlywheel?.glow(s); // slide 10's glow, between it and the last slide
@@ -1167,21 +1180,23 @@
     // The new text grows from its node while the old is still being drawn in (overlap), or once a picture crossing
     // its place has gone by (passing), the node's travel running alongside; the turn is done once the text is whole
     // and the node has arrived.
-    let landed;
     const reached = new Promise((r) => { landed = r; });
     const grow = () => {
       if (done) return;
       const z = zone(lines(next));
       if (z) zones.push(z);
-      const shown = reveal(next, to);
+      const shown = reveal(next, to, 0, context);
       tweens.push(...shown);
-      Promise.all([...shown, reached]).then(() => { if (done || !next.classList.contains('on')) return; finish(); window.deckTurnDone?.(next); });
+      Promise.all([...shown, reached]).then((results) => {
+        if (done || !context.isCurrent() || results.some((result) => result !== 'completed')) return;
+        finish(); window.deckTurnDone?.(next, context);
+      });
     };
     const early = overlap(prev, from, to);
     timers.push(window.deckLater(() => { // by now the slides' own scripts have marked a picture coming back
-      const wait = done ? 0 : passing(prev, next) - early;
+      const wait = done ? 0 : passing(prev, next) - (context.now() - started);
       if (wait > 0) timers.push(window.deckLater(grow, wait)); else grow();
-    }, early));
+    }, Math.max(0, early - (context.now() - started)), context));
 
     // 3. Arrival: the node blooms (or, on the last slide, becomes the mark).
     const arrive = () => {
@@ -1190,14 +1205,14 @@
       dot.classList.remove('is-moving'); anims.push(pulse(1.8)); bloom(to);
       if (next === lastSlide()) crown(to);
       next.dispatchEvent(new CustomEvent('dt-arrive')); // for slides that start their own picture once the node is reached
-      if (next === slides[0]) window.deckEntryDone?.(next);
+      if (next === slides[0]) window.deckEntryDone?.(next, context);
       prev.classList.add('dt-release'); // the old slide may fade now; its parts stay hidden
       timers.push(window.deckLater(() => {
         if (prev.classList.contains('on')) return;
         prev.classList.remove('dt-leaving', 'dt-release');
         hideText(prev);
       }, 700));
-      landed();
+      landed('completed');
     };
 
     // 2. The network grows across to the next node, or simply re-blooms in place.
@@ -1214,24 +1229,27 @@
       const total = lengths(pts).at(-1);
       hypha(pts, { width: 1.05, alpha: 0.55, duration: clamp(total / 950, 0.45, 1.05), onDone: arrive, ...(way ? { rest: 0, fade: 2.4 } : { branches: plan(total, 0) }) });
       if (!way && (window.deckNav?.dir || 0) > 0) trails.set(next, { prev, pts });
-    }, 340));
+    }, Math.max(0, 340 - (context.now() - started)), context));
   };
 
   // Follow the deck: every change of the active slide goes through here.
   const follow = new MutationObserver(() => {
     const next = slides.find((sl) => sl.classList.contains('on')) || null;
     if (next === current) return;
+    const context = window.deckNav;
     const prev = current;
     current = next;
     endOpening();
     if (!active() || still || (window.deckNav?.rest && !window.deckNav?.back) || !prev || !next || prev.classList.contains('out')) {
       settle(true);
       if (active() && current && anchor && !still) {
-        Promise.all(reveal(current, anchor, 200)).then(() => window.deckTurnDone?.(current));
+        Promise.all(reveal(next, anchor, 200, context)).then((results) => {
+          if (results.every((result) => result === 'completed')) window.deckTurnDone?.(next, context);
+        });
         // On a back landing the ground already reaches at least this slide.
         if (!window.deckNav?.rest) sprawl(levelOf(current), anchor, 0.2);
       }
-      if (current && still) window.deckTurnDone?.(current);
+      if (current && still) window.deckTurnDone?.(current, context);
       return;
     }
     turn(prev, next);
@@ -1252,14 +1270,20 @@
 
   // A resize keeps the network (see size), growing it at once over ground a new shape of screen leaves bare;
   // the node, its tuft and the text's softening find their places.
-  window.deckOnResize(() => {
+  window.deckOnSettle((context) => {
     const busy = turning || opening, tuft = busy ? [] : hyphae.filter((h) => h.keep);
     endOpening();
     keepGround();
     const was = anchor;
     anchor = current ? anchorOf(current) : null;
     if (size(was, anchor) && anchor && active()) { sprawl(levelOf(current), anchor); ripen(); }
-    if (busy) { settle(false); return; }
+    // A viewport change retires text work as well as node travel, including a
+    // rest reveal that has no `turning` object. Completion belongs to this visit.
+    if (busy || textTweens.size) {
+      settle(false, false, context);
+      if (current) window.deckTurnDone?.(current, context);
+      return;
+    }
     if (was && anchor) for (const h of tuft) for (const p of h.pts) { p[0] += anchor.x - was.x; p[1] += anchor.y - was.y; }
     hyphae.push(...tuft);
     if (tuft.length) wake();
@@ -1271,17 +1295,24 @@
     zones = z ? [Object.assign(z, { a: 1 })] : [];
     if (anchor && current === lastSlide()) crown(anchor, true);
     draw();
+    if (current === slides[0]) window.deckEntryDone?.(current, context);
+    if (current) window.deckTurnDone?.(current, context);
   });
   // Keep the initial settle (and its dt-arrive event) in its original place.
   // Only the opening waits for the fonts; slide scripts below still initialize
   // after this event and watch dt-intro exactly as before.
   settle(true, true);
-  const first = current;
+  const firstContext = window.deckNav;
   const startOpening = () => {
     if (window.__deckIntro?.failed) return;
     html.classList.remove('dt-font-wait');
-    // A very early click can change the active slide while the fonts load.
-    if (current !== first) { if (turning) turning.cancel(); settle(true, true); }
+    // Font readiness is page-scoped; it cannot restart an obsolete visit.
+    if (!firstContext.isCurrent() || !openingPending) {
+      window.__deckIntro?.clearGate(); window.__deckIntro?.showChrome();
+      html.classList.remove('dt-intro');
+      return;
+    }
+    openingPending = false;
     if (!open()) {
       window.__deckIntro?.clearGate();
       window.__deckIntro?.showChrome();

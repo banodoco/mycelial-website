@@ -25,17 +25,10 @@
   const ease = (k) => 1 - Math.pow(1 - k, 3);
   const easeIO = (q) => (q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2);
   const seep = (k) => 0.5 - 0.5 * Math.cos(Math.PI * k);
-  // Keep absolute animation timestamps on the same clock across a pause.
-  let paused = false, pausedAt = 0, pausedTime = 0;
-  let pendingStart = null, pausedVideos = [];
+  let paused = false, pendingStart = null, pendingCtx = null, pausedVideos = [];
   const motionBlocked = () => document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.();
-  let paceOffset = 0, paceAt = performance.now();
-  const now = () => {
-    const real = (paused ? pausedAt : performance.now()) - pausedTime;
-    paceOffset += Math.max(0, real - paceAt) * ((window.deckPace?.() || 1) - 1);
-    paceAt = real;
-    return real + paceOffset;
-  };
+  const now = () => window.deckNow();
+  const current = (ctx) => !!ctx && ctx.isCurrent();
   const RAD = Math.PI / 180;
 
   // ---- The scene -----------------------------------------------------------------------------
@@ -478,9 +471,7 @@
     }
     // Flag leaders: from each plane's outer edge out to its flag; the layer being explained burns brighter.
     vis.lb.forEach((q, i) => {
-      // Once the phone's tour is available, every layer remains a usable control even if an
-      // interrupted arrival left its leader's reveal clock unfinished. Always clear stale zeroes.
-      const revealed = view.mobile && amb && !build?.back ? 1 : q * q;
+      const revealed = q * q;
       flags[i].style.setProperty('--in', revealed.toFixed(3));
       if (q <= 0) return;
       const m = C[i][geo.E.m], x0 = m.x + 8 * k * geo.out, x1 = geo.callX - 3 * geo.out, y1 = flagY[i] ?? m.y, l = lit[i];
@@ -530,7 +521,7 @@
 
   // ---- Arriving ----------------------------------------------------------------------------------
   // build: { t0, from5, src } while the stack is assembling; ambient afterwards.
-  let build = null, amb = null;
+  let build = null, amb = null, activeCtx = null;
   // From slide 5: a = each copied panel's fold (rendering, timeline, agent); low = effects and the runtime rising into place;
   // carry = slide 5's picture, landed on the top plane, dissolving into the plane's own film.
   // card: the top layer has landed, and its card opens as the words arrive, so the landing is never without one.
@@ -585,30 +576,30 @@
     carryPic.style.width = `${cy.P.w.toFixed(2)}px`; carryPic.style.height = `${cy.P.h.toFixed(2)}px`;
     Object.assign(cy, { on: true, back: false, a: 1 }); carry.classList.remove('is-back'); carry.style.display = 'block';
   };
-  const begin = (from5) => {
-    layout();
+  const begin = (from5, layoutReady = false) => {
+    if (!layoutReady) layout();
     const t0 = now();
     if (from5) {
       hideAll();
       const src = snapFrom5();
       if (src) {
         demo.classList.add('is-minkless'); // the captured mink is handed to this slide in the same frame
-        build = { t0, from5: true, src };
+        build = { t0, from5: true, src, ctx: activeCtx };
         step(t0);
         return;
       }
     }
-    build = { t0, from5: false };
+    build = { t0, from5: false, ctx: activeCtx };
     hideAll();
     step(t0);
   };
   const k01 = (e, [a, b]) => clamp((e - a) / (b - a));
   const stepBuild = (t) => {
     const e = (t - build.t0) / 1000, T0 = build.from5 ? FROM5 : QUICK, first = wide() ? T0.wide : T0.card;
-    // The card and the tour come only on the way in, and not while the entry is hurried on to the next slide
-    // (no card opens just as the slide leaves); folding back to slide 5 runs this clock backwards without them.
-    const fwd = !build.back && !(window.deckPace?.() > 1);
-    if (fwd && !amb && openI < 0 && e >= first) { show(0); arrangeFlags(0); } // its flags (not yet in) make room at once
+    // Entry controls share one progress stage with their leader lines on phones; folding back runs this clock without them.
+    const fwd = !build.back;
+    const controlAt = view.mobile ? first + (T0.open - first) * 0.15 : first;
+    if (fwd && !amb && openI < 0 && e >= controlAt) { show(0); arrangeFlags(0); }
     if (fwd && !amb && e >= T0.open) { // every plane is in place: the tour takes them over (it lifts the open layer, and paints)
       st.forEach((s, i) => Object.assign(s, settledOf(PL[i])));
       clearGhosts();
@@ -616,7 +607,8 @@
     }
     if (amb) { // only the threads, the leaders and the roots are still drawing
       vis.sh = k01(e, T0.sh); vis.rt = k01(e, T0.rt);
-      vis.lb = PL.map((_, i) => clamp((e - T0.lb - i * T0.lbGap) / T0.lbDur));
+      const stage = view.mobile ? clamp((e - first) / Math.max(0.01, T0.open - first)) : null;
+      vis.lb = PL.map((_, i) => view.mobile ? stage : clamp((e - T0.lb - i * T0.lbGap) / T0.lbDur));
     } else if (build.from5) {
       const T = FROM5, src = build.src.planes, sp = easeIO(k01(e, T.spread)), mid = PL[2].cy;
       for (const i of [0, 1, 3]) { // rendering, timeline, agent: from slide 5's panels, tilting into the stack
@@ -638,7 +630,7 @@
       }
       if (cy.on) { // slide 5's picture dissolves into the plane's own film once the plane has landed (and back)
         cy.a = 1 - seep(k01(e, T.carry));
-        if (build.back && build.shown) cy.a = Math.min(cy.a, 1 - seep(clamp(build.since / 0.6)));
+        if (build.back && build.shown) cy.a = Math.min(cy.a, 1 - seep(clamp((t - build.shownAt) / 600)));
         planes[0].classList.toggle('is-carrying', e < T.carry[0]);
       }
       if (build.src.mink) {
@@ -648,7 +640,8 @@
       } else if (e >= T.mink[1]) { const m = perchOf(st[0]); paintMink(m.x, m.y, m.c); }
       minkCv.style.opacity = '1';
       vis.sh = k01(e, T.sh); vis.rt = k01(e, T.rt);
-      vis.lb = PL.map((_, i) => clamp((e - T.lb - i * T.lbGap) / T.lbDur));
+      const stage = view.mobile ? clamp((e - first) / Math.max(0.01, T0.open - first)) : null;
+      vis.lb = PL.map((_, i) => view.mobile ? stage : clamp((e - T.lb - i * T.lbGap) / T.lbDur));
     } else {
       const T = QUICK;
       for (let i = 0; i < 5; i++) { // from the foundation up
@@ -658,13 +651,15 @@
       const qm = (e - T.mink[0]) / T.mink[1];
       if (qm > 0) { const m = perchOf(st[0]); paintMink(m.x, m.y, m.c, clamp(qm)); minkCv.style.opacity = '1'; }
       vis.sh = k01(e, T.sh); vis.rt = k01(e, T.rt);
-      vis.lb = PL.map((_, i) => clamp((e - T.lb - i * T.lbGap) / T.lbDur));
+      const stage = view.mobile ? clamp((e - first) / Math.max(0.01, T.open - first)) : null;
+      vis.lb = PL.map((_, i) => view.mobile ? stage : clamp((e - T.lb - i * T.lbGap) / T.lbDur));
     }
     if (!amb) { apply(); draw(); }
     if (!build.back && e >= T0.end) {
+      const ctx = build.ctx;
       build = null;
       if (amb) { vis.sh = 1; vis.lb = PL.map(() => 1); vis.rt = 1; } else { settleAll(); amb = { t }; tourFrom(0, t + 1100); }
-      window.deckEntryDone?.(slide);
+      if (current(ctx)) window.deckEntryDone?.(slide, ctx);
     }
   };
 
@@ -775,76 +770,82 @@
     if (!build) stepMink(t);
     stepHead();
   };
-  const tick = () => {
+  const tick = (ctx) => {
     raf = 0;
-    if (!running || paused) return;
+    if (!current(ctx) || activeCtx !== ctx || !running || paused) { if (activeCtx === ctx && !current(ctx)) stop(ctx); return; }
     const t = now();
     if (build && build.back) { if (!unfold(t)) return; } else step(t);
-    raf = requestAnimationFrame(tick);
+    raf = requestAnimationFrame(() => tick(ctx));
   };
-  const wake = () => { if (running && !paused && !raf) raf = requestAnimationFrame(tick); };
+  const wake = () => { const ctx = activeCtx; if (current(ctx) && running && !paused && !raf) raf = requestAnimationFrame(() => tick(ctx)); };
   const play = () => { if (!still && running && !paused && !build?.back) video.play().catch(() => {}); }; // not while folding back
 
   // As on slide 5, the network stays visible behind; only where its threads pass behind the text are they softened.
   // Only ever clear a mask this slide set, so a neighbour that set its own (slide 5) keeps it.
-  const net = document.querySelector('.dt-net');
-  let netMask = '';
-  const softenNet = (on) => {
-    if (!net) return;
-    if (!on) { if (netMask && net.style.maskImage === netMask) { net.style.maskImage = net.style.webkitMaskImage = ''; net.style.maskMode = ''; } netMask = ''; return; }
+  const softenNet = (ctx, on) => {
+    if (!on) { window.deckClearNetMask?.(ctx, 'stack'); return; }
+    if (!current(ctx)) return;
     const b = slide.querySelector('.split > :first-child').getBoundingClientRect(), W = innerWidth, H = innerHeight, pad = 14;
     const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><filter id='f'><feGaussianBlur stdDeviation='12'/></filter><rect width='${W}' height='${H}' fill='white'/><rect x='${Math.round(b.left - pad)}' y='${Math.round(b.top - pad)}' width='${Math.round(b.width + 2 * pad)}' height='${Math.round(b.height + 2 * pad)}' rx='18' fill='black' fill-opacity='.75' filter='url(%23f)'/></svg>`;
-    net.style.maskImage = net.style.webkitMaskImage = `url("data:image/svg+xml,${svg.replace(/"/g, "'").replace(/</g, '%3C').replace(/>/g, '%3E')}")`;
-    net.style.maskMode = 'luminance';
-    net.style.maskSize = '100% 100%';
-    netMask = net.style.maskImage;
+    const mask = `url("data:image/svg+xml,${svg.replace(/"/g, "'").replace(/</g, '%3C').replace(/>/g, '%3E')}")`;
+    window.deckSetNetMask?.(ctx, 'stack', { image: mask, mode: 'luminance', size: '100% 100%' });
   };
 
   let waitArrive = null, timers = [], pendingBuild = false;
-  const beginWhenReady = () => {
+  const beginWhenReady = (ctx = activeCtx) => {
+    if (!current(ctx)) return;
     if (!running || build || amb) return;
     if (paused) { pendingBuild = true; return; }
     pendingBuild = false;
-    begin(false); play(); wake();
+    begin(false, true); play(); wake();
   };
   const clearTimers = () => { timers.forEach(window.deckCancelLater); timers = []; if (waitArrive) { waitArrive.disconnect(); waitArrive = null; } };
-  const start = (from5) => {
-    if (document.hidden || document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingStart = from5; return; }
+  const start = (from5, ctx = window.deckNav) => {
+    if (!current(ctx) || ctx.to !== 5) return;
+    activeCtx = ctx;
+    ctx.signal.addEventListener('abort', () => queueMicrotask(() => {
+      if (activeCtx !== ctx) return;
+      const next = window.deckNav;
+      if (next?.from === 5 && next.to === 4 && next.back && slide5?.classList.contains('on') && amb && !build && !motionOff()) fold(next);
+      else stop(ctx);
+    }), { once: true });
+    if (document.hidden || document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingStart = from5; pendingCtx = ctx; return; }
     window.warmDeckMedia?.(slide);
-    pendingStart = null;
+    pendingStart = null; pendingCtx = null;
     running = true;
     layout();
     slide.classList.remove('st-arrive');
-    softenNet(true);
+    softenNet(ctx, true);
     flags.forEach((f) => { f.tabIndex = 0; });
-    if (motionOff() || window.deckNav?.rest) {
-      layout(); settleAll(); stepHead();
+    if (motionOff() || ctx.rest) {
+      settleAll(); stepHead();
       if (view.mobile) show(0);
-      window.deckEntryDone?.(slide);
+      window.deckEntryDone?.(slide, ctx);
       // Landing at rest: the first card is open as it lands (on a wider screen, once the words are in).
       if (!motionOff()) { amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0)); play(); wake(); }
       return;
     }
     if (from5) { // the product moves at once; the slide must not fade in under it
       slide.classList.add('st-arrive');
-      timers.push(window.deckLater(() => slide.classList.remove('st-arrive'), 900));
+      timers.push(window.deckLater(() => { if (current(ctx)) slide.classList.remove('st-arrive'); }, 900));
       try { video.currentTime = 2; } catch (e) { /* not loaded */ }
-      begin(true); play(); wake();
+      begin(true, true); play(); wake();
       return;
     }
     hideAll();
-    const go = beginWhenReady;
+    const go = () => beginWhenReady(ctx);
     if (html.classList.contains('dt-intro')) { // a first load: the Mycelial mark plays first
-      waitArrive = new MutationObserver(() => { if (!html.classList.contains('dt-intro')) { waitArrive.disconnect(); waitArrive = null; timers.push(window.deckLater(go, 250)); } });
+      waitArrive = new MutationObserver(() => { if (!current(ctx)) { clearTimers(); return; } if (!html.classList.contains('dt-intro')) { waitArrive.disconnect(); waitArrive = null; timers.push(window.deckLater(go, 250)); } });
       waitArrive.observe(html, { attributes: true, attributeFilter: ['class'] });
       return;
     }
-    (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => timers.push(window.deckLater(go, 1300))); // if the network never says it has arrived
+    (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { if (current(ctx)) timers.push(window.deckLater(go, 1300)); }); // if the network never says it has arrived
   };
-  slide.addEventListener('dt-arrive', () => { if (running && !build && !amb && !motionOff() && !window.deckNav?.rest && !html.classList.contains('dt-intro')) { clearTimers(); beginWhenReady(); } });
-  const stop = () => {
+  slide.addEventListener('dt-arrive', () => { const ctx = activeCtx; if (current(ctx) && running && !build && !amb && !motionOff() && !ctx.rest && !html.classList.contains('dt-intro')) { clearTimers(); beginWhenReady(ctx); } });
+  const stop = (ctx = activeCtx) => {
+    if (ctx && activeCtx && activeCtx !== ctx) return;
     running = false;
-    paused = false; pausedTime = 0; pendingStart = null; pausedVideos = [];
+    paused = false; pendingStart = null; pendingCtx = null; pausedVideos = [];
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
     clearTimers();
@@ -856,17 +857,20 @@
     show(-1); lit.fill(0);
     flags.forEach((f) => { f.tabIndex = -1; });
     slide.classList.remove('st-arrive');
-    softenNet(false);
+    softenNet(ctx, false);
     video.pause();
+    if (activeCtx === ctx) activeCtx = null;
   };
 
   // ---- Going back to slide 5 ------------------------------------------------------------------
   // A step back: the arrival from slide 5 played backwards. The roots draw back in, the threads and the flags go, the
   // effects and the runtime sink away, and the rendering, timeline and agent planes untilt and fold back into exact
   // copies of slide 5's panels, the mink flying back to her seat; slide 5 fades in beneath them and the stack goes.
-  const pace = () => window.deckPace?.() || 1;
-  const fold = () => {
-    const signal = window.deckNav?.signal;
+  const fold = (ctx) => {
+    if (!current(ctx)) return;
+    activeCtx = ctx;
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
     clearTimers();
     clearTimeout(leaving); Object.assign(hold, { hover: -1, focus: -1, pin: -1 }); guide.on = false; guide.a = 0;
     show(-1); lit.fill(0);
@@ -874,12 +878,13 @@
     restMink();
     slide.classList.add('dt-rewind');
     slide5.classList.add('dt-return', 'dt-await');
-    window.deckRewinding?.(slide5);
+    window.deckRewinding?.(slide5, ctx);
     // From the settled stack, the arrival's clock runs back from its end.
     amb = null; // the tour is over: the planes are the build's again
     video.pause(); // its film holds its frame as the plane folds back into slide 5's preview
-    build = { back: true, from5: true, src: null, t0: 0, e: FROM5.end - 1e-3, last: 0, shown: false };
-    signal?.addEventListener('abort', endFold, { once: true });
+    const t = now();
+    build = { back: true, from5: true, src: null, t0: t, e: FROM5.end - 1e-3, startAt: t, shown: false, ctx };
+    ctx.signal.addEventListener('abort', () => { if (build?.back && build.ctx === ctx) abortFold(); }, { once: true });
     wake();
   };
   const unfold = (t) => {
@@ -896,13 +901,10 @@
     }
     // Just before the copies show, their pictures are taken again: slide 5's preview may only now have caught up.
     if (!b.fresh && b.e <= 1.1) { b.fresh = true; repaintGhosts(); }
-    const d = Math.min(0.05 * pace(), (t - (b.last || t)) / 1000); // now() runs at the turn's pace
-    b.last = t;
-    b.e = Math.max(0, b.e - d);
-    if (b.shown) b.since += d;
+    b.e = Math.max(0, FROM5.end - 1e-3 - (t - b.startAt) / 1000);
     // Slide 5 fades in under the copies as they settle onto its panels; once it is whole, the copies go.
-    if (!b.shown && b.e <= 0.3) { b.shown = true; b.since = 0; slide5.classList.remove('dt-await'); }
-    if (b.e <= 0 && b.since >= 0.65) { endFold(); return false; }
+    if (!b.shown && b.e <= 0.3) { b.shown = true; b.shownAt = t; slide5.classList.remove('dt-await'); }
+    if (b.e <= 0 && t - (b.shownAt ?? Infinity) >= 650) { endFold(); return false; }
     b.t0 = t - b.e * 1000;
     stepBuild(t);
     stepHead();
@@ -912,40 +914,53 @@
     const from = demo.querySelector(SRC[i])?.querySelectorAll('canvas') || [], to = ghosts[i].querySelectorAll('canvas');
     from.forEach((cs, j) => { const c = to[j]; if (!c || c.dataset.carried || c.width !== cs.width || c.height !== cs.height) return; try { const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.drawImage(cs, 0, 0); } catch (e) { /* empty */ } });
   });
+  const abortFold = () => {
+    if (!build?.back) return;
+    build = null;
+    clearGhosts();
+    slide.classList.remove('dt-rewind', 'dt-rewound');
+    slide5?.classList.remove('dt-return', 'dt-await');
+    stop(activeCtx);
+  };
   const endFold = () => {
     if (!build || !build.back) return;
+    const ctx = build.ctx;
     build = null;
     clearGhosts(); // slide 5's own panels stand exactly where their copies were
     slide.classList.replace('dt-rewind', 'dt-rewound');
     slide5?.classList.remove('dt-return', 'dt-await');
-    if (slide5) window.deckRewound?.(slide5);
+    if (slide5 && current(ctx)) window.deckRewound?.(slide5, ctx);
     if (slide.classList.contains('on')) return;
     stop();
-    timers.push(setTimeout(() => { if (!slide.classList.contains('on')) hideAll(); }, 700));
+    hideAll();
   };
 
   let wasOn = false;
-  const watch = new MutationObserver((records) => {
+  const watch = new MutationObserver(() => {
     const on = slide.classList.contains('on');
     if (on === wasOn) return;
     wasOn = on;
-    endFold();
+    const ctx = window.deckNav;
     if (!on) {
-      const to5 = !!slide5 && slide5.classList.contains('on') && window.deckNav?.back && !motionOff() && running && !paused && amb && !build;
-      if (to5) { fold(); return; }
-      stop(); timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) hideAll(); }, 700)); return;
+      if (build?.back && build.ctx === ctx) return;
+      const to5 = !!slide5 && slide5.classList.contains('on') && ctx?.from === 5 && ctx.to === 4 && ctx.back && !motionOff() && running && !paused && amb && !build;
+      if (to5) { fold(ctx); return; }
+      const old = activeCtx;
+      stop(old);
+      if (current(ctx)) timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) hideAll(); }, 700, ctx));
+      return;
     }
-    const from5 = !motionOff() && !!slide5 && !slide5.classList.contains('on') && records.some((r) => r.target === slide5);
-    start(from5);
+    const from5 = !motionOff() && ctx?.from === 4 && ctx.to === 5;
+    start(from5, ctx);
   });
   watch.observe(slide, { attributes: true, attributeFilter: ['class'] });
   if (slide5) watch.observe(slide5, { attributes: true, attributeFilter: ['class'] });
   const syncMotion = () => {
     if (motionBlocked() && build?.back) endFold(); // a reverse never waits behind the overview
-    if (motionOff() && slide.classList.contains('on')) { stop(); start(false); }
+    if (motionOff() && slide.classList.contains('on')) { const ctx = activeCtx; stop(ctx); start(false, ctx || window.deckNav); }
     else if (motionBlocked()) {
       if (!running || paused) return;
-      pausedAt = performance.now(); paused = true;
+      paused = true;
       if (raf) cancelAnimationFrame(raf);
       raf = 0;
       pausedVideos = [video].filter((v) => v && !v.paused);
@@ -956,9 +971,8 @@
         return;
       }
       // An entry deferred behind the overview has no scene to resume yet.
-      if (pendingStart !== null) { start(pendingStart); return; }
+      if (pendingStart !== null) { start(pendingStart, pendingCtx); return; }
       if (!paused) return;
-      pausedTime += performance.now() - pausedAt;
       paused = false;
       guide.last = 0;
       if (pendingBuild) beginWhenReady();
@@ -970,26 +984,35 @@
   document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
-  window.deckOnResize(() => {
-    endFold();
-    if (!slide.classList.contains('on')) return;
-    const interrupted = !amb && (!!build || !motionOff()); // once the tour has begun (even as the build finishes), it carries on
-    layout();
-    softenNet(true);
-    if (interrupted) {
-      clearTimers();
-      build = null;
-      amb = { t: now() };
-      settleAll();
-      tourFrom(guide.i, now() + 1100);
-    } else {
-      st.forEach((s, i) => Object.assign(s, settledOf(PL[i]), { y: PL[i].cy - 6 * lit[i] }));
-      apply();
-      guide.way = guide.mode === 'go' ? geo.ways[guide.i] : null;
-      if (amb) stepTour(now());
-      else { const m = perchOf(st[0]); paintMink(m.x, m.y, m.c); draw(); }
+  window.deckOnSettle((ctx) => {
+    if (!current(ctx)) return;
+    clearTimers(); pendingBuild = false; pendingStart = null; pendingCtx = null;
+    if (ctx.to === 5 && slide.classList.contains('on')) {
+      activeCtx = ctx; running = true; paused = false;
+      if (raf) cancelAnimationFrame(raf); raf = 0;
+      build = null; amb = null; slide.classList.remove('st-arrive', 'dt-rewind', 'dt-rewound');
+      slide5?.classList.remove('dt-return', 'dt-await');
+      clearGhosts();
+      layout(); softenNet(ctx, true); settleAll(); stepHead();
+      flags.forEach((f) => { f.tabIndex = 0; });
+      show(view.mobile ? 0 : -1);
+      amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0));
+      window.deckEntryDone?.(slide, ctx);
+      if (!document.hidden && !document.getElementById('overview')?.classList.contains('on') && !window.deckStill?.()) wake();
+      return;
     }
-    if (!document.hidden && !document.getElementById('overview')?.classList.contains('on') && !window.deckStill?.()) wake();
+    if (ctx.from === 5 && ctx.to === 4) {
+      build = null; amb = null; clearGhosts();
+      slide.classList.replace('dt-rewind', 'dt-rewound');
+      slide5?.classList.remove('dt-return', 'dt-await');
+      stop(activeCtx);
+      hideAll();
+      if (current(ctx)) window.deckRewound?.(slide5, ctx);
+      return;
+    }
+    if (!slide.classList.contains('on') || ctx.from === 5) {
+      stop(activeCtx); hideAll();
+    }
   });
   // Clicks on the stack stay here; they never turn the slide.
   root.addEventListener('click', (e) => { if (e.target.closest('.st-plane, .st-mink, .st-flag, .st-card, .st-hit')) e.stopPropagation(); });
