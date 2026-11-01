@@ -1272,7 +1272,7 @@
     const rememberPointer = (e) => {
       pointerType = e.pointerType;
       pointerAt = e.target;
-      outsideTap = !!opened && !opened.querySelector('.fw-ask-card')?.contains(e.target);
+      outsideTap = !!opened && !opened.querySelector('.fw-ask-card')?.contains(e.target) && !e.target.closest?.('.fw-ask-q');
     };
     const close = () => {
       clearTimers();
@@ -1287,7 +1287,8 @@
     };
     window.deckOverlay?.register({
       isOpen: () => !!opened,
-      contains: (target) => !!opened?.querySelector('.fw-ask-card')?.contains(target),
+      // The questions belong to the open panel: one tap on another question switches to it.
+      contains: (target) => !!opened && (!!opened.querySelector('.fw-ask-card')?.contains(target) || !!target.closest?.('.fw-ask-q')),
       close: (reason) => {
         const button = opened?.querySelector('button');
         close();
