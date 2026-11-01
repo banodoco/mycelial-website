@@ -1,3 +1,4 @@
+/* global turn, pendingTurns -- the deck controller's script-scope state (mycelial/index.html), read by the injected recorder */
 // Injected before deck scripts. DOM samples use the deck's own turn/queue state.
 (() => {
   const lab = window.__lab = { buf: [], inputs: [], longtasks: [], shifts: [], costs: [], gaps: [] };

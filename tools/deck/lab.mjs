@@ -214,7 +214,7 @@ try {
       return canvas.toDataURL('image/png').split(',')[1];
     }, picks);
     await writeFile(path.join(out, 'sheet.png'), Buffer.from(sheet, 'base64'));
-    await writeFile(path.join(out, 'sheet.json'), JSON.stringify({ run: chosen.run, frames: picks.map(({ data, ...p }) => p) }, null, 2));
+    await writeFile(path.join(out, 'sheet.json'), JSON.stringify({ run: chosen.run, frames: picks.map(({ data: _data, ...p }) => p) }, null, 2));
     await sheetPage.close();
   }
   const counts = Object.fromEntries(['pass', 'fail', 'invalid', 'incomplete'].map(k => [k, runs.filter(r => r.status === k).length]));
