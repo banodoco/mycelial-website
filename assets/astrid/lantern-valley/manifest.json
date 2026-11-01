@@ -48,5 +48,13 @@
     "file": "motion-guide.webp",
     "source_sha256": "f6829f7778fb9fdcda9159635a0444b81a6769e9518d326607fbd403e77c0ed2",
     "source_time_seconds": 2
+  },
+  "guide": {
+    "file": "guide.mp4",
+    "source_sha256": "f6829f7778fb9fdcda9159635a0444b81a6769e9518d326607fbd403e77c0ed2"
+  },
+  "guide-vp9": {
+    "file": "guide.webm",
+    "source_sha256": "f6829f7778fb9fdcda9159635a0444b81a6769e9518d326607fbd403e77c0ed2"
   }
 }
