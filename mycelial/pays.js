@@ -4,7 +4,8 @@
 // the core, slide 4's lens with the mink inside; past a dotted boundary, the
 // core reaches out across widening arcs to a great many people, everyone else,
 // on the hosted version. Pulses run from the builders into the core, and from
-// the core outward, wave after wave.
+// the core outward, wave after wave. On an upright phone the story runs bottom
+// to top: devices at the foot, the core above them, the crowd fanning out above.
 // Arriving from slide 6, the pixel mink perched on its stack powers up (her eye lights, motes gather into
 // her, a ring of light) and travels across into this slide's lens, which draws in around her.
 // Its core, builders and people are kept as data (window.AstridPays) so the next
@@ -24,10 +25,6 @@
   const easeIO = (q) => (q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2);
   const THREAD = '240,200,119', NODE = '255,217,145', CORE = '255,241,214';
   const TAU = Math.PI * 2;
-  // Portrait compositions are selectable during review with ?pa=A|B|C. The
-  // transform is shared so the variants can change proportions without forking
-  // any drawing, animation, or slide handoff code.
-  const portraitVariant = (new URLSearchParams(location.search).get('pa') || 'A').toUpperCase();
 
   // ---- Labels -------------------------------------------------------------------
   const tag = (cls, html) => {
@@ -86,12 +83,14 @@
   // Drawn in the reference's own units (1672 x 941), scaled by k about the middle.
   // The core: a lens centred at (750, 415), 136 wide and 226 tall, in those units.
   const CORE_REF = { cx: 750, cy: 415, w: 136, h: 226 };
-  // On a phone the picture sits above the text, positions stretched down by ky (across by k). Beside the text on
+  // On an upright phone the story is turned to run up the screen: reference x maps to height (ky above the lens's
+  // middle, kyLow below it) and reference y to width (kx). On a narrow screen that is not upright the picture sits
+  // above the text, positions stretched down by ky (across by k). Beside the text on
   // the left, it is laid out in the room to the right: positions stretch by kx across and ky down. Either way,
   // sizes (circles, the lens, the mink, dots) scale by k so nothing is squashed.
-  let W = 0, H = 0, dpr = 1, k = 1, kx = 1, ky = 1, ox = 0, oy = 0, LW = 1, small = false, portraitFlow = false, portraitSideRail = false;
+  let W = 0, H = 0, dpr = 1, k = 1, kx = 1, ky = 1, kyLow = 1, ox = 0, oy = 0, LW = 1, small = false, portraitFlow = false;
   const X = (rx, ry = 415) => portraitFlow ? ox + (ry - 415) * kx : ox + (rx - (small ? 836 : 150)) * (small ? k : kx);
-  const Y = (ry, rx = 750) => portraitFlow ? oy + (1580 - rx) * ky : oy + (ry - 415) * ky;
+  const Y = (ry, rx = 750) => portraitFlow ? oy - (rx - 750) * (rx > 750 ? ky : kyLow) : oy + (ry - 415) * ky;
   const P = (rx, ry) => ({ x: X(rx, ry), y: Y(ry, rx) });
   let seed = 1;
   const rnd = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
@@ -108,41 +107,30 @@
     dpr = Math.min(2, devicePixelRatio || 1);
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
     small = W <= 760 && (H >= W || H > 500); // a phone held upright (one on its side takes the wide layout)
-    portraitFlow = small && H >= W && ['A', 'B', 'C'].includes(portraitVariant);
-    portraitSideRail = portraitFlow && portraitVariant === 'C';
-    slide.dataset.pa = portraitVariant;
+    portraitFlow = small && H >= W;
     const num = slide.querySelector('.num'), top = num.getBoundingClientRect().top - b.top;
     const low = !small && H <= 500; // a phone on its side: less air round the picture, and the footer to clear
-    if (portraitSideRail) { // C: keep the full-height flow in a right corridor, with copy in a clear left rail.
-      const railRight = Math.min(144, W * 0.37);
-      const flowLeft = railRight + 8;
-      const deviceY = H - Math.max(118, 0.18 * H);
-      const hostY = Math.max(60, 0.1 * H);
-      kx = Math.min((W - flowLeft - 16) / 690, 0.34);
-      ky = (deviceY - hostY) / (1580 - 213);
-      k = Math.min(kx, ky, 0.62);
-      ox = flowLeft + (W - flowLeft - 16) / 2;
-      oy = hostY;
-    } else if (portraitFlow && portraitVariant === 'B') { // B: copy first, then devices below Astrid and the hosted crowd rising toward it.
-      const copy = slide.querySelector('.split > :first-child').getBoundingClientRect();
-      const flowTop = copy.bottom - b.top + 52;
-      const flowBottom = H - Math.max(112, (window.visualViewport?.offsetTop || 0) + 104);
-      kx = (W - 32) / 690; // reference y becomes screen x (the builders' and audience's spread)
-      ky = Math.max(1, flowBottom - flowTop) / 1430; // reference x rises from devices toward the copy
-      k = Math.min(kx, ky, 0.62);
+    // The side labels: larger and centred on their groups when upright; as styled otherwise.
+    labels.local.style.fontSize = labels.hosted.style.fontSize = portraitFlow ? '14.5px' : '';
+    labels.local.style.textAlign = labels.hosted.style.textAlign = portraitFlow ? 'center' : '';
+    if (portraitFlow) {
+      // Upright, the story runs up the screen: the builders' devices at the foot, Astrid above them, everyone else
+      // fanning out above her. Reference x is turned upward (ky above the lens, kyLow below it) and reference y runs
+      // across (kx). The hosted label crowns the fan; the local label sits under the devices, clear of the words.
+      const capH = labels.hosted.offsetHeight, locH = labels.local.offsetHeight;
+      const edge = Math.max(26, 0.045 * H);
+      const crest = edge + capH + 14; // the far front's crest (reference x 1580)
+      const foot = top - edge - locH - 10; // the devices' lower edge
+      const q = 0.8; // the feeds rise a little less steeply than the fan, so the fan keeps its breadth
+      kx = Math.min((W - 56) / 690, 0.62);
+      ky = (foot - crest) / (830 + 537 * q + 52 * 1.3 * q); // first guess, sizes at about 1.3 ky
+      k = Math.min(kx, 0.62, Math.max(0.28, 1.3 * ky));
+      ky = (foot - crest - 52 * k) / (830 + 537 * q);
+      kyLow = q * ky;
       ox = W / 2;
-      oy = flowTop;
-    } else if (portraitFlow) { // A: rotate the story upward: devices below, Astrid in the middle, hosted people above.
-      const copy = slide.querySelector('.split').getBoundingClientRect();
-      const visualTop = Math.max(46, 24 + (window.visualViewport?.offsetTop || 0));
-      const visualBottom = Math.max(visualTop + 210, copy.top - b.top - 16);
-      kx = (W - 32) / 690; // reference y becomes screen x (the builders' and audience's spread)
-      ky = (visualBottom - visualTop) / 1430; // reference x is turned upward, with independent spacing
-      k = Math.min(kx, ky, 0.62); // glyphs and the Astrid lens stay proportionate
-      ox = W / 2;
-      oy = visualTop;
-    } else if (small) { // the picture spans reference x 150..1580 and y 70..760
-      // Upright, the picture and the words are one group (the phone CSS centres the words under the picture's
+      oy = crest + 830 * ky; // the lens's middle
+    } else if (small) { // narrow but not upright: the picture spans reference x 150..1580 and y 70..760
+      // The picture and the words are one group (the phone CSS centres the words under the picture's
       // room): it stands half as tall again as its width allows, and its foot sits 34 px above the label.
       k = Math.min((W - 24) / 1430, (top - 74) / 690);
       ky = Math.min(1.5 * k, (top - 74) / 690);
@@ -169,7 +157,8 @@
     cell = small ? 1 : low ? 2 : k >= 0.45 ? 4 : 3;
     const lw0 = small ? CORE_REF.w * k : Math.max(CORE_REF.w * k, 23 * cell + 40);
     lens = { c: P(CORE_REF.cx, CORE_REF.cy), w: lw0, h: Math.max(CORE_REF.h * k, lw0 * 1.66) };
-    const lensL = portraitFlow ? { x: lens.c.x, y: lens.c.y + lens.h / 2 } : { x: lens.c.x - lens.w / 2, y: lens.c.y }, lensR = portraitFlow ? { x: lens.c.x, y: lens.c.y - lens.h / 2 } : { x: lens.c.x + lens.w / 2, y: lens.c.y };
+    // Where the feeds arrive and the rays leave: its left and right sides (upright, the feeds meet its foot, below).
+    const lensL = { x: lens.c.x - lens.w / 2, y: lens.c.y }, lensR = portraitFlow ? { x: lens.c.x, y: lens.c.y - lens.h / 2 } : { x: lens.c.x + lens.w / 2, y: lens.c.y };
     // Its three strands, each side traced from the middle out (built once here, not every frame).
     lensLines = [[0, 1.2, 0.95], [6 * k, 0.9, 0.55], [-4 * k, 0.8, 0.35]].flatMap(([inset, w, a]) => [-1, 1].map((side) => ({ h: line(lensPts(side, 40, inset)), w, a })));
     machines = [[213, 277, 'term'], [213, 424, 'gpu'], [213, 570, 'graph']].map(([x, y, kind], i) => ({ ...P(x, y), r: 52 * k, kind, i }));
@@ -186,15 +175,12 @@
       return h;
     });
     // The boundary: hosted begins past this line (clear of the lens when the picture is narrowed).
-    boundary = portraitFlow
-      ? { horizontal: true, y: Y(415, 836), x0: X(836, 120), x1: X(836, 705) }
-      : { x: Math.max(X(836), lens.c.x + lens.w / 2 + 16 * k), y0: Y(120), y1: Y(705) };
+    // Upright there is none: the hosted label over the fan and the local one under the devices name the two sides.
+    boundary = portraitFlow ? null : { x: Math.max(X(836), lens.c.x + lens.w / 2 + 16 * k), y0: Y(120), y1: Y(705) };
     // Everyone else: wave fronts of people widening out from the core, as in the reference: each an arc
     // (centre u, radius r, half-height hh, in reference units), the last a dense band.
     arcs = [];
-    const FRONTS = portraitSideRail
-      ? [[895, 225, 160, 18, 1], [1000, 265, 230, 22, 1], [1103, 327, 300, 28, 1], [1206, 359, 345, 46, 3]]
-      : [[895, 225, 180, 18, 1], [1000, 265, 225, 22, 1], [1103, 327, 275, 28, 1], [1206, 359, 330, 46, 3]];
+    const FRONTS = [[895, 225, 180, 18, 1], [1000, 265, 225, 22, 1], [1103, 327, 275, 28, 1], [1206, 359, 330, 46, 3]];
     FRONTS.forEach(([u, r, hh, n, rows], ai) => {
       const dots = [], span = Math.asin(Math.min(1, hh / r));
       for (let row = 0; row < rows; row++) {
@@ -214,28 +200,18 @@
     // Rays from the core's right tip out to the far front, a few bright people on them.
     rays = [[-0.42, 0.62], [-0.27, 0.45], [-0.1, 0.78], [0.03, 0.3], [0.16, 0.66], [0.3, 0.5], [0.45, 0.85]].map(([a, mark], i) => {
       const start = portraitFlow ? { x: lensR.x + (i - 3) * 4 * k, y: lensR.y } : { x: lensR.x, y: lensR.y + (i - 3) * 4 * k };
-      const end = P(820 + Math.cos(a) * 760, 415 + Math.sin(a) * 760);
+      // Upright, each ray stops in the far front (centre 1206, radius 348) instead of running on to the screen's top.
+      const len = portraitFlow ? 386 * Math.cos(a) + Math.sqrt((386 * Math.cos(a)) ** 2 - (386 ** 2 - 348 ** 2)) : 760;
+      const end = P(820 + Math.cos(a) * len, 415 + Math.sin(a) * len);
       return Object.assign(line([[start.x, start.y], [end.x, end.y]]), { mark, i });
     });
     // Labels.
-    labels.local.style.fontSize = labels.hosted.style.fontSize = `${Math.max(small ? 10.5 : 13, 23 * k).toFixed(1)}px`;
-    labels.core.style.fontSize = `${Math.max(small ? 11 : 14, 25 * k).toFixed(1)}px`;
-    if (!portraitSideRail) {
-      labels.local.style.maxWidth = labels.hosted.style.maxWidth = '';
-      labels.local.style.whiteSpace = labels.hosted.style.whiteSpace = '';
-      labels.local.style.textAlign = labels.hosted.style.textAlign = '';
-    }
-    if (portraitSideRail) {
-      labels.local.style.maxWidth = labels.hosted.style.maxWidth = '142px';
-      labels.local.style.whiteSpace = labels.hosted.style.whiteSpace = 'normal';
-      labels.local.style.textAlign = labels.hosted.style.textAlign = 'center';
-      put(labels.local, ox, Y(415, 300) - 15 * k, 0.5, 1);
-      put(labels.hosted, ox, Y(415, 1580) - 10 * k, 0.5, 1);
-      put(labels.core, lens.c.x + M.LENS.x * cell, lens.c.y - lens.h / 2 - 16 * k, 0.5, 0.5);
-    } else if (portraitFlow) {
-      put(labels.local, W / 2, Y(415, 340) - 18 * k, 0.5, 1);
-      put(labels.hosted, W / 2, Y(415, 1180), 0.5, 0.5);
-      put(labels.core, lens.c.x + M.LENS.x * cell, lens.c.y - lens.h / 2 - 16 * k, 0.5, 0.5);
+    if (!portraitFlow) labels.local.style.fontSize = labels.hosted.style.fontSize = `${Math.max(small ? 10.5 : 13, 23 * k).toFixed(1)}px`;
+    labels.core.style.fontSize = portraitFlow ? '14px' : `${Math.max(small ? 11 : 14, 25 * k).toFixed(1)}px`;
+    if (portraitFlow) { // the hosted label crowns the fan, the local one sits under the devices; Astrid beside her lens (rays leave its top)
+      put(labels.hosted, W / 2, Y(415, 1580) - 14, 0.5, 1);
+      put(labels.local, W / 2, machines[1].y + machines[1].r + 10, 0.5, 0);
+      put(labels.core, lens.c.x + lens.w / 2 + 10, lens.c.y, 0, 0.5);
     } else {
       put(labels.local, X(150), Y(118), 0, 0.5); // the two sides' names share a line, either side of the boundary's top
       put(labels.hosted, X(1170), Y(118), 0.5, 0.5);
@@ -379,10 +355,7 @@
     const lit = (d) => { let l = 0; for (const R of reach) { const u = (d - R) / (WAVE.band * k); if (u > -3 && u < 3) l = Math.max(l, Math.exp(-u * u)); } return l; };
     // The boundary between local and hosted.
     const qb = k01(1.4, 0.6);
-    if (qb > 0 && boundary.horizontal) {
-      const end = boundary.x0 + (boundary.x1 - boundary.x0) * ease(qb);
-      for (let x = boundary.x0; x < end; x += 7 * k) dot(x, boundary.y, 0.75 * Math.max(0.8, k), NODE, 0.35 + 0.45 * lit(Math.hypot(x - lens.c.x, boundary.y - lens.c.y)));
-    } else if (qb > 0) {
+    if (qb > 0 && boundary) {
       for (let y = boundary.y0; y < boundary.y0 + (boundary.y1 - boundary.y0) * ease(qb); y += 7 * k) dot(boundary.x, y, 0.75 * Math.max(0.8, k), NODE, 0.35 + 0.45 * lit(Math.hypot(boundary.x - lens.c.x, y - lens.c.y)));
     }
     // Everyone else: rays out of the core, and arcs of people widening out.

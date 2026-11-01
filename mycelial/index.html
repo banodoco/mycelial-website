@@ -644,7 +644,8 @@
   .pa-side span { display: block; font-size: .78em; color: #b8a98f; font-style: italic; }
   .pa-core { color: #f0c67e; }
   @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px) {
-    /* Upright, as on slide 4, the picture and the words are one group in the middle of the screen: the words are
+    /* Narrow, as on slide 4, the picture and the words are one group in the middle of the screen (upright, the rule
+       below sets the words at the foot instead): the words are
        centred under the picture's room (40 px + the picture, 72.38vw - 17.4 px tall at the phone's scale, + a 34 px
        gap), and pays.js hangs the picture just above the label. The words take slide 4's size. */
     html[data-ver="f"] .pa-host { justify-content: center; padding-left: max(16px, 9vw); padding-top: calc(72.38vw + 56.6px); padding-bottom: 90px; }
@@ -652,32 +653,12 @@
     html[data-ver="f"] .pa-host > .split > :first-child { grid-column: 1; text-align: center; }
     html[data-ver="f"] .pa-host h1 { font-size: clamp(1.6rem, 7vw, 2.2rem); max-width: 20ch; margin: 0 auto; }
   }
-  /* A short upright screen has no room to centre the group: the words go to the foot, the picture above them. */
-  @media (max-width: 760px) and (orientation: portrait) and (max-height: 640px) {
-    html[data-ver="f"] .pa-host { justify-content: flex-end; padding-top: 40px; }
-  }
-  /* Portrait concept C: full-height flow on the right, with the headline in a quiet left rail. */
+  /* Upright, the story runs up the screen (pays.js): devices at the foot, Astrid above them, everyone else fanning out
+     at the top. The words sit under the whole picture at slide 9's size, with the same air above the footer. */
   @media (max-width: 760px) and (orientation: portrait) {
-    html[data-ver="f"] .pa-host[data-pa="C"] { padding: 68px 16px 90px; justify-content: flex-start; }
-    html[data-ver="f"] .pa-host[data-pa="C"] > .split { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
-    html[data-ver="f"] .pa-host[data-pa="C"] > .split > :first-child { position: absolute; left: 16px; top: 38%; width: min(128px, 34vw); text-align: left; }
-    html[data-ver="f"] .pa-host[data-pa="C"] h1 { max-width: none; margin: 0; font-size: clamp(0.96rem, 4vw, 1.08rem); line-height: 1.24; text-wrap: pretty; }
-  }
-  /* Portrait concept B: copy leads; the business flow rises from devices at the foot toward the hosted crowd. */
-  @media (max-width: 760px) and (orientation: portrait) {
-    html[data-ver="f"] .pa-host[data-pa="B"] { justify-content: flex-start; padding: max(58px, 8svh) 20px 112px; }
-    html[data-ver="f"] .pa-host[data-pa="B"] > .split { grid-template-columns: minmax(0, 1fr); justify-items: center; width: 100%; }
-    html[data-ver="f"] .pa-host[data-pa="B"] > .split > :first-child { grid-column: 1; text-align: center; }
-    html[data-ver="f"] .pa-host[data-pa="B"] h1 { max-width: 34ch; margin: 0 auto; font-size: clamp(1.2rem, 5.4vw, 1.65rem); line-height: 1.22; }
-  }
-  /* Portrait concept A: a vertical business flow above a compact, bottom-set headline. */
-  @media (max-width: 760px) and (orientation: portrait) {
-    html[data-ver="f"] .pa-host[data-pa="A"] {
-      justify-content: flex-end; padding: 0 max(20px, 6vw) max(54px, calc(env(safe-area-inset-bottom) + 30px));
-    }
-    html[data-ver="f"] .pa-host[data-pa="A"] > .split { grid-template-columns: minmax(0, 1fr); justify-items: center; width: 100%; margin-top: auto; }
-    html[data-ver="f"] .pa-host[data-pa="A"] > .split > :first-child { text-align: center; }
-    html[data-ver="f"] .pa-host[data-pa="A"] h1 { max-width: 19ch; font-size: clamp(1.48rem, 6.4vw, 2.05rem); margin: 0 auto; }
+    html[data-ver="f"] .pa-host { justify-content: flex-end; padding: 0 max(20px, 6vw) max(84px, calc(env(safe-area-inset-bottom) + 60px)); }
+    html[data-ver="f"] .pa-host > .split { width: 100%; }
+    html[data-ver="f"] .pa-host h1 { max-width: 23ch; font-size: clamp(1.4rem, 5.75vw, 1.9rem); line-height: 1.12; }
   }
   /* Version F, slide 6: where it goes (stack.js). The text on the left; on the right slide 5's product taken apart into
      one exploded stack of thin planes (preview, timeline, agent, tools & effects, models / runtime), tied by fine gold
