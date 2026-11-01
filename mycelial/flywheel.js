@@ -69,40 +69,40 @@
   // `face` is what the icon shows instead of that crop, where a logo or an image reads better in a circle;
   // `full` is the fuller card it grows into on slide 10, the homepage's own (journey/cards/, content/content.js).
   const CARDS = [
-    { name: 'Arca Gidan', line: 'The Arca Gidan Prize is an open source AI art competition.', href: 'https://arcagidan.com/', crop: [0.5, 0.5, 1],
+    { short: 'Open-source AI art prize', name: 'Arca Gidan', line: 'The Arca Gidan Prize is an open source AI art competition.', href: 'https://arcagidan.com/', crop: [0.5, 0.5, 1],
       media: '<img data-src="../assets/cards/arca/poster-2.jpg" alt="">',
       full: { name: 'Arca Gidan Prize', line: 'The Arca Gidan Prize is an open source AI art competition. We wish to provide a reason for people to push themselves and open models to their limits.',
         door: 'See the winners →', href: 'https://arcagidan.com/winners/edition-2',
         stage: `<span class="fw-ag">${[1, 2, 3, 4].map((n) => `<i><img data-src="../assets/cards/arca/poster-${n}.jpg" alt=""></i>`).join('')}<b>ARCA GIDAN</b></span><span class="fw-ag-band"><span><b>198</b>entries</span><span><b>7,287</b>votes</span><span><b>$56.8K</b>prizes</span></span>` } },
     // Astrid: a still of slide 5's editor (its preview over its timeline), and the seat the mink flies into from slide 9.
-    { name: 'Astrid', line: 'A new kind of video editor: describe what you want, and the agent reaches for everything the community has built.', href: 'https://astrid.haus/', label: 'Try Astrid →', crop: [0.17, 0.74, 0.86],
+    { short: 'An agent-powered video editor', name: 'Astrid', line: 'A new kind of video editor: describe what you want, and the agent reaches for everything the community has built.', href: 'https://astrid.haus/', label: 'Try Astrid →', crop: [0.17, 0.74, 0.86],
       media: SEAT(), face: `<span class="fw-face fw-face-mink">${LOGO}</span>`,
       full: { name: 'Astrid', line: 'A new kind of video editor: describe what you want, and the agent reaches for everything the community has built.',
         door: 'Try Astrid →', href: 'https://astrid.haus/', stage: SEAT(' fw-astrid-full', true) } },
     // Banodoco: the homepage's card, its live Discord digest (the captured snapshot, assets/cards/discord/fallback.json);
     // its icon is the Banodoco logo, the site's own B (assets/brand/mark-b-mask-96.png, as in the header's .logo .mark).
-    { name: 'Banodoco', line: 'Banodoco is where the community actually lives, day to day.', href: 'https://discord.gg/NnFxGvx94b', label: 'Join →', crop: [0.17, 0.83, 0.42], focus: '.fw-dc-p .fw-avs',
+    { short: 'Where the community lives', name: 'Banodoco', line: 'Banodoco is where the community actually lives, day to day.', href: 'https://discord.gg/NnFxGvx94b', label: 'Join →', crop: [0.17, 0.83, 0.42], focus: '.fw-dc-p .fw-avs',
       media: `<span class="fw-dc"><span class="fw-dc-ch"># daily_summaries</span><span class="fw-dc-t">H3 Tooling Week: Timeline Director, Studio Node Pack, and a Training Adapter Land</span><span class="fw-dc-p"><span class="fw-avs">${AV('persoon')}${AV('loreweavr')}${AV('ashmotv')}</span><b>20,000+</b> people</span></span>`,
       face: '<span class="fw-face fw-face-b"><i></i></span>',
       full: { name: 'Banodoco', line: 'Banodoco is where the community actually lives, day to day. Artists, engineers, and knowledge sharers, in one room — it is where the work gets shown, argued over, and picked up by someone else.',
         door: 'Join the Discord →', href: 'https://discord.gg/NnFxGvx94b',
         stage: `<span class="fw-dc fw-dc-full"><span class="fw-dc-ch"># daily_summaries · 2026-08-17</span><span class="fw-dc-t">H3 Tooling Week: Timeline Director, Studio Node Pack, and a Training Adapter Land</span><span class="fw-dc-x">seesee75-commits dropped ComfyUI-MiniMaxH3-Director, a proper timeline editor for MiniMax H3 inside ComfyUI — storyboard prompts, first/last keyframes, image/video/audio references, joint audio, live sampling preview, retakes, and shot chaining.</span><span class="fw-dc-p"><span class="fw-avs">${AV('persoon')}${AV('loreweavr')}${AV('ashmotv')}</span><b>20,000+</b> people</span></span>` } },
     // ADOS: its icon keeps its poster, with the events' own wordmark (Pilowlava, ados.events) over it.
-    { name: 'ADOS', line: 'ADOS events bring the community together in the real world.', href: 'https://ados.events/', crop: [0.6, 0.5, 1],
+    { short: 'Real-world events for the community', name: 'ADOS', line: 'ADOS events bring the community together in the real world.', href: 'https://ados.events/', crop: [0.6, 0.5, 1],
       media: '<img data-src="../assets/cards/ados/la-2025-thumb.jpg" alt="">', face: '<span class="fw-face fw-face-ados"><b>ADOS</b></span>',
       full: { name: 'ADOS', line: 'ADOS events bring the community together in the real world. We gather our community with people from the extended creative world to look at art, eat nice food, and create things.',
         door: 'See events →', href: 'https://ados.events/',
         stage: '<span class="fw-ad"><img data-src="../assets/cards/ados/la-2025-thumb.jpg" alt=""><span><small>Los Angeles — 7 November 2025</small><b>ADOS</b></span></span>' } },
     // ArtCompute: its own terminal readout, the GPU hours granted (artcompute.org's figure, verified 2026-08-17), and three grantees; its
     // icon is the picture artcompute.org shows for itself (its share image, a frame of its background reel).
-    { name: 'ArtCompute', line: 'ArtCompute gives micro-grants to those pushing open AI models, approved by AI.', href: 'https://artcompute.org/', crop: [0.5, 0.3, 0.6],
+    { short: 'Micro-grants for open AI', name: 'ArtCompute', line: 'ArtCompute gives micro-grants to those pushing open AI models, approved by AI.', href: 'https://artcompute.org/', crop: [0.5, 0.3, 0.6],
       media: `<span class="fw-ac"><span class="fw-ac-stats"><span><b class="g">473</b>GPU hours</span></span><span class="fw-ac-l">latest grants</span><span class="fw-avs">${AV('persoon')}${AV('loreweavr')}${AV('ashmotv')}</span></span>`,
       face: '<span class="fw-face fw-face-ac"></span>',
       full: { name: 'ArtCompute', line: 'ArtCompute gives micro-grants to those pushing open AI models, approved by AI. It is practical compute for people whose ambition has outrun their hardware.',
         door: 'Visit ArtCompute →', href: 'https://artcompute.org/',
         stage: `<span class="fw-ac fw-ac-full"><span class="fw-ac-stats"><span><b class="g">473</b>GPU hours</span></span><span class="fw-ac-l">latest grants</span>${[['loreweavr', 'Loreweavr — Dual-LoRA Composition · 50h'], ['ashmotv', 'AshmoTV — Multi-angle IC-LoRA, LTX 2.3 · 50h'], ['persoon', 'Persoon — Obscura Remova IC-LoRA · 40h']].map(([a, t]) => `<span class="fw-ac-row">${AV(a)}<span>${t}</span><i>PAID</i></span>`).join('')}</span>` } },
     // 2RP: no link, as on the homepage (content.js): the publication is coming soon.
-    { name: '2RP', line: '2RP is an art and tech publication that aims to highlight the best of the ecosystem.', soon: 'Coming soon', crop: [0.5, 0.45, 1],
+    { short: 'Art and tech publication', name: '2RP', line: '2RP is an art and tech publication that aims to highlight the best of the ecosystem.', soon: 'Coming soon', crop: [0.5, 0.45, 1],
       media: '<img data-src="../assets/cards/tworp/cover.jpg" alt="">',
       full: { name: '2RP', line: '2RP is an art and tech publication that aims to highlight the best of the ecosystem. Open work, open models, and the people making both.',
         soon: 'Coming soon', stage: '<span class="fw-rp"><img data-src="../assets/cards/tworp/cover.jpg" alt=""><b>2RP</b></span>' } },
@@ -111,7 +111,7 @@
     const el = document.createElement('div');
     el.className = 'fw-card';
     const tail = c.href ? `<a href="${c.href}" target="_blank" rel="noopener">${c.label || 'Learn more →'}</a>` : `<em>${c.soon}</em>`;
-    el.innerHTML = `<div class="fw-media">${c.media}${c.face || ''}</div><div class="fw-cbody"><b>${c.name}</b><span>${c.line}</span>${tail}</div>`;
+    el.innerHTML = `<div class="fw-media">${c.media}${c.face || ''}</div><div class="fw-cbody"><b>${c.name}</b><span>${c.short || c.line}</span>${tail}</div>`;
     cardsRoot.appendChild(el);
     return el;
   });

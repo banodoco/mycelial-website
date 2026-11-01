@@ -936,7 +936,11 @@
   .fw-stat a::before { content: ""; position: absolute; inset: -13px; }
   .fw-cbody em { color: #a39684; }
   .fw-cards.is-live .fw-card { pointer-events: auto; }
-  .fw-card.is-compact .fw-cbody span { display: none; }
+  /* Preview cards show their short line; the call to action waits for hover or focus (the full card keeps it visible). */
+  @media (hover: hover) {
+    .fw-card .fw-cbody a, .fw-card .fw-cbody em { opacity: 0; transition: opacity .2s ease; }
+    .fw-card:hover .fw-cbody a, .fw-card:hover .fw-cbody em, .fw-card:focus-within .fw-cbody a, .fw-card:focus-within .fw-cbody em { opacity: 1; }
+  }
   .fw-card.is-icon { cursor: pointer; }
   .fw-cbody a:hover, .fw-cbody a:focus-visible { color: #ffe3a8; text-decoration: underline; text-underline-offset: 3px; outline: none; }
   /* Astrid's card: a still of slide 5's editor, its preview over its timeline, and the mink's seat. */
@@ -1142,7 +1146,7 @@
     /* Slide 10 upright: each card a preview, its picture, its name and its line held to two lines; the way in is on the
        fuller card a tap opens, so the small card's link stays for a keyboard or a reader only. */
     .fw-card .fw-cbody { gap: .2em; padding: .55em .65em .65em; }
-    .fw-card .fw-cbody span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; font-size: .88em; line-height: 1.24; }
+    .fw-card .fw-cbody span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; font-size: 1.04em; line-height: 1.2; }
     .fw-card .fw-cbody a, .fw-card .fw-cbody em { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .fw-card .fw-dc { gap: .3em; padding: .35em .5em; } .fw-card .fw-dc-ch { display: none; }
     .fw-card .fw-dc-t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; font-size: .54em; }
