@@ -546,13 +546,15 @@
   /* The editor, as the homepage mounts it: the player surface above the timeline surface. */
   .as-edit { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 10px; padding: 10px; background: rgb(28 26 22 / .88); }
   .as-surface { border-radius: 9px; border: 1px solid var(--as-line); background: var(--as-panel); box-shadow: 0 1px 0 rgb(255 255 255 / .05) inset, 0 12px 24px -10px rgb(0 0 0 / .45); min-height: 0; }
-  .as-player { display: grid; grid-template-rows: minmax(0, 1fr) auto; padding: 8px 8px 6px; }
+  /* The transport overlays the bottom of the picture, like a video player's controls. */
+  .as-player { --as-pad: 8px; position: relative; display: grid; grid-template-rows: minmax(0, 1fr); padding: var(--as-pad); }
   .as-screen { position: relative; min-height: 0; border-radius: 6px; background: #12100d; overflow: hidden; }
   .as-pic { position: absolute; inset: 0; width: 100%; height: 100%; }
   .as-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; color: var(--as-muted); font-size: 11px; text-align: center; }
   .as.has-frame .as-empty { display: none; }
   .as-media { display: none; }
-  .as-transport { display: flex; align-items: center; gap: 5px; padding: 6px 2px 0; font-size: 10.5px; color: var(--as-muted); }
+  .as-transport { position: absolute; left: var(--as-pad); right: var(--as-pad); bottom: var(--as-pad); z-index: 1; display: flex; align-items: center; gap: 5px; padding: 18px 8px 6px; border-radius: 0 0 6px 6px; background: linear-gradient(to top, rgb(10 9 8 / .72), rgb(10 9 8 / 0)); font-size: 10.5px; color: var(--as-ink); pointer-events: none; }
+  .as-transport > * { pointer-events: auto; }
   .as-btn { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; color: var(--as-ink); }
   .as-play { background: rgb(255 255 255 / .06); border: 1px solid var(--as-line); }
   .as-i-pause { display: none; } .as.is-playing .as-i-pause { display: inline; } .as.is-playing .as-i-play { display: none; }
@@ -609,7 +611,7 @@
     html[data-ver="f"] .as-host h1 { max-width: none; font-size: 1.3rem; }
     .as-stage { grid-template-rows: auto minmax(0, .5fr) minmax(0, 1.6fr); }
     .as-edit { padding: 4px; gap: 3px; }
-    .as-player { padding: 3px; }
+    .as-player { --as-pad: 3px; }
     .as-timeline { padding-bottom: 2px; }
     .as-ruler { height: 16px; }
     .as-ruler span { top: 2px; }
@@ -618,7 +620,7 @@
     .as-tl > .as-th:nth-child(5), .as-lane[data-track="V2"] { height: 26px !important; }
     .as-tl > .as-th:nth-child(7), .as-lane[data-track="V1"] { height: 24px !important; }
     .as-clip { top: 3px; bottom: 3px; }
-    .as-transport { padding-top: 2px; }
+    .as-transport { padding: 12px 5px 3px; }
     .as-btn { width: 20px; height: 20px; }
     .as-pill { padding: 2px 5px; font-size: 9px; }
     .as-chat-head { gap: 6px; padding: 5px 8px; font-size: 10.5px; }
@@ -1511,7 +1513,7 @@
     .as { align-self: stretch; margin: 0 0 0 22px; }
     .as-stage { grid-template-columns: minmax(0, 36fr) minmax(0, 64fr); row-gap: 4px; }
     .as-edit { padding: 5px; gap: 4px; }
-    .as-player { padding: 4px; }
+    .as-player { --as-pad: 4px; }
     .as-tl { --as-hcol: 64px; } .as-th span { display: none; } .as-th em { display: block; }
     .as-msg, .as-step { font-size: 10.5px; }
     .as-tl > .as-th:nth-child(3), .as-lane[data-track="V3"] { height: 22px !important; }
