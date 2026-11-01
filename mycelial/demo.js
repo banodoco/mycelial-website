@@ -287,12 +287,17 @@
     BEATS[i].at = typeEnd + 0.45 + THINK + previous.dur + 0.45; // send + think + act lead-in, as in beatTimes
   }
   let td = -1, wait = 0, rows = [];
+  // The chat follows the newest message until the viewer scrolls up; scrolling back to the bottom resumes it.
+  let follow = true;
+  const toBottom = () => { if (follow) msgs.scrollTop = msgs.scrollHeight; };
+  msgs.addEventListener('scroll', () => { follow = msgs.scrollTop + msgs.clientHeight >= msgs.scrollHeight - 12; }, { passive: true });
   const bubble = (cls, html) => {
     const el = document.createElement('div');
     el.className = `${cls} as-in`;
     el.innerHTML = html;
     msgs.appendChild(el);
-    while (msgs.children.length > 9) msgs.firstChild.remove();
+    while (msgs.children.length > 40) msgs.firstChild.remove();
+    toBottom();
     return el;
   };
   const clearAll = () => {
@@ -301,7 +306,7 @@
     pg.clearRect(0, 0, pic.width, pic.height);
     root.classList.remove('has-frame');
     picKey = '';
-    msgs.innerHTML = '';
+    msgs.innerHTML = ''; follow = true;
     typed.textContent = ''; rows = [];
     root.classList.remove('is-typing', 'has-draft', 'is-working', 'is-playing', 'is-resetting');
     anchorEls.forEach((el) => { el.className = 'as-clip as-frame-clip'; el.style.opacity = '0'; kind(el, 'Qwen'); });

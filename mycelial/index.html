@@ -516,7 +516,12 @@
   .as-state::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #7fbf8f; vertical-align: 1px; }
   .as.is-working .as-state { opacity: 1; }
   .as-msgs { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 7px; padding: 10px 12px; overflow: hidden; transition: opacity .6s ease; }
-  @media (min-width: 761px) { .as-msgs { -webkit-mask-image: linear-gradient(to bottom, transparent, var(--as-ink) 18px); mask-image: linear-gradient(to bottom, transparent, var(--as-ink) 18px); } }
+  @media (min-width: 761px) {
+    .as-msgs { -webkit-mask-image: linear-gradient(to bottom, transparent, var(--as-ink) 18px); mask-image: linear-gradient(to bottom, transparent, var(--as-ink) 18px); }
+    /* Scrollable: the first message takes the slack, so short chats still sit at the bottom. */
+    .as-msgs { justify-content: flex-start; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--as-line) transparent; pointer-events: auto; }
+    .as-msgs > :first-child { margin-top: auto; }
+  }
   .as.is-resetting .as-msgs { opacity: 0; }
   .as-msg { max-width: 88%; padding: 7px 11px; border-radius: 14px; font-size: 12px; line-height: 1.45; }
   .as-msg.is-user { align-self: flex-end; background: var(--as-orange); color: #25241f; }
