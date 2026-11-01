@@ -150,14 +150,11 @@
   let floor = 0, ceil = 0, mid = 0, raised = false;
   const measure = () => {
     labelSizes.clear();
-    // On a phone held upright the field rises above the words (the phone CSS sets them at the foot, on the legend):
-    // names and cards live between the top of the screen (floor) and the label (ceil).
+    // On a phone held upright, names and cards live between the legend and the words.
     raised = w <= 760 && (h >= w || h > 500);
-    if (raised) slide.style.setProperty('--sf-key', `${legend.offsetHeight}px`); // the legend's height, under the words
-    else slide.style.removeProperty('--sf-key');
     const s = stage.getBoundingClientRect(), t = text && text.getBoundingClientRect(), l = legend.getBoundingClientRect();
     if (raised) {
-      floor = 44;
+      floor = l.height ? l.bottom - s.top + 18 : 44;
       ceil = t && t.height ? t.top - s.top - 22 : h * 0.55;
       slide.style.setProperty('--sf-top', `${Math.round(ceil + 22)}px`); // where the stage's mask quietens behind the words
       return;
