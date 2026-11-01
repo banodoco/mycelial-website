@@ -80,18 +80,20 @@
     cube: svg(30, '<path d="M12 2.8 20 7.2v9.6L12 21.2 4 16.8V7.2z"/><path d="M4 7.2l8 4.4 8-4.4M12 11.6v9.6"/>', ' stroke-width="1.3"'),
     cloud: svg(30, '<path d="M7.5 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.6 9.4 4.3 4.3 0 0 0 7.5 18z"/>', ' stroke-width="1.3"'),
   };
-  const SPAN = 30;
+  const SPAN = 14;
   const span = (at, len) => `left:calc(${(at / SPAN) * 100}% + 1px);width:calc(${(len / SPAN) * 100}% - 2px)`;
-  const CLIPS = [['first-light', 0, 8], ['passing-shapes', 8, 12], ['quiet-finish', 20, 8]];
+  const FRAMES = [['start', 0], ['mountains', 6.5], ['descent', 10], ['town', 13]];
+  const media = '../assets/astrid/lantern-valley';
   const CONTENT = {
-    preview: `<div class="st-screen"><div class="st-pic"><video data-src="../assets/astrid/first-light.mp4" data-poster="../assets/astrid/first-light-anchor.jpg" muted loop playsinline preload="none"></video><span>A quiet light study</span></div></div>
-      <div class="st-transport"><b class="st-btn">${I.back}</b><b class="st-btn is-play">${I.pause}</b><span class="st-time">0:02 / 0:28</span><span class="st-pill">1280×720</span></div>`,
-    timeline: `<div class="st-th"></div><div class="st-ruler">${[0, 5, 10, 15, 20, 25].map((t) => `<span style="left:${(t / SPAN) * 100}%">0:${String(t).padStart(2, '0')}</span>`).join('')}${Array.from({ length: 24 }, (_, n) => `<i class="st-beat" style="left:${(((n + 0.5) * 1.2) / SPAN * 100).toFixed(2)}%"></i>`).join('')}</div>
-      <div class="st-th">${I.fx}<span>V2</span><em>Effects</em></div><div class="st-lane"><span class="st-fx" style="${span(0, 8)}">✦ type-on <em>community-made</em></span><span class="st-fx" style="${span(8, 20)}">✦ audio-reactive-colour <em>community-made</em></span></div>
-      <div class="st-th">${I.film}<span>V1</span><em>Video</em></div><div class="st-lane">${CLIPS.map(([n, at, len]) => `<span class="st-clip" style="${span(at, len)}" data-bg="../assets/astrid/${n}-strip.jpg"><img data-src="../assets/astrid/${n}-anchor.jpg" alt=""><b>${n}</b><i>video</i></span>`).join('')}<i class="st-head"></i></div>`,
+    preview: `<div class="st-screen"><div class="st-pic"><video data-src="${media}/final.mp4" data-type='video/mp4; codecs="avc1.64001e"' data-fallback="${media}/final-vp9.webm" data-poster="${media}/final-poster.webp" muted loop playsinline preload="none"></video><span></span></div></div>
+      <div class="st-transport"><b class="st-btn">${I.back}</b><b class="st-btn is-play">${I.pause}</b><span class="st-time">0:00 / 0:14</span><span class="st-pill">1280×720 · 30 fps</span></div>`,
+    timeline: `<div class="st-th"></div><div class="st-ruler">${[0, 2, 4, 6, 8, 10, 12, 14].map((t) => `<span style="left:${(t / SPAN) * 100}%">0:${String(t).padStart(2, '0')}</span>`).join('')}</div>
+      <div class="st-th">${I.film}<em>Video</em></div><div class="st-lane"><span class="st-clip" style="${span(0, SPAN)}" data-bg="${media}/final-poster.webp"><img data-src="${media}/final-poster.webp" alt=""><b>MiniMax H3</b></span><i class="st-head"></i></div>
+      <div class="st-th">${I.film}<em>Frames</em></div><div class="st-lane">${FRAMES.map(([name, at]) => `<span class="st-clip" style="${span(at, 1)}"><img data-src="${media}/${name}-thumb.webp" alt=""></span>`).join('')}</div>
+      <div class="st-th">${I.film}<em>Scene</em></div><div class="st-lane"><span class="st-clip" style="${span(0, SPAN)}"><img data-src="${media}/motion-guide.webp" alt=""><b>Lantern Valley · Three.js</b></span></div>`,
     agent: `<header class="st-chat-head"><span class="st-avatar"><img data-src="../assets/astrid/mink-profile.png" alt=""></span>Astrid</header>
-      <div class="st-rows"><div><span class="st-msg">Generate three anchor images.</span><span class="st-step">${I.check}<span>Generating three anchor images</span><code><b>qwen_image</b> × 3</code></span></div>
-        <div><span class="st-msg">Animate them.</span><span class="st-step">${I.check}<span>Animating the anchors</span><code><b>animated_video</b> × 3</code></span></div></div>
+      <div class="st-rows"><div><span class="st-msg">Make realistic frames using Qwen Image 2.1.</span><span class="st-step">${I.check}<span>Captured four reference frames</span><code><b>Qwen Image 2.1</b> · WaveSpeed</code></span></div>
+        <div><span class="st-msg">Use MiniMax H3 with the four frames and motion guide.</span><span class="st-step">${I.check}<span>Generated the final shot</span><code><b>MiniMax H3</b> · 14 s</code></span></div></div>
       <div class="st-composer"><span class="st-field">Ask Astrid to edit your project…<b>${I.send}</b></span></div>`,
     tools: `<span class="st-tile">${I.typeon}type-on</span><span class="st-tile">${I.card}text-card</span><span class="st-tile">${I.beat}<span>audio-reactive-<br>colour</span></span><span class="st-tile">${I.grain}film grain</span><span class="st-tag">community-made</span>`,
     models: `<span class="st-comfy">ComfyUI workflows</span><span class="st-mod">${I.cube}Wan</span><i class="st-link"></i><span class="st-mod">${I.cube}LTX-Video</span><i class="st-link"></i><span class="st-mod">${I.cube}Qwen Image</span><span class="st-gpu">${I.cloud}local GPU or cloud</span>`,
@@ -581,6 +583,9 @@
   // The player's picture leaves its copy for the carry layer: its rect in the player, placed as slide 5 draws it
   // (demo.js: 16:9, 0.86 of the screen's fit, centred), and its pixels; and the plane's own picture box to land in.
   const takePicture = (src, r) => {
+    // An empty editor has no picture to carry. Its cloned panel keeps the empty
+    // state until it fades into the stack's completed preview.
+    if (!demo.classList.contains('has-frame')) { endCarry(); return; }
     const pic = src.querySelector('.as-pic'), copy = ghosts[0].querySelector('.as-pic'), b = pic && pic.getBoundingClientRect();
     if (!b || !b.width || !pic.width || !copy) { endCarry(); return; }
     const w = pic.width, h = pic.height, f = Math.min(w / 16, h / 9) * 0.86, dw = 16 * f, dh = 9 * f;
@@ -778,7 +783,7 @@
     headF = +((tt / SPAN) * 100).toFixed(3);
     placeHead();
     const sec = Math.floor(tt);
-    if (sec !== shownSec) { shownSec = sec; timeEl.textContent = `${fmt(sec)} / 0:28`; }
+    if (sec !== shownSec) { shownSec = sec; timeEl.textContent = `${fmt(sec)} / ${fmt(SPAN)}`; }
   };
 
   // ---- Clock ---------------------------------------------------------------------------------------
@@ -1042,6 +1047,11 @@
   // A plane is a bigger target for the same thing: hovering its layer's flag or tapping the plane itself.
   planes.forEach((pl, i) => pl.addEventListener('click', () => pinTo(i)));
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && hold.pin >= 0 && slide.classList.contains('on')) { hold.pin = -1; react(); } });
+  window.deckOverlay?.register({
+    isOpen: () => hold.pin >= 0 && slide.classList.contains('on'),
+    contains: (target) => cards[hold.pin]?.contains(target) || false,
+    close: () => { hold.pin = -1; react(); },
+  });
   // The mink, as on slide 5: hovering flashes her eye; clicking turns her to face you and back.
   minkCv.addEventListener('pointerenter', () => { if (still || build || mk.seq || mk.pose !== 'profile') return; mk.hover = now(); });
   minkCv.addEventListener('click', (e) => { e.stopPropagation(); if (!still && !build && !mk.seq) { mk.hover = null; mk.seq = now(); } });

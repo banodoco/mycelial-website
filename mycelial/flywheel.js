@@ -159,10 +159,26 @@
   cardsRoot.appendChild(fly);
   const cardH = chips.map(() => 0), media = chips.map((el) => el.querySelector('.fw-media'));
   // Each card's visible box last frame (its icon or its whole card), and how open it is: 1 a card, 0 an icon.
-  const vis = chips.map(() => null), hov = chips.map(() => 0), hoT = chips.map(() => 0);
+  const vis = chips.map(() => null);
   // How far each has grown into its fuller card (slide 10), and the size that card stands at, whole.
   const gro = chips.map(() => 0), grT = chips.map(() => 0), fullH = chips.map(() => 0), fullSH = chips.map(() => 0);
   let fullW = 0;
+  const clearFullCards = () => {
+    grT.fill(0); gro.fill(0);
+    fulls.forEach((el) => { el.style.visibility = 'hidden'; el.style.pointerEvents = 'none'; });
+  };
+  window.deckOverlay?.register({
+    isOpen: () => grT.some((value) => value > 0),
+    contains: (target) => {
+      const open = grT.findIndex((value) => value > 0);
+      return open >= 0 && !!fulls[open]?.contains(target);
+    },
+    close: () => {
+      grT.fill(0);
+      if (motionOff()) gro.fill(0);
+      if (!running && begun) frame();
+    },
+  });
   const setVisible = (on) => { root.classList.toggle('is-on', on); cardsRoot.classList.toggle('is-on', on); };
 
   // A soft light, stamped wherever something glows.
@@ -744,7 +760,7 @@
     return [x, y];
   };
   const place = () => {
-    const key = [W, H, m, k01(T.labels, 0.6), cardOut(), openBase(), ...chips.map((_, i) => chipQ(i)), ...hov, ...gro, root.classList.contains('is-on')].join('|');
+    const key = [W, H, m, k01(T.labels, 0.6), cardOut(), openBase(), ...chips.map((_, i) => chipQ(i)), ...gro, root.classList.contains('is-on')].join('|');
     if (key === lastPlaceKey) return;
     const mChanged = m !== lastPlacedM;
     lastPlaceKey = key;
@@ -787,14 +803,14 @@
     const fq = flightQ(), arrive = smooth(clamp((fq - 0.9) / 0.1)); // she becomes her icon's logo only as she gets there
     cur.cards.forEach(([x, y], i) => { // 3. placing
       const el = chips[i], q = chipQ(i), h = cardH[i], mh = mediaH[i];
-      const [fx, fy, fz] = CARDS[i].crop, o = Math.max(ob, hov[i]), c = Math.min(mh, w) * fz;
+      const [fx, fy, fz] = CARDS[i].crop, o = ob, c = Math.min(mh, w) * fz;
       const cx0 = clamp(fx * w - c / 2, 0, w - c), cy0 = clamp(fy * mh - c / 2, 0, mh - c);
       const ins = [cy0, w - cx0 - c, h - cy0 - c, cx0].map((v) => v * (1 - o));
       const sc = lerp(S / c, ls, o) * lerp(0.55, 1, out);
       const ax = lerp(cx0 + c / 2, w / 2, o), ay = lerp(cy0 + c / 2, h / 2, o);
       const [px, py] = ell(cur.cards[i][2] * RAD); // each comes out of the point where it plugs into the ring
       let sx = m < 1 ? lerp(px, x, out) : x, sy = m < 1 ? lerp(py, y, out) : y;
-      if (o > 0.01 && o < 0.999 || hov[i] > 0) { // an opened icon stays on screen
+      if (o > 0.01 && o < 0.999) { // an opened icon stays on screen
         const l = sx - ax * sc, t = sy - ay * sc, r = l + w * sc, b = t + h * sc;
         sx += (Math.max(0, 10 - l) - Math.max(0, r - (W - 10))) * o;
         sy += (Math.max(0, 10 - t) - Math.max(0, b - (H - (tall ? 64 : 58)))) * o; // clear of the chrome bar
@@ -810,7 +826,7 @@
         if (fc.dataset.k !== fk) { fc.dataset.k = fk; Object.assign(fc.style, { left: `${(cx0 - 1).toFixed(1)}px`, top: `${(cy0 - 1).toFixed(1)}px`, width: `${(c + 2).toFixed(1)}px`, height: `${(c + 2).toFixed(1)}px`, fontSize: `${(c / 10).toFixed(2)}px` }); } // a pixel over the crop's edge, so none of the picture shows round it
         setOp(fc, (1 - smooth(clamp((o - 0.04) / 0.36))) * (i === 1 ? arrive : 1));
       }
-      el.style.zIndex = hov[i] > 0.02 || gro[i] > 0.02 ? '3' : '';
+      el.style.zIndex = gro[i] > 0.02 ? '3' : '';
       setOp(el, q * (1 - smooth(clamp((gro[i] - 0.25) / 0.2)))); // under its fuller card, once that has come in, it steps out
       if (q < 0.9) live = false;
       const iw = w - ins[1] - ins[3], ih = h - ins[0] - ins[2];
@@ -832,7 +848,7 @@
       const c0 = lensCell();
       const sx = minkAt ? minkAt[0] : L0[0] + M.LENS.x * c0, sy = minkAt ? minkAt[1] : L0[1] + M.LENS.y * c0;
       const u = fq < 0.55 ? c0 : seatCell(); // she leaves the lens at the size she had in it
-      const other = Math.max(0, ...hov.filter((_, j) => j !== 1), ...gro.filter((_, j) => j !== 1)); // never over a neighbour opened above her
+      const other = Math.max(0, ...gro.filter((_, j) => j !== 1)); // never over a neighbour opened above her
       const into = (1 - v.o) * arrive; // flying into her icon, she becomes its logo
       // As she becomes the logo she is drawn onto its middle, so the two never stand apart.
       paintFly(lerp(lerp(sx, tx, fq), tx, into), lerp(lerp(sy, ty, fq) - Math.sin(Math.PI * fq) * 60 * k, ty, into), u, (1 - into) * (1 - other));
@@ -954,7 +970,6 @@
     // Each initiative, once out, sends its first pulse of energy down its thread into the ring.
     chips.forEach((_, i) => { if (!pulsed[i] && m >= 0.9 && chipQ(i) >= 1) { pulsed[i] = true; const mo = { kind: 'plug', c: i, span: 0.8 * Math.PI, t0: ta }; mo.dur = clamp(routeFor(mo).total / (220 * Math.max(0.5, k)), 1.2, 4); motes.push(mo); } });
     if (m < 0.5) pulsed = chips.map(() => false);
-    hoT.forEach((t, i) => { hov[i] += (t - hov[i]) * (1 - Math.exp(-dt / 0.11)); if (Math.abs(t - hov[i]) < 0.002) hov[i] = t; });
     grT.forEach((t, i) => { gro[i] += (t - gro[i]) * (1 - Math.exp(-dt / 0.13)); if (Math.abs(t - gro[i]) < 0.002) gro[i] = t; });
     // Motes: a calm, continuous circulation once the wheel is drawn.
     if (ta >= T.motes) {
@@ -995,8 +1010,7 @@
   const reset = () => {
     stop();
     begun = false; morph = null; motes = []; ta = 0; boost = 0; attach = { dir: 0, t0: 0 }; lastM = -1; pulsed = chips.map(() => false);
-    hov.fill(0); hoT.fill(0); gro.fill(0); grT.fill(0); vis.fill(null);
-    fulls.forEach((el) => { el.style.visibility = 'hidden'; el.style.pointerEvents = 'none'; });
+    clearFullCards(); vis.fill(null);
     vids.forEach((v) => v && !v.paused && v.pause()); cardsRoot.inert = true; cardsRoot.classList.remove('is-live'); fly.style.opacity = '0';
     T = T_FRESH; hand = null; minkAt = null;
     flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], ring: 0 };
@@ -1078,6 +1092,7 @@
     operation = { ctx, resolve };
     ctx.defer(() => {
       stop();
+      clearFullCards();
       if (unhanding) endUnhand('cancelled');
       finishOperation(ctx, 'cancelled');
     });
@@ -1200,12 +1215,12 @@
   // The browser hit-tests each card's rounded clip path, including the icon's
   // radius. Only those interactive pixels retain clicks; the decorative canvas
   // and the space around it pass through to the deck's normal click-thirds.
-  const grows = () => activeStage === 1;
   const wire = (el, i, full) => {
     const mate = () => (full ? chips[i] : fulls[i]);
     const set = (on) => {
-      (full || grows() ? grT : hoT)[i] = on ? 1 : 0;
-      if (still) { hoT.forEach((t, j) => { hov[j] = t; }); grT.forEach((t, j) => { gro[j] = t; }); }
+      if (!full && activeStage < 1) return;
+      grT[i] = on ? 1 : 0;
+      if (motionOff()) grT.forEach((t, j) => { gro[j] = t; });
       if (!running && begun) frame();
     };
     let pointerType = '';
@@ -1218,8 +1233,8 @@
       const source = pointerType || e.pointerType;
       pointerType = '';
       if (e.target.closest('a') || source === 'mouse') return;
-      const on = !full && !(grows() ? grT : hoT)[i]; // a tap on an open fuller card closes it
-      hoT.fill(0); grT.fill(0);
+      const on = !full && !grT[i]; // a tap on an open fuller card closes it
+      grT.fill(0);
       set(on);
     });
   };
@@ -1238,7 +1253,7 @@
     const rememberPointer = (e) => {
       pointerType = e.pointerType;
       pointerAt = e.target;
-      outsideTap = !!pointerType && pointerType !== 'mouse' && !asks.contains(e.target);
+      outsideTap = !!opened && !opened.querySelector('.fw-ask-card')?.contains(e.target);
     };
     const close = () => {
       clearTimers();
@@ -1249,9 +1264,21 @@
       });
       opened = null; outsideTap = false;
       window.removeEventListener('pointerdown', rememberPointer, true);
-      window.removeEventListener('keydown', key, true);
       if (unresize) { unresize(); unresize = null; }
     };
+    window.deckOverlay?.register({
+      isOpen: () => !!opened,
+      contains: (target) => !!opened?.querySelector('.fw-ask-card')?.contains(target),
+      close: (reason) => {
+        const button = opened?.querySelector('button');
+        close();
+        if (reason === 'escape' && button) {
+          returningFocus = true;
+          button.focus({ preventScroll: true });
+          returningFocus = false;
+        }
+      },
+    });
     const place = (item) => {
       const card = item.querySelector('.fw-ask-card'), row = asks.getBoundingClientRect(), q = item.getBoundingClientRect();
       const height = card.offsetHeight, width = card.offsetWidth;
@@ -1281,7 +1308,6 @@
       item.querySelector('button').setAttribute('aria-expanded', 'true');
       item.querySelector('.fw-ask-card').inert = false;
       window.addEventListener('pointerdown', rememberPointer, true);
-      window.addEventListener('keydown', key, true);
       if (!unresize) unresize = window.deckOnResize(() => { if (opened) place(opened); });
     };
     asks.addEventListener('pointerdown', rememberPointer);
@@ -1313,35 +1339,13 @@
     asks.addEventListener('click', (e) => {
       e.stopPropagation(); // the questions and their cards never turn the slide
       const source = pointerType || e.pointerType;
-      pointerType = ''; pointerAt = null;
+      pointerType = ''; pointerAt = null; outsideTap = false;
       const button = e.target.closest('.fw-ask-q');
       if (!button) return;
       const item = button.closest('.fw-ask');
       if (source && source !== 'mouse' && opened === item) close();
       else open(item);
     });
-    const key = (e) => {
-      pointerType = ''; pointerAt = null; outsideTap = false;
-      if (e.key !== 'Escape' || !opened) return;
-      const button = opened.querySelector('button');
-      close();
-      returningFocus = true;
-      button.focus({ preventScroll: true });
-      returningFocus = false;
-      e.stopPropagation();
-      e.preventDefault();
-    };
-    // A tap outside dismisses the card on its own; the footer controls still do what the viewer asked.
-    window.addEventListener('click', (e) => {
-      if (!opened || asks.contains(e.target)) return;
-      const source = pointerType || e.pointerType;
-      pointerType = ''; pointerAt = null;
-      if (!source || source === 'mouse') return;
-      close();
-      if (e.target.closest('.chrome, #motion, .dt-name')) return;
-      e.stopPropagation();
-      e.preventDefault();
-    }, true);
     return {
       enter(ctx) {
         if (ctx.to !== 10) return;

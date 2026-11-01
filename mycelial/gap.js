@@ -83,6 +83,19 @@
     if (hit === empty && open) ask();
     if (hit !== empty) focus(open ? hit : null);
   });
+  window.deckOverlay?.register({
+    isOpen: () => !!root.querySelector('.is-open'),
+    contains: (target) => {
+      const item = root.querySelector('.is-open');
+      if (!item) return false;
+      const detail = item.matches('.gp-dot') ? item.querySelector('span') : item.querySelector('.gp-q');
+      return detail?.contains(target) || false;
+    },
+    close: () => {
+      root.querySelectorAll('.is-open').forEach((el) => el.classList.remove('is-open'));
+      focus(null);
+    },
+  });
   // The empty corner: question marks drift up while you look at it.
   let asking = 0;
   const ask = () => {

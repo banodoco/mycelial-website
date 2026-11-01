@@ -12,7 +12,7 @@
   const easeIO = (q) => (q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2);
   // Keep absolute animation timestamps on the same clock across a pause.
   let paused = false;
-  let pendingStart = null, pausedVideos = [], settlePreviewPending = false;
+  let pendingStart = null, pausedVideos = [];
   const motionBlocked = () => document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.();
   const now = () => window.deckNow?.() ?? performance.now();
 
@@ -27,51 +27,38 @@
       const scoped = () => { if (ctx?.isCurrent?.() && ctx === entryCtx) fn(); };
       el.addEventListener(type, scoped); mediaCleanups.push([el, type, scoped]);
     };
-    bind(videos[1], 'seeked', () => drawPic(now()));
-    bind(gradedVideos[1], 'seeked', () => drawPic(now()));
+    bind(videos[0], 'seeked', () => drawPic(now()));
     videos.forEach((v) => bind(v, 'loadeddata', () => { if (motionOff() && slide.classList.contains('on')) drawPic(now()); }));
+    videos.forEach((v) => bind(v, 'error', () => drawPic(now())));
     anchors.forEach((img) => bind(img, 'load', () => { if (motionOff() && slide.classList.contains('on')) drawPic(now()); }));
   };
-  // No twin for clip 0.
-  const gradeSources = ['../assets/astrid/passing-shapes-graded.mp4', '../assets/astrid/quiet-finish-graded.mp4'];
-  const gradedVideos = [null, ...gradeSources.map((source) => {
-    const graded = document.createElement('video');
-    graded.dataset.src = source;
-    graded.muted = true; graded.playsInline = true; graded.preload = 'none';
-    graded.dataset.graded = 'true'; graded.setAttribute('aria-hidden', 'true');
-    root.querySelector('.as-media').appendChild(graded);
-    return graded;
-  })];
   const pic = root.querySelector('.as-pic'), pg = pic.getContext('2d');
   const tl = root.querySelector('.as-tl');
   const timeEl = root.querySelector('.as-time');
   const minkCv = root.querySelector('.as-mink'), mg = minkCv.getContext('2d');
 
   // The timeline
-  const SPAN = 30;
+  const SPAN = 14;
   const ICON = {
     film: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 9h4M3 15h4M17 9h4M17 15h4"/></svg>',
-    fx: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/></svg>',
+    image: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/></svg>',
   };
   const TRACKS = [
-    { id: 'V2', name: 'Effects', icon: 'fx', h: 40 },
-    { id: 'V1', name: 'Video', icon: 'film', h: 60 },
+    { id: 'V3', name: 'Video', icon: 'film', h: 40 },
+    { id: 'V2', name: 'Frames', icon: 'image', h: 44 },
+    { id: 'V1', name: 'Scene', icon: 'film', h: 40 },
   ];
-  const CLIPS = [
-    { name: 'first-light', at: 0, len: 8 },
-    { name: 'passing-shapes', at: 8, len: 12 },
-    { name: 'quiet-finish', at: 20, len: 8 },
+  const FRAMES = [
+    { name: 'Start', file: 'start-thumb.webp', at: 0, len: 1 },
+    { name: 'Mountains', file: 'mountains-thumb.webp', at: 6.5, len: 1 },
+    { name: 'Descent', file: 'descent-thumb.webp', at: 10, len: 1 },
+    { name: 'Town', file: 'town-thumb.webp', at: 13, len: 1 },
   ];
-  const FX = [ // real Astrid pack elements, the kind the community makes and shares
-    { name: 'type-on', sub: '', at: 0, len: 8 }, // a text-card title, typed on
-    { name: 'audio-reactive-colour', sub: '', at: 8, len: 20 },
-  ];
-  const TITLE = 'A quiet light study';
   const lanes = {};
   {
     const fmt = (t) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
     let rulerHtml = '';
-    for (let t = 0; t <= SPAN; t++) rulerHtml += t % 5 ? `<i style="left:${(t / SPAN) * 100}%"></i>` : `<span style="left:${(t / SPAN) * 100}%">${fmt(t)}</span>`;
+    for (let t = 0; t <= SPAN; t++) rulerHtml += t % 2 ? `<i style="left:${(t / SPAN) * 100}%"></i>` : `<span style="left:${(t / SPAN) * 100}%">${fmt(t)}</span>`;
     tl.innerHTML = `<div class="as-ruler-h"></div><div class="as-ruler">${rulerHtml}</div>`
       + TRACKS.map((tr) => `<div class="as-th" style="height:${tr.h}px">${ICON[tr.icon]}<span>${tr.id}</span><em>${tr.name}</em></div><div class="as-lane" data-track="${tr.id}" style="height:${tr.h}px"></div>`).join('')
       + '<i class="as-playhead"></i>';
@@ -79,25 +66,30 @@
   }
   const playhead = tl.querySelector('.as-playhead');
   const place = (el, at, len) => { el.style.left = `calc(${(at / SPAN) * 100}% + 1px)`; el.style.width = `calc(${(len / SPAN) * 100}% - 2px)`; };
-  const anchorEls = CLIPS.map((c) => {
+  const sceneEl = document.createElement('div');
+  sceneEl.className = 'as-clip as-scene-clip is-ready';
+  place(sceneEl, 0, SPAN);
+  sceneEl.innerHTML = '<img class="as-still" data-src="../assets/astrid/lantern-valley/motion-guide.webp" alt=""><span class="as-film" data-bg="../assets/astrid/lantern-valley/motion-guide.webp"></span><span class="as-name">Lantern Valley · Three.js</span><span class="as-kind">14 s</span>';
+  lanes.V1.appendChild(sceneEl);
+  const anchorEls = FRAMES.map((frame) => {
     const el = document.createElement('div');
-    place(el, c.at, c.len);
-    el.innerHTML = `<img class="as-still" data-src="../assets/astrid/${c.name}-anchor.jpg" alt=""><span class="as-film" data-bg="../assets/astrid/${c.name}-strip.jpg"></span><span class="as-name">${c.name}</span><span class="as-kind">image</span>`;
+    el.className = 'as-clip as-frame-clip is-ready';
+    place(el, frame.at, frame.len);
+    el.title = `${frame.name} frame · ${frame.at} s`;
+    el.innerHTML = `<img class="as-still" data-src="../assets/astrid/lantern-valley/${frame.file}" alt=""><span class="as-film" data-bg="../assets/astrid/lantern-valley/${frame.file}"></span><span class="as-kind">${frame.name}</span>`;
     lanes.V1.appendChild(el);
     return el;
   });
-  const motionEls = anchorEls;
+  anchorEls.forEach((el) => lanes.V2.appendChild(el));
+  const resultEl = document.createElement('div');
+  resultEl.className = 'as-clip as-result-clip is-ready is-animated';
+  place(resultEl, 0, SPAN);
+  resultEl.innerHTML = '<img class="as-still" data-src="../assets/astrid/lantern-valley/final-poster.webp" alt=""><span class="as-film" data-bg="../assets/astrid/lantern-valley/final-poster.webp"></span><span class="as-name">MiniMax H3</span><span class="as-kind">14 s</span>';
+  lanes.V3.appendChild(resultEl);
   window.deckLoadPictures?.(slide); // the pictures built above, if the slide was warmed before this script ran
   const kind = (el, k) => { el.querySelector('.as-kind').textContent = k; };
-  const fxEls = FX.map((f) => {
-    const el = document.createElement('div');
-    el.className = 'as-fxclip';
-    place(el, f.at, f.len);
-    el.innerHTML = `✦ ${f.name}${f.sub ? ` · ${f.sub}` : ''} <em>community-made</em>`;
-    lanes.V2.appendChild(el);
-    return el;
-  });
-  const anchors = [...root.querySelectorAll('.as-media img')];
+  const anchors = [...root.querySelectorAll('.as-media .as-frame-media')];
+  const guide = root.querySelector('.as-media .as-guide-media');
 
   // The mink
   // Poses: profile, glint (her eye flash), facing, focus (eyes lit). She is drawn
@@ -156,16 +148,9 @@
 
   // The preview
   // mode: none | still | play.
-  const view = { mode: 'none', i: -1, seq: -1, rate: 1, title: -1, colour: false, sweep: 0 };
-  const noise = document.createElement('canvas');
-  noise.width = noise.height = 128;
-  {
-    const n = noise.getContext('2d'), d = n.createImageData(128, 128);
-    for (let i = 0; i < d.data.length; i += 4) { const v = 128 + (Math.random() - 0.5) * 200; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; }
-    n.putImageData(d, 0, 0);
-  }
-  let grain = null, grainAt = 0, gx = 0, gy = 0, pdpr = 1;
-  // The preview is redrawn only when what it shows can have changed: a playing film (with its title and colour look)
+  const view = { mode: 'none', i: -1, seq: -1, rate: 1, seekPending: false };
+  let pdpr = 1;
+  // The preview is redrawn only when what it shows can have changed: a playing film or a new still.
   // every frame, as before; an empty screen, a still, or a film not yet ready once. Its size on screen comes from a
   // ResizeObserver rather than a layout read every frame.
   let picCW = -1, picCH = -1, picKey = '';
@@ -184,67 +169,28 @@
   const sizePic = () => {
     const b = pic.getBoundingClientRect();
     pdpr = Math.min(2, devicePixelRatio || 1);
+    const saved = document.createElement('canvas');
+    if (hasPicFrame) { saved.width = pic.width; saved.height = pic.height; saved.getContext('2d').drawImage(pic, 0, 0); }
     pic.width = Math.max(1, Math.round(b.width * pdpr)); pic.height = Math.max(1, Math.round(b.height * pdpr));
-    grain = pg.createPattern(noise, 'repeat');
+    if (hasPicFrame) pg.drawImage(saved, 0, 0, pic.width, pic.height);
     picKey = ''; // sizing a canvas clears it
   };
   new ResizeObserver((es) => { for (const e of es) { picCW = e.contentRect.width; picCH = e.contentRect.height; } }).observe(pic);
   const drawPic = (t) => {
     const cw = picCW < 0 ? pic.clientWidth : picCW, ch = picCH < 0 ? pic.clientHeight : picCH;
     if (Math.abs(cw * pdpr - pic.width) > 1 || Math.abs(ch * pdpr - pic.height) > 1) sizePic();
-    const src = view.mode === 'still' ? anchors[view.i] : view.mode === 'play' ? videos[view.i] : null;
-    root.classList.toggle('has-pic', !!src);
+    const src = view.mode === 'still' ? anchors[view.i] : view.mode === 'guide' ? guide : view.mode === 'play' ? videos[0] : null;
     const ready = !!src && (src.tagName === 'VIDEO' ? src.readyState >= 2 && !src.seeking : src.complete && src.naturalWidth > 0);
+    root.classList.toggle('has-frame', ready || hasPicFrame);
     const key = picFade || (view.mode === 'play' && ready) ? '' : `${view.mode}|${view.i}|${ready}`;
     if (key && key === picKey) return; // the same picture as last frame
     picKey = key;
     const w = pic.width, h = pic.height;
     pg.setTransform(1, 0, 0, 1, 0, 0);
+    if (!ready) return; // Retain the last produced frame while media is unavailable.
     pg.clearRect(0, 0, w, h);
-    if (!ready) {
-      // Keep the outgoing frame until the requested seek has decoded; never dissolve into black.
-      if (picFade && src) pg.drawImage(outgoing, 0, 0, w, h);
-      return;
-    }
     const s = Math.min(w / 16, h / 9) * 0.86, dw = 16 * s, dh = 9 * s, dx = Math.round((w - dw) / 2), dy = Math.round((h - dh) / 2);
     pg.drawImage(src, dx, dy, dw, dh);
-    const seqT = view.mode === 'play' ? view.seq : -1;
-    // audio-reactive-colour: a colour look over its span, swept on when it first lands.
-    if (view.colour && seqT >= 8) {
-      const sx = dx + dw * view.sweep, pulse = 0.5 + 0.5 * Math.sin(t / 260);
-      pg.save();
-      pg.beginPath(); pg.rect(dx, dy, sx - dx, dh); pg.clip();
-      const graded = gradedVideos[view.i];
-      if (graded && graded.readyState >= 2) pg.drawImage(graded, dx, dy, dw, dh);
-      pg.globalCompositeOperation = 'soft-light';
-      const cg = pg.createLinearGradient(dx, dy, dx + dw, dy + dh);
-      cg.addColorStop(0, `rgba(255,120,60,${(0.42 + 0.12 * pulse).toFixed(3)})`); cg.addColorStop(1, `rgba(120,90,220,${(0.32 + 0.1 * pulse).toFixed(3)})`);
-      pg.fillStyle = cg; pg.fillRect(dx, dy, dw, dh);
-      if (t - grainAt > 70) { grainAt = t; gx = Math.random() * 128; gy = Math.random() * 128; }
-      pg.globalCompositeOperation = 'overlay'; pg.globalAlpha = 0.22;
-      pg.translate(-gx, -gy); pg.fillStyle = grain; pg.fillRect(dx + gx, dy + gy, dw, dh); pg.translate(gx, gy);
-      pg.restore();
-      if (view.sweep < 1) { // the edge of the sweep
-        const e = 18 * pdpr, gr = pg.createLinearGradient(sx - e, 0, sx + 2 * pdpr, 0);
-        gr.addColorStop(0, 'rgba(255,190,110,0)'); gr.addColorStop(1, 'rgba(255,225,160,.9)');
-        pg.fillStyle = gr; pg.fillRect(sx - e, dy, e + 2 * pdpr, dh);
-      }
-    }
-    // text-card, type-on: the title types itself on over its span.
-    if (view.title >= 0 && seqT >= 0 && seqT < 8) {
-      const n = Math.min(TITLE.length, Math.floor(((t - view.title) / 1000) * 16));
-      if (n > 0) {
-        const fs = Math.round(dh * 0.11);
-        pg.font = `italic 500 ${fs}px "Cormorant Garamond", Georgia, serif`;
-        pg.textAlign = 'center'; pg.textBaseline = 'middle';
-        pg.shadowColor = 'rgba(0,0,0,.35)'; pg.shadowBlur = 8 * pdpr;
-        pg.fillStyle = '#fffaf0';
-        const full = pg.measureText(TITLE).width, part = TITLE.slice(0, n);
-        pg.textAlign = 'left';
-        pg.fillText(part, dx + dw / 2 - full / 2, dy + dh * 0.78);
-        pg.shadowBlur = 0;
-      }
-    }
     if (picFade) {
       if (picFade.at === null) picFade.at = t;
       const q = clamp((t - picFade.at) / PIC_FADE);
@@ -253,36 +199,26 @@
     }
     hasPicFrame = true;
   };
-  const showStill = (i) => { if (view.mode !== 'still' || view.i !== i) fadePic(); view.mode = 'still'; view.i = i; view.seq = -1; videos.forEach((v) => v.pause()); gradedVideos.forEach((v) => v?.pause()); };
-  const playFrom = (seqT, rate) => { fadePic(); view.mode = 'play'; view.seq = seqT; view.rate = rate; view.i = -2; };
-  const stepPlay = (dt) => {
-    if (view.mode !== 'play') { gradedVideos.forEach((v) => v?.pause()); return; }
-    view.seq += dt * view.rate;
-    if (view.seq >= 28) view.seq = 0;
-    const i = view.seq < 8 ? 0 : view.seq < 20 ? 1 : 2, local = view.seq - CLIPS[i].at;
-    if (view.i !== i) {
-      if (view.i >= 0) fadePic(); // a natural clip boundary (playFrom already captured explicit jumps)
-      videos.forEach((v, j) => { if (j !== i) v.pause(); });
-      gradedVideos.forEach((v, j) => { if (v && j !== i) v.pause(); });
-      view.i = i;
-      const v = videos[i];
-      try { v.currentTime = local; } catch { /* not loaded */ }
-      v.playbackRate = view.rate;
-      const graded = gradedVideos[i];
-      if (graded) {
-        try { graded.currentTime = local; } catch { /* not loaded */ }
-        graded.playbackRate = view.rate;
-      }
+  const showStill = (i) => { if (view.mode !== 'still' || view.i !== i) fadePic(); view.mode = 'still'; view.i = i; view.seq = -1; videos.forEach((v) => v.pause()); };
+  const showGuide = () => { if (view.mode !== 'guide') fadePic(); view.mode = 'guide'; view.i = -1; view.seq = -1; videos.forEach((v) => v.pause()); };
+  const playFrom = (seqT, rate, prepared = false) => { fadePic(); view.mode = 'play'; view.seq = seqT; view.rate = rate; view.i = -2; view.seekPending = !prepared; };
+  const stepPlay = () => {
+    if (view.mode !== 'play') return;
+    const video = videos[0];
+    if (video.readyState < 1) { headTo(view.seq, true); return; }
+    if (view.i !== 0) {
+      view.i = 0;
+      video.playbackRate = view.rate;
     }
-    if (videos[i].paused) videos[i].play().catch(() => {});
-    const graded = gradedVideos[i];
-    if (graded) {
-      graded.playbackRate = view.rate;
-      if (graded.readyState >= 1 && Math.abs(graded.currentTime - videos[i].currentTime) > 0.1) {
-        try { graded.currentTime = videos[i].currentTime; } catch { /* not loaded */ }
-      }
-      if (graded.paused) graded.play().catch(() => {});
+    if (view.seekPending) {
+      try { video.currentTime = view.seq; } catch { /* not loaded */ }
+      view.seekPending = false;
     }
+    if (video.readyState < 2 || video.seeking) { headTo(view.seq, true); return; }
+    if (!video.paused) {
+      view.seq = video.currentTime;
+      if (view.seq >= SPAN) { view.seq = 0; view.seekPending = true; video.pause(); }
+    } else video.play().catch(() => {});
     headTo(view.seq, true);
   };
 
@@ -311,13 +247,17 @@
     if (c !== clock) { clock = c; timeEl.textContent = c; }
   };
 
-  // The three beats
-  const BEATS = [
-    { at: 0.4, ask: 'Generate three anchor images for a quiet light study.', reply: 'Here are three anchor images.', step: ['Generating three anchor images', 'qwen_image', '× 3'], dur: 2.1 },
-    { at: 5.9, ask: 'Animate them.', reply: 'Animating each one from its anchor.', step: ['Animating the anchors', 'animated_video', '× 3'], dur: 3.7 },
-    { at: 11.2, ask: 'Add a title and a colour look on top.', reply: 'Layering two community-made effects.', step: ['Adding text-card · type-on and audio-reactive-colour', 'rendering', 'community-made'], dur: 5.2 },
-  ];
   const CPS = 30, FINISHED_HOLD = 10;
+  // The three beats replay the source tour prompts in order; later starts follow the prior act's done beat.
+  const BEATS = [
+    { at: 0.4, ask: 'Make me a 14-second bird flight through Lantern Valley, soaring past the mountains and descending into town.', reply: 'Lantern Valley is on your timeline: a 14-second live Three.js flight from the mountains down into town.', step: ['Built Lantern Valley', 'Three.js', '14 s live scene'], dur: 1.5 },
+    { at: 4.7, ask: 'Can you make me realistic frames for that using Qwen Image 2.1?', reply: 'I made four realistic reference frames through WaveSpeed: start, mountains, descent, and town.', step: ['Captured 4 reference frames', 'Qwen Image 2.1', 'WaveSpeed'], dur: 2.6 },
+    { at: 9.6, ask: 'Now use MiniMax H3 to make a 14-second video using all four frames and the Three.js motion guide.', reply: 'MiniMax H3 used all four frames and the 14-second motion guide. The finished shot is trimmed to 14 seconds.', step: ['Generated the final shot', 'MiniMax H3', '4 frames + motion guide · 14 s'], dur: 2.8 },
+  ];
+  for (let i = 1; i < BEATS.length; i++) {
+    const previous = BEATS[i - 1], typeEnd = previous.at + previous.ask.length / CPS;
+    BEATS[i].at = typeEnd + 0.95 + previous.dur + 0.45;
+  }
   let td = -1, wait = 0, rows = [];
   const bubble = (cls, html) => {
     const el = document.createElement('div');
@@ -329,13 +269,18 @@
   };
   const clearAll = () => {
     clearPicFade();
-    msgs.innerHTML = ''; typed.textContent = ''; rows = [];
+    pg.setTransform(1, 0, 0, 1, 0, 0);
+    pg.clearRect(0, 0, pic.width, pic.height);
+    root.classList.remove('has-frame');
+    picKey = '';
+    msgs.innerHTML = '<div class="as-msg is-astrid as-welcome">This tour replays the finished Lantern Valley project. No new generation runs.</div>';
+    typed.textContent = ''; rows = [];
     root.classList.remove('is-typing', 'has-draft', 'is-working', 'is-playing', 'is-resetting');
-    anchorEls.forEach((el) => { el.className = 'as-clip'; el.style.opacity = '0'; kind(el, 'image'); });
-    fxEls.forEach((el) => el.classList.remove('on'));
-    view.mode = 'none'; view.i = -1; view.seq = -1; view.title = -1; view.colour = false; view.sweep = 0; total = 0;
+    anchorEls.forEach((el) => { el.className = 'as-clip as-frame-clip'; el.style.opacity = '0'; kind(el, 'Qwen'); });
+    sceneEl.className = 'as-clip as-scene-clip'; sceneEl.style.opacity = '0';
+    resultEl.className = 'as-clip as-result-clip'; resultEl.style.opacity = '0';
+    view.mode = 'none'; view.i = -1; view.seq = -1; view.seekPending = false; total = SPAN;
     videos.forEach((v) => v.pause());
-    gradedVideos.forEach((v) => v?.pause());
     headTo(0, true);
   };
   const beatTimes = (b) => {
@@ -344,17 +289,44 @@
   };
   // Let the completed result keep playing for ten seconds, then use the existing one-second reset fade.
   const RESET = beatTimes(BEATS[BEATS.length - 1]).done + FINISHED_HOLD, LOOP = RESET + 1;
-  const stepBeats = (dt) => {
-    if (td < 0) return false;
-    if (wait > 0) { wait -= dt; return true; }
-    const was = td;
-    td += dt;
-    const passed = (c) => was < c && td >= c;
+  // Every event is visited in order, even after a long frame. A production gate
+  // consumes no further story time until the corresponding media is decodable.
+  const events = [];
+  BEATS.forEach((b, bi) => {
+    const T = beatTimes(b);
+    [b.at, T.send, T.reply, T.act, T.done].forEach((at) => events.push({ at }));
+    const offsets = bi === 0 ? [0.65, 1.2] : bi === 1
+      ? FRAMES.flatMap((_, i) => [i * 0.55, i * 0.55 + 0.32, i * 0.55 + 0.5]) : [0.55];
+    offsets.forEach((offset) => events.push({ at: T.act + offset, bi, offset }));
+  });
+  events.push({ at: RESET }, { at: LOOP });
+  events.sort((a, b) => a.at - b.at);
+  const imageReady = (img) => img.complete && img.naturalWidth > 0;
+  let videoGateSeeking = false;
+  const gateReady = (event) => {
+    if (event.bi === 0 && event.offset === 0.65) return imageReady(guide);
+    if (event.bi === 1) {
+      const i = FRAMES.findIndex((_, n) => Math.abs(event.offset - (n * 0.55 + 0.32)) < 1e-7);
+      if (i >= 0) return imageReady(anchors[i]);
+    }
+    if (event.bi === 2 && event.offset === 0.55) {
+      const v = videos[0];
+      if (v.readyState < 1) return false;
+      if (!videoGateSeeking) {
+        try { v.currentTime = 0; videoGateSeeking = true; } catch { return false; }
+      }
+      return v.readyState >= 2 && !v.seeking;
+    }
+    return true;
+  };
+  let eventIndex = 0;
+  const advanceBeats = (was, next) => {
+    const passed = (c) => was < c && next >= c;
     BEATS.forEach((b, bi) => {
       const T = beatTimes(b);
-      if (td >= b.at && td < T.send) {
+      if (next >= b.at && next < T.send) {
         root.classList.add('is-typing');
-        const n = Math.min(b.ask.length, Math.floor((td - b.at) * CPS));
+        const n = Math.min(b.ask.length, Math.floor((next - b.at) * CPS));
         if (typed.textContent.length !== n) typed.textContent = b.ask.slice(0, n);
         root.classList.toggle('has-draft', n > 0);
       }
@@ -368,40 +340,56 @@
         bubble('as-msg is-astrid', b.reply);
         rows[bi] = bubble('as-step is-active', `<i></i><span>${b.step[0]}</span><code><b>${b.step[1]}</b> ${b.step[2]}</code>`);
       }
-      if (td >= T.act && td < T.done + 0.5) act(bi, td - T.act, was - T.act);
+      if (next >= T.act && was < T.done + 0.5) act(bi, next - T.act, was - T.act);
       if (passed(T.done) && rows[bi]) { rows[bi].classList.remove('is-active'); rows[bi].classList.add('is-done'); root.classList.remove('is-working'); }
     });
     if (passed(RESET)) root.classList.add('is-resetting');
-    if (td >= LOOP) { clearAll(); td = 0; }
-    stepPlay(dt);
+  };
+  const stepBeats = (dt) => {
+    if (td < 0) return false;
+    if (wait > 0) { const used = Math.min(wait, dt); wait -= used; dt -= used; }
+    let target = td + dt;
+    while (eventIndex < events.length && events[eventIndex].at <= target) {
+      const event = events[eventIndex];
+      if (!gateReady(event)) { target = event.at; break; }
+      advanceBeats(td, event.at);
+      td = event.at;
+      eventIndex++;
+      if (event.at === LOOP) {
+        const remaining = target - LOOP;
+        clearAll(); td = 0; eventIndex = 0; videoGateSeeking = false;
+        target = remaining;
+      }
+    }
+    // Stop just before a blocked event so it fires when readiness arrives.
+    if (eventIndex < events.length && target === events[eventIndex].at && !gateReady(events[eventIndex])) {
+      const before = Math.max(td, target - 1e-7);
+      advanceBeats(td, before); td = before;
+    } else { advanceBeats(td, target); td = target; }
+    stepPlay();
     stepHead(dt);
     return true;
   };
   // What each beat does to the editor, a seconds into its work (p: where it was last frame).
   const act = (bi, a, p) => {
-    const at = (x) => p < x && a >= x;
+    const at = (x) => p < x - 1e-8 && a >= x - 1e-8;
     const touch = (el, on) => el.classList.toggle('is-touched', on);
-    if (bi === 0) { // three anchor images shimmer in on V1
-      CLIPS.forEach((c, i) => {
-        const el = anchorEls[i];
-        if (at(i * 0.5)) { el.style.opacity = ''; el.classList.add('is-generating'); touch(el, true); headTo(c.at + 0.5); }
-        if (at(0.85 + i * 0.5)) { el.classList.remove('is-generating'); el.classList.add('is-ready'); showStill(i); total = 28; }
-        if (at(1.35 + i * 0.5)) touch(el, false);
+    if (bi === 0) {
+      if (at(0)) { sceneEl.style.opacity = ''; sceneEl.classList.add('is-generating'); touch(sceneEl, true); total = SPAN; headTo(1); }
+      if (at(0.65)) { sceneEl.classList.remove('is-generating'); sceneEl.classList.add('is-ready'); showGuide(); headTo(SPAN); }
+      if (at(1.2)) touch(sceneEl, false);
+    }
+    if (bi === 1) {
+      FRAMES.forEach((frame, i) => {
+        const el = anchorEls[i], start = i * 0.55;
+        if (at(start)) { el.style.opacity = ''; el.classList.add('is-generating'); touch(el, true); headTo(frame.at + 0.5); }
+        if (at(start + 0.32)) { el.classList.remove('is-generating'); el.classList.add('is-ready'); showStill(i); total = SPAN; }
+        if (at(start + 0.5)) touch(el, false);
       });
     }
-    if (bi === 1) { // each anchor becomes a moving clip: its filmstrip fills in, and the preview plays it
-      CLIPS.forEach((c, i) => {
-        const el = motionEls[i];
-        if (at(i * 1.2)) { el.classList.add('is-animated'); kind(el, 'video'); touch(el, true); root.classList.add('is-playing'); playFrom(c.at, 1); }
-        if (at(i * 1.2 + 1.15)) touch(el, false);
-      });
-      if (at(3.6)) { showStill(2); root.classList.remove('is-playing'); }
-    }
-    if (bi === 2) { // effects land on V2, above the clips, and the preview shows each come on
-      if (at(0)) { fxEls[0].classList.add('on'); touch(fxEls[0], true); playFrom(0.3, 1); view.title = now() + 450; root.classList.add('is-playing'); }
-      if (at(1.9)) { touch(fxEls[0], false); fxEls[1].classList.add('on'); touch(fxEls[1], true); playFrom(9, 1); view.colour = true; view.sweep = 0; }
-      if (a >= 2.05) view.sweep = easeIO(clamp((a - 2.05) / 1.6));
-      if (at(3.9)) { touch(fxEls[1], false); playFrom(0, 1.5); view.title = now(); }
+    if (bi === 2) {
+      if (at(0)) { resultEl.style.opacity = ''; resultEl.classList.add('is-generating'); touch(resultEl, true); total = SPAN; headTo(0); }
+      if (at(0.55)) { resultEl.classList.remove('is-generating'); resultEl.classList.add('is-ready', 'is-animated'); touch(resultEl, false); playFrom(0, 1, true); root.classList.add('is-playing'); }
     }
   };
   const settledState = () => { // everything as it ends, for reduced motion
@@ -412,15 +400,15 @@
       bubble('as-step is-done', `<i></i><span>${b.step[0]}</span><code><b>${b.step[1]}</b> ${b.step[2]}</code>`);
     });
     msgs.querySelectorAll('.as-in').forEach((el) => el.classList.remove('as-in'));
-    anchorEls.forEach((el) => { el.style.opacity = ''; el.classList.add('is-ready', 'is-animated'); kind(el, 'video'); });
-    fxEls.forEach((el) => el.classList.add('on'));
-    total = 28; view.colour = true; view.sweep = 1;
+    sceneEl.style.opacity = ''; sceneEl.classList.add('is-ready');
+    anchorEls.forEach((el) => { el.style.opacity = ''; el.classList.add('is-ready'); kind(el, 'Qwen'); });
+    resultEl.style.opacity = ''; resultEl.classList.add('is-ready', 'is-animated');
+    total = SPAN;
     if (still) {
-      view.mode = 'play'; view.i = 1; view.seq = 12;
-      try { videos[1].currentTime = 4; } catch { /* not loaded */ }
-      try { gradedVideos[1].currentTime = 4; } catch { /* not loaded */ }
-    } else showStill(1);
-    headTo(12, true); stepHead(0);
+      view.mode = 'play'; view.i = 0; view.seq = 4;
+      try { videos[0].currentTime = 4; } catch { /* not loaded */ }
+    } else playFrom(4, 1);
+    headTo(4, true); stepHead(0);
   };
 
   // From slide 4
@@ -633,15 +621,15 @@
     window.warmDeckMedia(slide);
     running = true;
     layout();
-    if (motionOff() || ctx?.rest || ctx?.direct) {
-      settledState(); paint('profile', 0, 0); oneFrame = requestAnimationFrame(() => { oneFrame = 0; if (ctx?.isCurrent?.()) drawPic(now()); });
-      entryCompletion?.(ctx, 'completed');
-      // Back at rest: the finished editor, its preview playing, until the loop's own reset starts the demo again.
-      if (!motionOff()) { playFrom(12, 1); td = beatTimes(BEATS[BEATS.length - 1]).done; wait = 0; root.classList.add('is-playing'); wake(); }
-      return;
+    if (ctx?.from === 5 && ctx?.back) {
+      settledState(); td = beatTimes(BEATS[BEATS.length - 1]).done; eventIndex = events.findIndex((event) => event.at > td); wait = 0;
+      entryCompletion?.(ctx, 'completed'); wake(); return;
     }
     clearAll();
-    td = 0; wait = 0;
+    td = 0; wait = 0; eventIndex = 0; videoGateSeeking = false;
+    if (motionOff() || ctx?.rest || ctx?.direct) {
+      paint('profile', 0, 0); entryCompletion?.(ctx, 'completed'); wake(); return;
+    }
     const snap = fromCore && window.AstridCore && window.AstridCore.snapshot();
     if (snap) { startMorph(snap); wait = MORPH.demo; }
     else window.deckLater(() => { if (ctx?.isCurrent?.()) entryCompletion?.(ctx, 'completed'); }, 1800, ctx); // deliberate entry stage when no Core picture is available
@@ -652,7 +640,7 @@
     clearPicFade();
     running = false;
     clearMediaHandlers();
-    paused = false; pendingStart = null; pausedVideos = []; settlePreviewPending = false;
+    paused = false; pendingStart = null; pausedVideos = [];
     if (raf) cancelAnimationFrame(raf);
     if (oneFrame) cancelAnimationFrame(oneFrame);
     raf = 0; oneFrame = 0; requested = false;
@@ -662,7 +650,6 @@
     mink.seq = null; mink.hover = null;
     Object.assign(mink, { pose: 'profile', lift: 0, glint: 0 });
     videos.forEach((v) => v.pause());
-    gradedVideos.forEach((v) => v?.pause());
   };
   window.AstridDemo = { turn, root };
 
@@ -712,14 +699,14 @@
   const coreHost = document.querySelector('[data-astrid-core]');
   const coreSlide = coreHost && coreHost.closest('.slide');
   const syncMotion = () => {
-    if (motionOff() && slide.classList.contains('on')) { stop(); settledState(); drawPic(now()); entryCompletion?.(entryCtx, 'completed'); return; }
+    if (motionOff() && slide.classList.contains('on') && morph && !morph.back) { endMorph(); entryCompletion?.(entryCtx, 'completed'); }
     if (motionBlocked() && morph?.back) { endUnmorph(); reverseCompletion?.(reverseCtx, 'completed'); stop(); return; } // a reverse never waits behind the overview
     if (motionBlocked()) {
       if (!running || paused) return;
       paused = true;
       if (raf) cancelAnimationFrame(raf);
       raf = 0;
-      pausedVideos = [...videos, ...gradedVideos].filter((v) => v && !v.paused);
+      pausedVideos = videos.filter((v) => !v.paused);
       pausedVideos.forEach((v) => v.pause());
     } else if (slide.classList.contains('on')) {
       // An entry deferred behind the overview has no scene to resume yet.
@@ -729,12 +716,7 @@
       last = now();
       pausedVideos.forEach((v) => v.play().catch(() => {}));
       pausedVideos = [];
-      if (settlePreviewPending) {
-        settlePreviewPending = false;
-        playFrom(12, 1); td = beatTimes(BEATS[BEATS.length - 1]).done; wait = 0;
-        root.classList.add('is-playing'); running = true;
-      }
-      if (!still) wake();
+      wake();
     }
   };
   document.addEventListener('visibilitychange', syncMotion);
@@ -786,15 +768,10 @@
     } else if (reverseCtx === ctx && reverseCompletion) {
       slide.removeAttribute('data-as-rewind'); reverseCompletion(ctx, 'completed'); stop();
     } else if (slide.classList.contains('on') && entryCtx === ctx) {
-      stop();
-      settledState(); td = -1; wait = 0;
+      if (morph) endMorph();
       layout(); drawPic(now());
       entryCompletion?.(ctx, 'completed');
-      bindMediaHandlers(ctx);
-      if (!motionOff() && !motionBlocked()) {
-        playFrom(12, 1); td = beatTimes(BEATS[BEATS.length - 1]).done; wait = 0;
-        root.classList.add('is-playing'); running = true; wake();
-      }
+      if (running && !paused) wake();
     }
   };
   window.deckRegisterScene?.([4], { enter, exit, resize });
