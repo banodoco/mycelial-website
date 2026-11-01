@@ -243,7 +243,6 @@
     const clockNow = window.deckNow?.() ?? now;
     const elapsed = Math.max(0, (clockNow - (last || clockNow)) / 1000);
     const dt = Math.min(0.05, elapsed); // capped integration for camera and motes
-    const paced = dt;
     last = clockNow;
     if (!w || !h) return;
     const ease = (rate) => 1 - Math.exp(-rate * dt);
@@ -283,9 +282,8 @@
     const grain = Math.sqrt(F / 240);
 
     for (const n of named) {
-      let q = place(n);
       travel(n, dz);
-      q = place(n);
+      const q = place(n);
       n.sx = q.x; n.sy = q.y; n.p = q.p; n.a = q.a; n.vis = q.a > 0.05;
     }
     // Hover: the dot under the pointer, nearer bodies winning ties. Not while
@@ -644,8 +642,9 @@
     if (frameRaf) cancelAnimationFrame(frameRaf);
     frameRaf = 0; running = true; last = window.deckNow?.() ?? performance.now();
     const signal = reverseCtx?.signal;
-    collageSlide.classList.add('vc-dissolve', 'dt-return', 'dt-await'); // the collage holds still, hidden, at full size
-    slide.classList.add('dt-rewind');
+    collageSlide.classList.add('vc-dissolve'); // the collage holds still, hidden, at full size
+    reverseCtx.present(collageSlide, 'dt-return dt-await');
+    reverseCtx.present(slide, 'dt-rewind');
     window.deckRewinding?.(collageSlide, reverseCtx);
     resize();
     const k0 = shift.k ?? (shift.age < 0 ? 1 : (1 + shift.age * 1.8 + (shift.age * 1.8) ** 2 / 2) * Math.exp(-shift.age * 1.8));
@@ -670,8 +669,8 @@
     if (!r) return;
     if (!r.shown && r.t >= r.landed) { // back in their tiles: the collage fades in over them, and the field goes
       r.shown = true;
-      collageSlide.classList.remove('dt-await');
-      slide.classList.replace('dt-rewind', 'dt-rewound');
+      reverseCtx.present(collageSlide, '', 'dt-await');
+      reverseCtx.present(slide, 'dt-rewound', 'dt-rewind');
     }
     if (r.t >= r.landed + 0.7) endRewind();
   };
@@ -679,8 +678,9 @@
     if (!rewind) return;
     const r = rewind;
     rewind = null;
-    collageSlide.classList.remove('vc-dissolve', 'dt-return', 'dt-await');
-    slide.classList.replace('dt-rewind', 'dt-rewound');
+    collageSlide.classList.remove('vc-dissolve');
+    reverseCtx.present(collageSlide, '', 'dt-return dt-await');
+    reverseCtx.present(slide, 'dt-rewound', 'dt-rewind');
     for (const [o, x, y, z] of r.kept) { o.x = x; o.y = y; o.z = z; }
     motes = [];
     shift = { x: 0, y: 0, age: 9 };
@@ -715,9 +715,9 @@
     if (fontHandler) document.fonts?.removeEventListener?.('loadingdone', fontHandler);
     fontHandler = () => { if (ctx?.isCurrent?.() && ctx === entryCtx) { labelSizes.clear(); scheduleFrame(); } };
     document.fonts?.addEventListener?.('loadingdone', fontHandler);
-    if (arriving && !motionOff()) { glide = 3.5; boost = 0; since = 0; settled = 0; } // arriving, we fly in past slide 1's collage
+    if (arriving && !motionOff() && !ctx?.direct) { glide = 3.5; boost = 0; since = 0; settled = 0; } // arriving, we fly in past slide 1's collage
     else { glide = 0; boost = 0; since = 9; settled = 1; shift = { x: 0, y: 0, age: 9 }; motes = []; aim(); }
-    if (motionOff()) { frame(performance.now(), ctx); window.deckEntryDone?.(slide, ctx); }
+    if (motionOff() || ctx?.rest || ctx?.direct) { frame(performance.now(), ctx); window.deckEntryDone?.(slide, ctx); }
     else scheduleFrame();
   };
   const stop = () => { if (rewind) { endRewind(); return; } running = false; pointer = null; if (frameRaf) cancelAnimationFrame(frameRaf); frameRaf = 0; if (fontHandler) document.fonts?.removeEventListener?.('loadingdone', fontHandler); fontHandler = null; };
@@ -737,7 +737,7 @@
     steerX = steerY = leadX = leadY = camX = camY = 0;
     pointer = null; resting = true; restAt = null;
     const fromCollage = collageSlide && !collageSlide.classList.contains('on') && records.some((r) => r.target === collageSlide);
-    if (fromCollage && !motionOff() && !window.deckNav?.rest) dissolve();
+    if (fromCollage && !motionOff() && !ctx?.rest && !ctx?.direct) dissolve();
     start(!ctx?.rest, ctx);
   });
   watch.observe(slide, { attributes: true, attributeFilter: ['class'] });

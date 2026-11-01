@@ -18,6 +18,36 @@ const ignoredMaterial = [
 export default [
   { ignores: ignoredMaterial },
   {
+    files: ['mycelial/**/*.js'],
+    ...js.configs.recommended,
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        // Shared by the classic scripts loaded from mycelial/index.html.
+        AstridCore: 'readonly',
+        AstridDemo: 'readonly',
+        AstridFlowers: 'readonly',
+        AstridFlywheel: 'readonly',
+        AstridMark: 'readonly',
+        AstridMink: 'readonly',
+        AstridPays: 'readonly',
+        installDeckProgress: 'readonly',
+      },
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      'no-empty': ['error', { allowEmptyCatch: true }],
+      'no-unused-vars': ['warn', {
+        argsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+      }],
+      'no-useless-assignment': 'warn',
+    },
+  },
+  {
     files: [
       '*.js',
       'content/**/*.js',

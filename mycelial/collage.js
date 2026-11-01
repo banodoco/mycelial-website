@@ -682,7 +682,15 @@
     // Coming on (not on the way back from slide 2, where its motes gather into the ring as it was): arrive.
     const on = slide.classList.contains('on');
     if (on && stale) relayout(); // a change made while it was away
-    if (on && !wasOn && !slide.classList.contains('vc-dissolve') && !opening()) { clearTimeout(parked); land(); wasOn = on; arrive(); sync(); return; }
+    if (on && !wasOn && !slide.classList.contains('vc-dissolve') && !opening()) {
+      clearTimeout(parked); land(); wasOn = on;
+      if (window.deckNav?.direct || window.deckNav?.rest) {
+        angle = wrap(nearest(goal())); G.sigma = 1;
+        root.style.opacity = root.style.transition = floor.style.transform = '';
+        pose(); sync();
+      } else { arrive(); sync(); }
+      return;
+    }
     wasOn = on;
     if (active() && !slide.classList.contains('vc-dissolve')) {
       clearTimeout(parked);

@@ -6,13 +6,13 @@
   const slide = root.closest('.slide');
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const motionOff = () => still || window.deckStill?.();
-  let entryCtx = null, reverseCtx = null;
+  let entryCtx = null, reverseCtx = null, entryCompletion = null, reverseCompletion = null;
   const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
   const ease = (k) => 1 - Math.pow(1 - k, 3);
   const easeIO = (q) => (q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2);
   // Keep absolute animation timestamps on the same clock across a pause.
   let paused = false;
-  let pendingStart = null, pausedVideos = [], settlePreviewPending = false;
+  let pendingStart = null, pausedVideos = [];
   const motionBlocked = () => document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.();
   const now = () => window.deckNow?.() ?? performance.now();
 
@@ -32,11 +32,9 @@
     videos.forEach((v) => bind(v, 'error', () => drawPic(now())));
     anchors.forEach((img) => bind(img, 'load', () => { if (motionOff() && slide.classList.contains('on')) drawPic(now()); }));
   };
-  const gradedVideos = [];
   const pic = root.querySelector('.as-pic'), pg = pic.getContext('2d');
   const tl = root.querySelector('.as-tl');
   const timeEl = root.querySelector('.as-time');
-  const seat = root.querySelector('.as-seat');
   const minkCv = root.querySelector('.as-mink'), mg = minkCv.getContext('2d');
 
   // The timeline
@@ -73,7 +71,7 @@
   place(sceneEl, 0, SPAN);
   sceneEl.innerHTML = '<img class="as-still" data-src="../assets/astrid/lantern-valley/motion-guide.webp" alt=""><span class="as-film" data-bg="../assets/astrid/lantern-valley/motion-guide.webp"></span><span class="as-name">Lantern Valley · Three.js</span><span class="as-kind">14 s</span>';
   lanes.V1.appendChild(sceneEl);
-  const anchorEls = FRAMES.map((frame, i) => {
+  const anchorEls = FRAMES.map((frame) => {
     const el = document.createElement('div');
     el.className = 'as-clip as-frame-clip is-ready';
     place(el, frame.at, frame.len);
@@ -125,7 +123,8 @@
   const TURN = [[0, 'facing'], [500, 'focus'], [1900, 'facing'], [2400, 'profile']];
   const turn = () => { if (!mink.seq) { mink.seq = { t0: now() }; wake(); } };
   const stepMink = (t) => {
-    let { pose, lift, glint } = mink;
+    let { pose, lift } = mink;
+    let glint = 0;
     if (mink.seq) {
       const e = Math.max(0, t - mink.seq.t0), cur = TURN.filter(([at]) => e >= at).pop();
       pose = cur[1];
@@ -137,7 +136,7 @@
       const e = Math.max(0, t - mink.hover) / 2600;
       glint = e >= 1 ? 0 : Math.sin(Math.PI * e) ** 2;
       if (e >= 1) mink.hover = null;
-    } else glint = 0;
+    }
     if (pose !== mink.pose || lift !== mink.lift || Math.abs(glint - mink.glint) > 0.01) {
       Object.assign(mink, { pose, lift, glint });
       paint(pose, lift, glint);
@@ -170,7 +169,10 @@
   const sizePic = () => {
     const b = pic.getBoundingClientRect();
     pdpr = Math.min(2, devicePixelRatio || 1);
+    const saved = document.createElement('canvas');
+    if (hasPicFrame) { saved.width = pic.width; saved.height = pic.height; saved.getContext('2d').drawImage(pic, 0, 0); }
     pic.width = Math.max(1, Math.round(b.width * pdpr)); pic.height = Math.max(1, Math.round(b.height * pdpr));
+    if (hasPicFrame) pg.drawImage(saved, 0, 0, pic.width, pic.height);
     picKey = ''; // sizing a canvas clears it
   };
   new ResizeObserver((es) => { for (const e of es) { picCW = e.contentRect.width; picCH = e.contentRect.height; } }).observe(pic);
@@ -179,18 +181,14 @@
     if (Math.abs(cw * pdpr - pic.width) > 1 || Math.abs(ch * pdpr - pic.height) > 1) sizePic();
     const src = view.mode === 'still' ? anchors[view.i] : view.mode === 'guide' ? guide : view.mode === 'play' ? videos[0] : null;
     const ready = !!src && (src.tagName === 'VIDEO' ? src.readyState >= 2 && !src.seeking : src.complete && src.naturalWidth > 0);
-    root.classList.toggle('has-frame', ready);
+    root.classList.toggle('has-frame', ready || hasPicFrame);
     const key = picFade || (view.mode === 'play' && ready) ? '' : `${view.mode}|${view.i}|${ready}`;
     if (key && key === picKey) return; // the same picture as last frame
     picKey = key;
     const w = pic.width, h = pic.height;
     pg.setTransform(1, 0, 0, 1, 0, 0);
+    if (!ready) return; // Retain the last produced frame while media is unavailable.
     pg.clearRect(0, 0, w, h);
-    if (!ready) {
-      // Keep the outgoing frame until the requested seek has decoded; never dissolve into black.
-      if (picFade && src) pg.drawImage(outgoing, 0, 0, w, h);
-      return;
-    }
     const s = Math.min(w / 16, h / 9) * 0.86, dw = 16 * s, dh = 9 * s, dx = Math.round((w - dw) / 2), dy = Math.round((h - dh) / 2);
     pg.drawImage(src, dx, dy, dw, dh);
     if (picFade) {
@@ -203,7 +201,7 @@
   };
   const showStill = (i) => { if (view.mode !== 'still' || view.i !== i) fadePic(); view.mode = 'still'; view.i = i; view.seq = -1; videos.forEach((v) => v.pause()); };
   const showGuide = () => { if (view.mode !== 'guide') fadePic(); view.mode = 'guide'; view.i = -1; view.seq = -1; videos.forEach((v) => v.pause()); };
-  const playFrom = (seqT, rate) => { fadePic(); view.mode = 'play'; view.seq = seqT; view.rate = rate; view.i = -2; view.seekPending = true; };
+  const playFrom = (seqT, rate, prepared = false) => { fadePic(); view.mode = 'play'; view.seq = seqT; view.rate = rate; view.i = -2; view.seekPending = !prepared; };
   const stepPlay = () => {
     if (view.mode !== 'play') return;
     const video = videos[0];
@@ -213,7 +211,7 @@
       video.playbackRate = view.rate;
     }
     if (view.seekPending) {
-      try { video.currentTime = view.seq; } catch (e) { /* not loaded */ }
+      try { video.currentTime = view.seq; } catch { /* not loaded */ }
       view.seekPending = false;
     }
     if (video.readyState < 2 || video.seeking) { headTo(view.seq, true); return; }
@@ -271,6 +269,10 @@
   };
   const clearAll = () => {
     clearPicFade();
+    pg.setTransform(1, 0, 0, 1, 0, 0);
+    pg.clearRect(0, 0, pic.width, pic.height);
+    root.classList.remove('has-frame');
+    picKey = '';
     msgs.innerHTML = '<div class="as-msg is-astrid as-welcome">This tour replays the finished Lantern Valley project. No new generation runs.</div>';
     typed.textContent = ''; rows = [];
     root.classList.remove('is-typing', 'has-draft', 'is-working', 'is-playing', 'is-resetting');
@@ -279,7 +281,6 @@
     resultEl.className = 'as-clip as-result-clip'; resultEl.style.opacity = '0';
     view.mode = 'none'; view.i = -1; view.seq = -1; view.seekPending = false; total = SPAN;
     videos.forEach((v) => v.pause());
-    gradedVideos.forEach((v) => v?.pause());
     headTo(0, true);
   };
   const beatTimes = (b) => {
@@ -288,17 +289,44 @@
   };
   // Let the completed result keep playing for ten seconds, then use the existing one-second reset fade.
   const RESET = beatTimes(BEATS[BEATS.length - 1]).done + FINISHED_HOLD, LOOP = RESET + 1;
-  const stepBeats = (dt) => {
-    if (td < 0) return false;
-    if (wait > 0) { wait -= dt; return true; }
-    const was = td;
-    td += dt;
-    const passed = (c) => was < c && td >= c;
+  // Every event is visited in order, even after a long frame. A production gate
+  // consumes no further story time until the corresponding media is decodable.
+  const events = [];
+  BEATS.forEach((b, bi) => {
+    const T = beatTimes(b);
+    [b.at, T.send, T.reply, T.act, T.done].forEach((at) => events.push({ at }));
+    const offsets = bi === 0 ? [0.65, 1.2] : bi === 1
+      ? FRAMES.flatMap((_, i) => [i * 0.55, i * 0.55 + 0.32, i * 0.55 + 0.5]) : [0.55];
+    offsets.forEach((offset) => events.push({ at: T.act + offset, bi, offset }));
+  });
+  events.push({ at: RESET }, { at: LOOP });
+  events.sort((a, b) => a.at - b.at);
+  const imageReady = (img) => img.complete && img.naturalWidth > 0;
+  let videoGateSeeking = false;
+  const gateReady = (event) => {
+    if (event.bi === 0 && event.offset === 0.65) return imageReady(guide);
+    if (event.bi === 1) {
+      const i = FRAMES.findIndex((_, n) => Math.abs(event.offset - (n * 0.55 + 0.32)) < 1e-7);
+      if (i >= 0) return imageReady(anchors[i]);
+    }
+    if (event.bi === 2 && event.offset === 0.55) {
+      const v = videos[0];
+      if (v.readyState < 1) return false;
+      if (!videoGateSeeking) {
+        try { v.currentTime = 0; videoGateSeeking = true; } catch { return false; }
+      }
+      return v.readyState >= 2 && !v.seeking;
+    }
+    return true;
+  };
+  let eventIndex = 0;
+  const advanceBeats = (was, next) => {
+    const passed = (c) => was < c && next >= c;
     BEATS.forEach((b, bi) => {
       const T = beatTimes(b);
-      if (td >= b.at && td < T.send) {
+      if (next >= b.at && next < T.send) {
         root.classList.add('is-typing');
-        const n = Math.min(b.ask.length, Math.floor((td - b.at) * CPS));
+        const n = Math.min(b.ask.length, Math.floor((next - b.at) * CPS));
         if (typed.textContent.length !== n) typed.textContent = b.ask.slice(0, n);
         root.classList.toggle('has-draft', n > 0);
       }
@@ -312,18 +340,39 @@
         bubble('as-msg is-astrid', b.reply);
         rows[bi] = bubble('as-step is-active', `<i></i><span>${b.step[0]}</span><code><b>${b.step[1]}</b> ${b.step[2]}</code>`);
       }
-      if (td >= T.act && td < T.done + 0.5) act(bi, td - T.act, was - T.act);
+      if (next >= T.act && was < T.done + 0.5) act(bi, next - T.act, was - T.act);
       if (passed(T.done) && rows[bi]) { rows[bi].classList.remove('is-active'); rows[bi].classList.add('is-done'); root.classList.remove('is-working'); }
     });
     if (passed(RESET)) root.classList.add('is-resetting');
-    if (td >= LOOP) { clearAll(); td = 0; }
+  };
+  const stepBeats = (dt) => {
+    if (td < 0) return false;
+    if (wait > 0) { const used = Math.min(wait, dt); wait -= used; dt -= used; }
+    let target = td + dt;
+    while (eventIndex < events.length && events[eventIndex].at <= target) {
+      const event = events[eventIndex];
+      if (!gateReady(event)) { target = event.at; break; }
+      advanceBeats(td, event.at);
+      td = event.at;
+      eventIndex++;
+      if (event.at === LOOP) {
+        const remaining = target - LOOP;
+        clearAll(); td = 0; eventIndex = 0; videoGateSeeking = false;
+        target = remaining;
+      }
+    }
+    // Stop just before a blocked event so it fires when readiness arrives.
+    if (eventIndex < events.length && target === events[eventIndex].at && !gateReady(events[eventIndex])) {
+      const before = Math.max(td, target - 1e-7);
+      advanceBeats(td, before); td = before;
+    } else { advanceBeats(td, target); td = target; }
     stepPlay();
     stepHead(dt);
     return true;
   };
   // What each beat does to the editor, a seconds into its work (p: where it was last frame).
   const act = (bi, a, p) => {
-    const at = (x) => p < x && a >= x;
+    const at = (x) => p < x - 1e-8 && a >= x - 1e-8;
     const touch = (el, on) => el.classList.toggle('is-touched', on);
     if (bi === 0) {
       if (at(0)) { sceneEl.style.opacity = ''; sceneEl.classList.add('is-generating'); touch(sceneEl, true); total = SPAN; headTo(1); }
@@ -340,7 +389,7 @@
     }
     if (bi === 2) {
       if (at(0)) { resultEl.style.opacity = ''; resultEl.classList.add('is-generating'); touch(resultEl, true); total = SPAN; headTo(0); }
-      if (at(0.55)) { resultEl.classList.remove('is-generating'); resultEl.classList.add('is-ready', 'is-animated'); touch(resultEl, false); playFrom(0, 1); root.classList.add('is-playing'); }
+      if (at(0.55)) { resultEl.classList.remove('is-generating'); resultEl.classList.add('is-ready', 'is-animated'); touch(resultEl, false); playFrom(0, 1, true); root.classList.add('is-playing'); }
     }
   };
   const settledState = () => { // everything as it ends, for reduced motion
@@ -357,7 +406,7 @@
     total = SPAN;
     if (still) {
       view.mode = 'play'; view.i = 0; view.seq = 4;
-      try { videos[0].currentTime = 4; } catch (e) { /* not loaded */ }
+      try { videos[0].currentTime = 4; } catch { /* not loaded */ }
     } else playFrom(4, 1);
     headTo(4, true); stepHead(0);
   };
@@ -397,7 +446,7 @@
   const skySize = () => [Math.round(innerWidth * Math.min(2, devicePixelRatio || 1)), Math.round(innerHeight * Math.min(2, devicePixelRatio || 1))];
   const freeSky = () => { sky.width = 0; sky.height = 0; };
   const startMorph = (snap, back = false, ctx = back ? reverseCtx : entryCtx) => {
-    const W = innerWidth, H = innerHeight, d = Math.min(2, devicePixelRatio || 1);
+    const d = Math.min(2, devicePixelRatio || 1);
     const [sw, sh] = skySize();
     if (sky.width === sw && sky.height === sh && sg.reset) sg.reset(); else { sky.width = sw; sky.height = sh; }
     sky.style.display = 'block';
@@ -524,7 +573,7 @@
   const endMorph = () => {
     const completed = morph;
     morph = null;
-    if (completed && !completed.back) window.deckEntryDone?.(slide, completed.ctx);
+    if (completed && !completed.back) entryCompletion?.(completed.ctx, 'completed');
     sg.setTransform(1, 0, 0, 1, 0, 0);
     sg.clearRect(0, 0, sky.width, sky.height);
     sky.style.display = 'none';
@@ -561,35 +610,37 @@
   };
   const layout = () => { sizeMink(); sizePic(); measureTl(); placeHead(); if (slide.classList.contains('on')) softenNet(true, entryCtx); };
   new ResizeObserver((es) => { for (const e of es) if (e.target === tl) { measureTl(e.contentRect.width); placeHead(); } }).observe(tl);
-  const start = (fromCore, ctx = window.deckNav) => {
+  const start = (fromCore, ctx) => {
     entryCtx = ctx;
     if (document.hidden || document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingStart = fromCore; return; }
     pendingStart = null;
     bindMediaHandlers(ctx);
+    slide.removeAttribute('data-as-rewind');
     root.classList.remove('as-unmorph', 'is-morphing', 'is-minkless'); // folded away on the way back to slide 4
     // Also warm direct #5 entry.
     window.warmDeckMedia(slide);
     running = true;
     layout();
-    if (motionOff() || ctx?.rest) {
-      settledState(); paint('profile', 0, 0); oneFrame = requestAnimationFrame(() => { oneFrame = 0; if (ctx?.isCurrent?.()) drawPic(now()); });
-      window.deckEntryDone?.(slide, ctx);
-      // Back at rest: the finished editor, its preview playing, until the loop's own reset starts the demo again.
-      if (!motionOff()) { playFrom(12, 1); td = beatTimes(BEATS[BEATS.length - 1]).done; wait = 0; root.classList.add('is-playing'); wake(); }
-      return;
+    if (ctx?.from === 5 && ctx?.back) {
+      settledState(); td = beatTimes(BEATS[BEATS.length - 1]).done; eventIndex = events.findIndex((event) => event.at > td); wait = 0;
+      entryCompletion?.(ctx, 'completed'); wake(); return;
     }
     clearAll();
-    td = 0; wait = 0;
+    td = 0; wait = 0; eventIndex = 0; videoGateSeeking = false;
+    if (motionOff() || ctx?.rest || ctx?.direct) {
+      paint('profile', 0, 0); entryCompletion?.(ctx, 'completed'); wake(); return;
+    }
     const snap = fromCore && window.AstridCore && window.AstridCore.snapshot();
     if (snap) { startMorph(snap); wait = MORPH.demo; }
-    else window.deckLater(() => { if (ctx?.isCurrent?.()) window.deckEntryDone?.(slide, ctx); }, 1800);
+    else window.deckLater(() => { if (ctx?.isCurrent?.()) entryCompletion?.(ctx, 'completed'); }, 1800, ctx); // deliberate entry stage when no Core picture is available
     wake();
   };
   const stop = () => {
+    slide.removeAttribute('data-as-rewind');
     clearPicFade();
     running = false;
     clearMediaHandlers();
-    paused = false; pendingStart = null; pausedVideos = []; settlePreviewPending = false;
+    paused = false; pendingStart = null; pausedVideos = [];
     if (raf) cancelAnimationFrame(raf);
     if (oneFrame) cancelAnimationFrame(oneFrame);
     raf = 0; oneFrame = 0; requested = false;
@@ -599,7 +650,6 @@
     mink.seq = null; mink.hover = null;
     Object.assign(mink, { pose: 'profile', lift: 0, glint: 0 });
     videos.forEach((v) => v.pause());
-    gradedVideos.forEach((v) => v?.pause());
   };
   window.AstridDemo = { turn, root };
 
@@ -607,18 +657,15 @@
   // A step back: the morph from slide 4 played backwards. The panels fade as their frames fold back into the two
   // rings, the chat and editor layers shrink back into them, the mink dissolves from the neck up as her outline
   // rises back into the lens's, and the community's motes come home; then slide 4's own picture stands in its place.
-  const fold = () => {
-    reverseCtx = window.deckNav;
-    entryCtx = reverseCtx;
+  const fold = (ctx) => {
+    reverseCtx = ctx;
     const snap = window.AstridCore && window.AstridCore.snapshot(); // slide 4 has settled before this runs
     if (!snap) return false;
     startMorph(snap, true, reverseCtx); // the same paths, measured from the editor as it stands (it hides slide 4's picture)
     morph.back = { e: MORPH.end - 1e-3, last: 0, shown: false };
     morph.steps = { resolve: true, handoff: true, turn: true };
-    slide.classList.add('dt-rewind');
-    coreSlide.classList.add('dt-return', 'dt-await');
-    window.deckRewinding?.(coreSlide, reverseCtx);
-    reverseCtx?.signal?.addEventListener('abort', () => { if (morph?.back) { endUnmorph(); stop(); } }, { once: true });
+    ctx.present(slide, 'dt-rewind');
+    ctx.present(coreSlide, 'dt-return dt-await');
     if (raf) cancelAnimationFrame(raf);
     raf = 0; last = now();
     wake();
@@ -633,67 +680,33 @@
     if (e < MORPH.resolve + 0.5) root.classList.add('as-unmorph'); // the panels fade as their frames come back (as they faded in)
     root.classList.toggle('is-morphing', e < MORPH.resolve);
     root.classList.toggle('is-minkless', e < MORPH.handoff);
-    if (!b.shown && e <= 0.7) { b.shown = true; coreSlide.classList.remove('dt-await'); } // its labels come back as it forms
+    if (!b.shown && e <= 0.7) { b.shown = true; reverseCtx.present(coreSlide, '', 'dt-await'); } // its labels come back as it forms
     morph.t0 = t - e * 1000;
     drawMorph(t);
-    if (e <= 0) { endUnmorph(); leave(); return false; }
+    if (e <= 0) { endUnmorph(); reverseCompletion?.(reverseCtx, 'completed'); stop(); return false; }
     return true;
   };
   const endUnmorph = () => {
     if (!morph?.back) return;
+    slide.removeAttribute('data-as-rewind');
     window.AstridCore?.show(); // the very picture the flight layer has just drawn
     endMorph(); // the sky is kept while slide 4 or 5 is up: the next turn between them flies on it
     root.classList.add('is-minkless'); // the editor and its mink stay folded away as slide 5 fades (until it next starts)
-    slide.classList.replace('dt-rewind', 'dt-rewound');
-    coreSlide.classList.remove('dt-return', 'dt-await');
-    window.deckRewound?.(coreSlide, reverseCtx);
+    reverseCtx.present(slide, 'dt-rewound', 'dt-rewind');
+    reverseCtx.present(coreSlide, '', 'dt-return dt-await');
   };
 
   const coreHost = document.querySelector('[data-astrid-core]');
   const coreSlide = coreHost && coreHost.closest('.slide');
-  const leave = () => {
-    if (slide.classList.contains('on')) return;
-    stop();
-    const signal = window.deckNav?.signal;
-    const timer = setTimeout(() => { if (!slide.classList.contains('on')) clearAll(); }, 700);
-    signal?.addEventListener('abort', () => clearTimeout(timer), { once: true });
-  };
-  let wasOn = false;
-  const watch = new MutationObserver((records) => {
-    const on = slide.classList.contains('on');
-    if (on === wasOn) return;
-    wasOn = on;
-    if (morph?.back) { endUnmorph(); if (on) stop(); }
-    if (on) { entryCtx = window.deckNav; start(!!coreSlide && !coreSlide.classList.contains('on') && records.some((r) => r.target === coreSlide), entryCtx); }
-    else if (coreSlide?.classList.contains('on') && window.deckNav?.back && !motionOff() && running && !paused && !morph && fold()) { /* folding back into slide 4 */ }
-    else leave();
-  });
-  watch.observe(slide, { attributes: true, attributeFilter: ['class'] });
-  if (coreSlide) watch.observe(coreSlide, { attributes: true, attributeFilter: ['class'] });
-  if (coreSlide && !motionOff()) { // the sky, ready while slide 4 or 5 is up; let go once both are left (unless a morph flies on it)
-    const idleSoon = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 100));
-    const near45 = () => coreSlide.classList.contains('on') || slide.classList.contains('on');
-    const keepSky = () => {
-      if (near45()) setTimeout(() => idleSoon(() => {
-        if (!near45() || morph) return;
-        const [sw, sh] = skySize();
-        if (sky.width !== sw || sky.height !== sh) { sky.width = sw; sky.height = sh; }
-      }), 1500);
-      else setTimeout(() => { if (!near45() && !morph) freeSky(); }, 700);
-    };
-    const keep = new MutationObserver(keepSky);
-    [coreSlide, slide].forEach((s) => keep.observe(s, { attributes: true, attributeFilter: ['class'] }));
-    keepSky();
-  }
   const syncMotion = () => {
-    if (motionOff() && slide.classList.contains('on')) { stop(); settledState(); drawPic(now()); window.deckEntryDone?.(slide, entryCtx); return; }
-    if (motionBlocked() && morph?.back) { endUnmorph(); leave(); return; } // a reverse never waits behind the overview
+    if (motionOff() && slide.classList.contains('on') && morph && !morph.back) { endMorph(); entryCompletion?.(entryCtx, 'completed'); }
+    if (motionBlocked() && morph?.back) { endUnmorph(); reverseCompletion?.(reverseCtx, 'completed'); stop(); return; } // a reverse never waits behind the overview
     if (motionBlocked()) {
       if (!running || paused) return;
       paused = true;
       if (raf) cancelAnimationFrame(raf);
       raf = 0;
-      pausedVideos = [...videos, ...gradedVideos].filter((v) => v && !v.paused);
+      pausedVideos = videos.filter((v) => !v.paused);
       pausedVideos.forEach((v) => v.pause());
     } else if (slide.classList.contains('on')) {
       // An entry deferred behind the overview has no scene to resume yet.
@@ -703,37 +716,66 @@
       last = now();
       pausedVideos.forEach((v) => v.play().catch(() => {}));
       pausedVideos = [];
-      if (settlePreviewPending) {
-        settlePreviewPending = false;
-        playFrom(12, 1); td = beatTimes(BEATS[BEATS.length - 1]).done; wait = 0;
-        root.classList.add('is-playing'); running = true;
-      }
-      if (!still) wake();
+      wake();
     }
   };
   document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
-  window.deckOnSettle?.((ctx) => {
-    if (morph?.back) { endUnmorph(); leave(); } // its paths were measured on the old screen
-    if (!slide.classList.contains('on')) return;
+  const makeCompletion = (ctx, setter, cleanup) => {
+    let resolve, settled = false;
+    const promise = new Promise((done) => { resolve = done; });
+    const finish = (owner, result) => {
+      if (owner !== ctx || settled) return;
+      settled = true;
+      setter(null);
+      resolve(result);
+    };
+    setter((owner, result) => finish(owner, result));
+    ctx.defer(() => { finish(ctx, 'cancelled'); cleanup(); });
+    return promise;
+  };
+  const enter = (ctx) => {
+    const promise = makeCompletion(ctx, (fn) => { entryCompletion = fn; }, () => {
+      if (entryCtx === ctx) { stop(); freeSky(); }
+    });
     entryCtx = ctx;
-    stop();
-    settledState(); td = -1; wait = 0;
-    layout();
-    drawPic(now());
-    window.deckEntryDone?.(slide, ctx);
-    bindMediaHandlers(ctx);
-    if (!motionOff()) {
-      if (motionBlocked()) { settlePreviewPending = true; running = true; paused = true; }
-      else {
-        playFrom(12, 1); td = beatTimes(BEATS[BEATS.length - 1]).done; wait = 0;
-        root.classList.add('is-playing'); running = true; wake();
+    start(ctx.from === 3, ctx);
+    return promise;
+  };
+  const exit = (ctx) => {
+    if (ctx.from !== 4 || ctx.to !== 3 || !ctx.back || motionOff()) return undefined;
+    const promise = makeCompletion(ctx, (fn) => { reverseCompletion = fn; }, () => {
+      if (reverseCtx === ctx) {
+        if (morph?.back) endUnmorph();
+        stop(); freeSky();
       }
+    });
+    reverseCtx = ctx;
+    slide.setAttribute('data-as-rewind', '');
+    queueMicrotask(() => {
+      if (reverseCtx !== ctx || !ctx.isCurrent() || !reverseCompletion) return;
+      entryCtx = ctx; running = true; paused = false;
+      if (!fold(ctx)) { slide.removeAttribute('data-as-rewind'); reverseCompletion?.(ctx, 'completed'); stop(); }
+    });
+    return promise;
+  };
+  const resize = (ctx) => {
+    if (morph?.back && reverseCtx === ctx) {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      endUnmorph(); reverseCompletion?.(ctx, 'completed'); stop();
+    } else if (reverseCtx === ctx && reverseCompletion) {
+      slide.removeAttribute('data-as-rewind'); reverseCompletion(ctx, 'completed'); stop();
+    } else if (slide.classList.contains('on') && entryCtx === ctx) {
+      if (morph) endMorph();
+      layout(); drawPic(now());
+      entryCompletion?.(ctx, 'completed');
+      if (running && !paused) wake();
     }
-  });
+  };
+  window.deckRegisterScene?.([4], { enter, exit, resize });
   // Clicks on the demos stay here; they never turn the slide.
   root.addEventListener('click', (e) => { if (e.target.closest('.as-panel, .as-mink, .as-try')) e.stopPropagation(); }); // the link opens its tab and the slide stays
   clearAll();
-  if (slide.classList.contains('on')) { wasOn = true; start(false, window.deckNav); }
 })();

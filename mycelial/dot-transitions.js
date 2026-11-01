@@ -716,7 +716,6 @@
   const textTweens = new Set();
   const tween = (duration, ease, step, delay = 0, context = window.deckNav) => {
     let raf = 0, stopped = false, resolve;
-    const signal = context.signal;
     const p = new Promise((r) => { resolve = r; });
     const started = context.now();
     const blocked = () => document.hidden || document.getElementById('overview')?.classList.contains('on');
@@ -745,11 +744,8 @@
     syncMotion();
     p.stop = () => { if (stopped) return; stopped = true; cancelAnimationFrame(raf); resolve('cancelled'); };
     textTweens.add(p);
-    if (signal) {
-      signal.addEventListener('abort', p.stop, { once: true });
-      p.then(() => signal.removeEventListener('abort', p.stop));
-      if (signal.aborted) p.stop();
-    }
+    const release = context.defer(p.stop);
+    p.then(release);
     return p;
   };
 
@@ -780,7 +776,7 @@
   // Threads run from the node down into the text, and the words appear where
   // they reach. The circle's edge keeps pace with the threads' tips.
   const reveal = (s, at, delay = 0, context = window.deckNav) => {
-    s.classList.remove('dt-entering');
+    context.present(s, '', 'dt-entering');
     const tw = [];
     for (const el of textOf(s)) {
       el.style.visibility = '';
@@ -845,7 +841,10 @@
     return PASSING[upright ? 'upright' : 'wide'][`${levelOf(prev) + 1}-${levelOf(next) + 1}`] || 0;
   };
 
-  let current = slides.find((s) => s.classList.contains('on')) || null;
+  let current = null, visit = null;
+  const finishNetwork = (context) => {
+    if (visit?.context === context && context.isCurrent()) visit.resolve('completed');
+  };
   let anchor = null, turning = null;
   // The thread each slide's node was reached by, from the slide before: a step back runs back along it.
   const trails = new Map();
@@ -1012,8 +1011,8 @@
     dot.classList.remove('is-moving');
     nameRest();
   };
-  const open = () => {
-    const context = window.deckNav, target = current;
+  const open = (context) => {
+    const target = current;
     if (!active() || still || !current || !anchor) return false;
     const intro = window.__deckIntro, gate = intro?.gate;
     const placed = gate && gate.w === innerWidth && gate.h === innerHeight &&
@@ -1052,9 +1051,11 @@
       place(anchor);
       dot.classList.remove('is-moving'); pulse(1.8); bloom(anchor);
       if (current === lastSlide()) crown(anchor);
+      window.deckArrived(context);
+      target.dispatchEvent(new CustomEvent('dt-arrive'));
       if (target === slides[0]) window.deckEntryDone?.(target, context); // slide 1 has no separate picture build
       Promise.all(reveal(target, anchor, 60, context)).then((results) => {
-        if (results.every((result) => result === 'completed')) window.deckTurnDone?.(target, context);
+        if (results.every((result) => result === 'completed')) finishNetwork(context);
       });
       sprawl(levelOf(current), anchor, 0.15);
     };
@@ -1090,11 +1091,11 @@
     ripen();
   };
   // wipe: start the network afresh (first load, switching version); otherwise the ground stays (a resize, a jump).
-  const settle = (grow, wipe, context = window.deckNav) => {
+  const settle = (grow, wipe, context = window.deckNav, announce = true) => {
     if (turning) turning.cancel();
     textTweens.forEach((tw) => tw.stop());
     if (active()) adopt(); else restore();
-    slides.forEach((sl) => sl.classList.remove('dt-leaving', 'dt-release', 'dt-entering'));
+    [slides[context.from], slides[context.to]].filter(Boolean).forEach((sl) => context.present(sl, '', 'dt-leaving dt-release dt-entering'));
     slides.forEach((sl) => sl === current ? clearText(sl) : hideText(sl));
     trail = { x: 0, y: 0 };
     anchor = current ? anchorOf(current) : null;
@@ -1112,10 +1113,13 @@
     draw();
     if (!on) return;
     place(anchor);
-    current.dispatchEvent(new CustomEvent('dt-arrive'));
-    if (current === slides[0]) window.deckEntryDone?.(current, context);
-    if (still) window.deckTurnDone?.(current, context);
-    if (still) { // the network at this slide's reach, at once, and the crown already formed on the last slide
+    if (announce) {
+      window.deckArrived(context);
+      current.dispatchEvent(new CustomEvent('dt-arrive'));
+      if (current === slides[0]) window.deckEntryDone?.(current, context);
+      if (still) finishNetwork(context);
+    }
+    if (still || (context.direct && !context.intro)) { // direct loads also need the network at this slide's full reach
       sprawl(levelOf(current), anchor);
       ripen();
       if (current === lastSlide()) crown(anchor, true);
@@ -1128,8 +1132,8 @@
     draw();
   };
 
-  const turn = (prev, next) => {
-    const context = window.deckNav, started = context.now();
+  const turn = (prev, next, context) => {
+    const started = context.now();
     if (turning) turning.cancel();
     const tweens = [], timers = [], anims = [];
     let done = false, landed;
@@ -1139,7 +1143,7 @@
         // A completed text reveal can still have its outgoing-slide retirement pending.
         // Navigation aborts those timers too, so always retire its visual classes first.
         timers.forEach(window.deckCancelLater);
-        prev.classList.remove('dt-leaving', 'dt-release');
+        context.present(prev, '', 'dt-leaving dt-release');
         if (!prev.classList.contains('on')) hideText(prev);
         if (done) return;
         done = true;
@@ -1147,8 +1151,8 @@
         tweens.forEach((tw) => tw.stop());
         anims.forEach((a) => a.cancel());
         hyphae.forEach((h) => { h.onDone = null; });
-        prev.classList.remove('dt-leaving', 'dt-release');
-        next.classList.remove('dt-entering');
+        context.present(prev, '', 'dt-leaving dt-release');
+        context.present(next, '', 'dt-entering');
         clearText(current);
         hideText(prev === current ? next : prev);
         if (next !== current && prev !== current) hideText(next);
@@ -1158,7 +1162,7 @@
       },
     };
     turning = transition;
-    context.signal.addEventListener('abort', () => transition.cancel(), { once: true });
+    context.defer(() => transition.cancel());
     const from = { x: (anchor ? anchor.x : 0) + drift.x, y: (anchor ? anchor.y : 0) + drift.y };
     clearText(prev);
     const glow = (s) => !still && window.AstridFlywheel?.glow(s); // slide 10's glow, between it and the last slide
@@ -1167,9 +1171,9 @@
     wake();
 
     // 1. Threads reach across the old text and draw it back into its node.
-    prev.classList.add('dt-leaving');
+    context.present(prev, 'dt-leaving');
     tweens.push(...gather(prev, from));
-    next.classList.add('dt-entering');
+    context.present(next, 'dt-entering');
     clearText(next);
     current = next;
     const to = anchorOf(next) || from;
@@ -1189,7 +1193,7 @@
       tweens.push(...shown);
       Promise.all([...shown, reached]).then((results) => {
         if (done || !context.isCurrent() || results.some((result) => result !== 'completed')) return;
-        finish(); window.deckTurnDone?.(next, context);
+        finish(); finishNetwork(context);
       });
     };
     const early = overlap(prev, from, to);
@@ -1204,12 +1208,13 @@
       place(to);
       dot.classList.remove('is-moving'); anims.push(pulse(1.8)); bloom(to);
       if (next === lastSlide()) crown(to);
+      window.deckArrived(context);
       next.dispatchEvent(new CustomEvent('dt-arrive')); // for slides that start their own picture once the node is reached
       if (next === slides[0]) window.deckEntryDone?.(next, context);
-      prev.classList.add('dt-release'); // the old slide may fade now; its parts stay hidden
+      context.present(prev, 'dt-release'); // the old slide may fade now; its parts stay hidden
       timers.push(window.deckLater(() => {
         if (prev.classList.contains('on')) return;
-        prev.classList.remove('dt-leaving', 'dt-release');
+        context.present(prev, '', 'dt-leaving dt-release');
         hideText(prev);
       }, 700));
       landed('completed');
@@ -1232,29 +1237,41 @@
     }, Math.max(0, 340 - (context.now() - started)), context));
   };
 
-  // Follow the deck: every change of the active slide goes through here.
-  const follow = new MutationObserver(() => {
-    const next = slides.find((sl) => sl.classList.contains('on')) || null;
-    if (next === current) return;
-    const context = window.deckNav;
-    const prev = current;
+  // Selection is output from the controller; it is no longer observed here.
+  const enter = (context) => {
+    const prev = current, next = slides[context.to];
     current = next;
-    endOpening();
-    if (!active() || still || (window.deckNav?.rest && !window.deckNav?.back) || !prev || !next || prev.classList.contains('out')) {
-      settle(true);
-      if (active() && current && anchor && !still) {
-        Promise.all(reveal(next, anchor, 200, context)).then((results) => {
-          if (results.every((result) => result === 'completed')) window.deckTurnDone?.(next, context);
-        });
-        // On a back landing the ground already reaches at least this slide.
-        if (!window.deckNav?.rest) sprawl(levelOf(current), anchor, 0.2);
-      }
-      if (current && still) window.deckTurnDone?.(current, context);
-      return;
+    const promise = new Promise((resolve) => { visit = { context, resolve }; });
+    const ownVisit = visit;
+    context.defer(() => { ownVisit.resolve('cancelled'); });
+    if (context.intro) {
+      openingPending = true;
+      context.defer(endOpening);
+      settle(true, true, context, false);
+      startOpening(context);
+      return promise;
     }
-    turn(prev, next);
-  });
-  slides.forEach((sl) => follow.observe(sl, { attributes: true, attributeFilter: ['class'] }));
+    endOpening();
+    html.classList.remove('dt-font-wait');
+    if (context.direct) {
+      settle(false, context.from === null, context);
+      finishNetwork(context);
+      if (document.fonts?.status === 'loading') document.fonts.ready.then(() => {
+        if (context.isCurrent()) window.deckTransaction('fonts', context);
+      });
+      return promise;
+    }
+    if (!active() || still || (context.rest && !context.back) || !prev || prev.classList.contains('out')) {
+      settle(true, false, context);
+      if (active() && anchor && !still) {
+        Promise.all(reveal(next, anchor, 200, context)).then((results) => {
+          if (results.every((result) => result === 'completed')) finishNetwork(context);
+        });
+        if (!context.rest) sprawl(levelOf(current), anchor, 0.2);
+      } else finishNetwork(context);
+    } else turn(prev, next, context);
+    return promise;
+  };
 
   // Switching into F grows the node and runs the current slide's text out of it.
   let was = active();
@@ -1270,9 +1287,10 @@
 
   // A resize keeps the network (see size), growing it at once over ground a new shape of screen leaves bare;
   // the node, its tuft and the text's softening find their places.
-  window.deckOnSettle((context) => {
+  const resize = (context) => {
     const busy = turning || opening, tuft = busy ? [] : hyphae.filter((h) => h.keep);
     endOpening();
+    window.deckArrived(context);
     keepGround();
     const was = anchor;
     anchor = current ? anchorOf(current) : null;
@@ -1281,7 +1299,7 @@
     // rest reveal that has no `turning` object. Completion belongs to this visit.
     if (busy || textTweens.size) {
       settle(false, false, context);
-      if (current) window.deckTurnDone?.(current, context);
+      if (current) finishNetwork(context);
       return;
     }
     if (was && anchor) for (const h of tuft) for (const p of h.pts) { p[0] += anchor.x - was.x; p[1] += anchor.y - was.y; }
@@ -1296,46 +1314,59 @@
     if (anchor && current === lastSlide()) crown(anchor, true);
     draw();
     if (current === slides[0]) window.deckEntryDone?.(current, context);
-    if (current) window.deckTurnDone?.(current, context);
-  });
-  // Keep the initial settle (and its dt-arrive event) in its original place.
-  // Only the opening waits for the fonts; slide scripts below still initialize
-  // after this event and watch dt-intro exactly as before.
-  settle(true, true);
-  const firstContext = window.deckNav;
-  const startOpening = () => {
-    if (window.__deckIntro?.failed) return;
-    html.classList.remove('dt-font-wait');
-    // Font readiness is page-scoped; it cannot restart an obsolete visit.
-    if (!firstContext.isCurrent() || !openingPending) {
-      window.__deckIntro?.clearGate(); window.__deckIntro?.showChrome();
-      html.classList.remove('dt-intro');
-      return;
-    }
-    openingPending = false;
-    if (!open()) {
-      window.__deckIntro?.clearGate();
-      window.__deckIntro?.showChrome();
-      html.classList.remove('dt-intro'); // hidden before first paint, but there is no opening to play
-      if (active() && current && anchor && !still) { reveal(current, anchor, 350); sprawl(levelOf(current), anchor, 0.3); }
+    if (current) finishNetwork(context);
+  };
+  // First navigation starts only after every scene has registered.
+  const startOpening = (firstContext) => {
+    const launchOpening = () => {
+      if (!firstContext.isCurrent()) return;
+      if (window.__deckIntro?.failed) {
+        openingPending = false;
+        settle(false, false, firstContext);
+        finishNetwork(firstContext);
+        return;
+      }
+      html.classList.remove('dt-font-wait');
+      // Font readiness is page-scoped; it cannot restart an obsolete visit.
+      if (!openingPending) {
+        window.__deckIntro?.clearGate(); window.__deckIntro?.showChrome();
+        html.classList.remove('dt-intro');
+        return;
+      }
+      openingPending = false;
+      if (!open(firstContext)) {
+        window.__deckIntro?.clearGate();
+        window.__deckIntro?.showChrome();
+        html.classList.remove('dt-intro'); // hidden before first paint, but there is no opening to play
+        window.deckArrived(firstContext);
+        if (current === slides[0]) window.deckEntryDone?.(current, firstContext);
+        if (active() && current && anchor && !still) {
+          Promise.all(reveal(current, anchor, 350, firstContext)).then((results) => {
+            if (results.every((result) => result === 'completed')) finishNetwork(firstContext);
+          });
+          sprawl(levelOf(current), anchor, 0.3);
+        } else finishNetwork(firstContext);
+      }
+    };
+    if (window.__deckIntro) window.__deckIntro.initialized = true;
+    if (!active() || still || !document.fonts) launchOpening();
+    else {
+      let started = false;
+      const launch = () => { if (started) return; started = true; clearTimeout(ceiling); launchOpening(); };
+      const ceiling = setTimeout(launch, 2500);
+      firstContext.defer(() => clearTimeout(ceiling));
+      try {
+        const fonts = document.fonts;
+        const needed = [
+          fonts.load('400 22px "DM Sans"', 'MYCELIAL'),
+          fonts.load('400 72px "Cormorant Garamond"', 'Mycelial'),
+          fonts.load('italic 400 16px "Cormorant Garamond"', '01'),
+          fonts.load('italic 500 72px "Cormorant Garamond"', 'Mycelial'),
+          fonts.load('400 20px "EB Garamond"', 'Mycelial')
+        ];
+        Promise.allSettled([...needed, fonts.ready]).then(launch);
+      } catch { launch(); }
     }
   };
-  if (window.__deckIntro) window.__deckIntro.initialized = true;
-  if (!active() || still || !document.fonts) startOpening();
-  else {
-    let started = false;
-    const launch = () => { if (started) return; started = true; clearTimeout(ceiling); startOpening(); };
-    const ceiling = setTimeout(launch, 2500);
-    try {
-      const fonts = document.fonts;
-      const needed = [
-        fonts.load('400 22px "DM Sans"', 'MYCELIAL'),
-        fonts.load('400 72px "Cormorant Garamond"', 'Mycelial'),
-        fonts.load('italic 400 16px "Cormorant Garamond"', '01'),
-        fonts.load('italic 500 72px "Cormorant Garamond"', 'Mycelial'),
-        fonts.load('400 20px "EB Garamond"', 'Mycelial')
-      ];
-      Promise.allSettled([...needed, fonts.ready]).then(launch);
-    } catch (e) { launch(); }
-  }
+  window.deckRegisterNetwork({ enter, resize });
 })();

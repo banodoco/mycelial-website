@@ -183,7 +183,7 @@
     visitCtx = ctx;
     reset();
     size();
-    if (motionOff() || ctx?.rest) { root.classList.add('is-drawn', 'is-labelled'); tools.forEach((el) => el.classList.add('is-in')); window.deckEntryDone?.(slide, ctx); return; }
+    if (motionOff() || ctx?.rest || ctx?.direct) { root.classList.add('is-drawn', 'is-labelled'); tools.forEach((el) => el.classList.add('is-in')); window.deckEntryDone?.(slide, ctx); return; }
     const dy = lift();
     tools.forEach((el, i) => {
       const p = disc(el, dy);
@@ -394,7 +394,7 @@
     if (backs.length || backRaf) endDepart();
     const fromField = fieldSlide && !fieldSlide.classList.contains('on') && records.some((r) => r.target === fieldSlide);
     const ctx = visitCtx;
-    if (ctx?.rest) enter(0, ctx);
+    if (ctx?.rest || ctx?.direct) enter(0, ctx);
     else fromField ? arrive(ctx) : begin(ctx);
   });
   // On a first load the Mycelial mark plays first (dot-transitions.js): the tools bloom once it has landed.
@@ -402,7 +402,7 @@
   let waiting = null;
   const begin = (ctx = visitCtx) => {
     if (waiting) { waiting.disconnect(); waiting = null; }
-    if (!html.classList.contains('dt-intro')) { enter(0, ctx); return; }
+    if (ctx?.direct || !html.classList.contains('dt-intro')) { enter(0, ctx); return; }
     reset();
     waiting = new MutationObserver(() => {
       if (html.classList.contains('dt-intro')) return;

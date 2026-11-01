@@ -649,7 +649,7 @@
   const begin = (ctx = entryCtx) => {
     entryCtx = ctx;
     if (!layout()) return;
-    if (motionOff() || ctx?.rest) { ta = 40; root.classList.add('is-labelled'); draw(); labels(); window.deckEntryDone?.(slide, ctx); if (!motionOff()) { html.classList.add('fl-quiet'); start(ctx); } return; }
+    if (motionOff() || ctx?.rest || ctx?.direct) { ta = 40; root.classList.add('is-labelled'); draw(); labels(); window.deckEntryDone?.(slide, ctx); if (!motionOff()) { html.classList.add('fl-quiet'); start(ctx); } return; }
     ta = -0.15;
     timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, 900, ctx));
     quiet(ctx);
@@ -711,8 +711,8 @@
     });
     ta = BACK7; off = ta - tc0;
     window.AstridPays.holdCore?.(true); // the core is drawn here until it has landed in slide 7's lens
-    slide.classList.add('dt-rewind');
-    paysSlide.classList.add('dt-return', 'dt-await');
+    reverseCtx.present(slide, 'dt-rewind');
+    reverseCtx.present(paysSlide, 'dt-return dt-await');
     window.deckRewinding?.(paysSlide, reverseCtx);
     back7 = { tc0, shown: false, since: 0 };
     signal?.addEventListener('abort', end7, { once: true });
@@ -725,7 +725,7 @@
     coreLabel.style.opacity = count.style.opacity = crowdA().toFixed(3);
     if (back7.shown) back7.since += dt;
     // Slide 7 fades in under its people as the core settles into its lens; once it is whole, this picture goes.
-    if (!back7.shown && ta <= 0.2) { back7.shown = true; back7.since = 0; paysSlide.classList.remove('dt-await'); }
+    if (!back7.shown && ta <= 0.2) { back7.shown = true; back7.since = 0; reverseCtx.present(paysSlide, '', 'dt-await'); }
     if (ta <= 0 && back7.since >= 0.65) { end7(); return false; }
     return true;
   };
@@ -736,8 +736,8 @@
     window.AstridPays?.holdCore?.(false);
     if (!slide.classList.contains('on')) { coreHeld = true; draw(); }
     back7 = null;
-    slide.classList.replace('dt-rewind', 'dt-rewound');
-    paysSlide.classList.remove('dt-return', 'dt-await');
+    reverseCtx.present(slide, 'dt-rewound', 'dt-rewind');
+    reverseCtx.present(paysSlide, '', 'dt-return dt-await');
     if (!slide.classList.contains('on')) {
       stop(); html.classList.remove('fl-quiet');
       timers.push(window.deckLater(() => { if (reverseCtx?.isCurrent?.() && !slide.classList.contains('on')) reset(); }, 700, reverseCtx));
@@ -755,7 +755,7 @@
     if (on) {
       reset();
       entryCtx = ctx;
-      if (ctx?.rest) { whenOpen(ctx, begin); return; }
+      if (ctx?.direct || ctx?.rest) { begin(ctx); return; }
       const fromPays = !motionOff() && paysSlide && !paysSlide.classList.contains('on') && records.some((r) => r.target === paysSlide);
       const snap = fromPays && window.AstridPays && window.AstridPays.snapshot();
       if (snap) { handoff(snap, ctx); return; }

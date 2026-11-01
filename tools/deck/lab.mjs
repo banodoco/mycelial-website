@@ -1,5 +1,6 @@
 // Deck visual lab: capture runs independently of scheduled user input.
 import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
 import { mkdir, writeFile, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,14 +15,15 @@ for (let i = 2; i < process.argv.length; i++) {
   options[k.slice(2)] = !process.argv[i + 1] || process.argv[i + 1].startsWith('--') ? true : process.argv[++i];
 }
 if (options.help) {
-  console.log('lab.mjs --out DIR [--device iphone|desktop] [--dpr N] [--throttle N] [--input tap|swipe|key] [--fast] [--seq "goto:5 settle next@120 prev@120 settle"] [--filmstrip 50:2500] [--film-on next] [--repeat N] [--assert ghosts=0,slide6cards=all,text=visible]');
+  console.log('lab.mjs --out DIR [--device iphone|desktop] [--height 670|745|844] [--dpr N] [--throttle N] [--input tap|swipe|key] [--fast] [--seq "goto:5 settle next@120 prev@120 resize:745 settle"] [--filmstrip 50:2500] [--film-on next] [--repeat N] [--assert ghosts=0,slide6cards=all,text=visible]');
   process.exit();
 }
 const device = options.device || 'iphone', method = options.input || 'tap';
-const throttle = Number(options.throttle || 2), dpr = Number(options.dpr || (device === 'iphone' ? 3 : 1)), repeat = Number(options.repeat || 1);
-if (!['iphone', 'desktop'].includes(device) || !['tap', 'swipe', 'key'].includes(method) || !Number.isInteger(repeat) || repeat < 1 || !(throttle >= 1) || !(dpr > 0)) throw Error('Invalid device, input, repeat, throttle or dpr');
+const height = Number(options.height || (device === 'iphone' ? 670 : 900));
+const throttle = Number(options.throttle || 4), dpr = Number(options.dpr || (device === 'iphone' ? 3 : 1)), repeat = Number(options.repeat || 1);
+if (!['iphone', 'desktop'].includes(device) || !['tap', 'swipe', 'key'].includes(method) || !Number.isInteger(repeat) || repeat < 1 || !(throttle >= 1) || !(dpr > 0) || ![670, 745, 844, 900].includes(height)) throw Error('Invalid device, input, repeat, height, throttle or dpr');
 const steps = String(options.seq || 'settle').trim().split(/\s+/).map(token => {
-  const m = /^(goto:(?:[1-9]|10|11)|next|prev|settle)(?:@(\d+))?$/.exec(token);
+  const m = /^(goto:(?:[1-9]|10|11)|resize:(?:670|745|844)|next|prev|settle)(?:@(\d+))?$/.exec(token);
   if (!m) throw Error(`Invalid sequence step ${token}`);
   return { token, action: m[1], delay: Number(m[2] || 0) };
 });
@@ -36,12 +38,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const median = a => { const v = [...a].sort((x, y) => x - y); return v.length ? (v[Math.floor((v.length - 1) / 2)] + v[Math.floor(v.length / 2)]) / 2 : null; };
 const nearest = (a, t) => a.reduce((best, x) => !best || Math.abs(x.t - t) < Math.abs(best.t - t) ? x : best, null);
 const preceding = (a, t) => { let lo = 0, hi = a.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (a[mid].t <= t) lo = mid + 1; else hi = mid; } return a[lo - 1] || null; };
-const browser = await chromium.launch({ chromiumSandbox: false, args: ['--disable-dev-shm-usage', '--no-zygote'] });
+const launchOptions = { chromiumSandbox: false, args: ['--disable-dev-shm-usage', '--no-zygote'] };
+if (process.env.PW_CHROMIUM) launchOptions.executablePath = process.env.PW_CHROMIUM;
+else if (existsSync('/opt/pw-browsers/chromium')) launchOptions.executablePath = '/opt/pw-browsers/chromium';
+const browser = await chromium.launch(launchOptions);
 const runs = []; let chosen = null;
 try {
   for (let run = 1; run <= repeat; run++) {
     const context = await browser.newContext(device === 'iphone' ? {
-      viewport: { width: 390, height: 844 }, deviceScaleFactor: dpr, isMobile: true, hasTouch: true,
+      viewport: { width: 390, height }, deviceScaleFactor: dpr, isMobile: true, hasTouch: true,
       userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
     } : { viewport: { width: 1440, height: 900 }, deviceScaleFactor: dpr });
     const page = await context.newPage(), cdp = await context.newCDPSession(page);
@@ -80,7 +85,7 @@ try {
         await Promise.all([cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: start, y }] }), cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: end, y }] }), cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })]);
       }
     }
-    const points = await page.evaluate(() => Object.fromEntries(['prev', 'next'].map(name => { const r = document.getElementById(`${name}Btn`).getBoundingClientRect(); return [name, { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }]; })));
+    let points = await page.evaluate(() => Object.fromEntries(['prev', 'next'].map(name => { const r = document.getElementById(`${name}Btn`).getBoundingClientRect(); return [name, { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }]; })));
     async function goto(n) {
       if (options.fast) {
         await page.keyboard.press('o'); await page.locator(`#list li:nth-child(${n})`).click({ force: true }); await page.mouse.move(0, 0);
@@ -115,6 +120,10 @@ try {
       } else {
         if (step.delay) await sleep(step.delay);
         if (step.action === 'settle') await settle(step.token);
+        else if (step.action.startsWith('resize:')) {
+          await page.setViewportSize({ width: device === 'iphone' ? 390 : 1440, height: Number(step.action.slice(7)) });
+          points = await page.evaluate(() => Object.fromEntries(['prev', 'next'].map(name => { const r = document.getElementById(`${name}Btn`).getBoundingClientRect(); return [name, { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }]; })));
+        }
         else { expectedSlide = Number(step.action.slice(5)); await goto(expectedSlide); }
         i++;
       }
@@ -179,7 +188,7 @@ try {
       chosen = { score, ghost: Math.max(0, ...arrivals.map(a => a.maxGhostDuration)), run, frames, samples, inputTargets, clock };
     }
     const counts = Object.fromEntries(['pass', 'fail', 'invalid', 'incomplete'].map(k => [k, runs.filter(r => r.status === k).length]));
-    await writeFile(path.join(out, 'summary.json'), JSON.stringify({ device, dpr, throttle, method, steps, assertions, counts, validityRate: (runs.length - counts.invalid) / runs.length, settledFailureRate: counts.pass + counts.fail ? counts.fail / (counts.pass + counts.fail) : null, sheetRun: chosen.run, runs }, null, 2));
+    await writeFile(path.join(out, 'summary.json'), JSON.stringify({ device, viewport: device === 'iphone' ? `390x${height}` : '1440x900', dpr, throttle, method, steps, assertions, counts, validityRate: (runs.length - counts.invalid) / runs.length, settledFailureRate: counts.pass + counts.fail ? counts.fail / (counts.pass + counts.fail) : null, sheetRun: chosen.run, runs }, null, 2));
     console.log(`run ${run}/${repeat}: ${status}, median lateness ${lateness?.toFixed(1) ?? 'n/a'} ms, timeouts ${timeouts.length}`);
   }
   // Compose after all input and recorder work; screencast timestamps use wall seconds.
