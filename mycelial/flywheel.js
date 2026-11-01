@@ -92,7 +92,7 @@
       media: '<img data-src="../assets/cards/ados/la-2025-thumb.jpg" alt="">', face: '<span class="fw-face fw-face-ados"><b>ADOS</b></span>',
       full: { name: 'ADOS', line: 'ADOS events bring the community together in the real world. We gather our community with people from the extended creative world to look at art, eat nice food, and create things.',
         door: 'See events →', href: 'https://ados.events/',
-        stage: '<span class="fw-ad"><img data-src="../assets/cards/ados/la-2025-thumb.jpg" alt=""><span><small>Los Angeles — 7 November 2025</small><b>ADOS</b></span></span>' } },
+        stage: '<span class="fw-ad"><img data-src="../assets/cards/ados/la-2025-thumb.jpg" alt=""><span><b>ADOS</b></span></span>' } },
     // ArtCompute: its own terminal readout, the GPU hours granted (artcompute.org's figure, verified 2026-08-17), and three grantees; its
     // icon is the picture artcompute.org shows for itself (its share image, a frame of its background reel).
     { short: 'Micro-grants for open AI', name: 'ArtCompute', line: 'ArtCompute gives micro-grants to those pushing open AI models, approved by AI.', href: 'https://artcompute.org/', crop: [0.5, 0.3, 0.6],
