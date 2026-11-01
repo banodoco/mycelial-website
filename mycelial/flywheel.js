@@ -1006,6 +1006,33 @@
     if (m > 0 && m < 1) { const q = smooth(clamp((m - 0.3) / 0.7)); cur = { ...cur, lens: stages[0].lens.map((v, i) => lerp(v, stages[1].lens[i], q)) }; }
     cell = tall ? 1 : Math.max(short ? 1 : 2, Math.round(2.45 * cur.k));
   };
+  // Test the ring's outline, not its bounding box: on 11 the text sits inside
+  // the halo. Card bounds are the clipped, scaled rectangles calculated by place().
+  const copyBlocked = (target) => {
+    // The 9 artwork extends beyond the ring until its artists, groups and lens
+    // have folded away. The 10 core also fades inside the expanding halo.
+    if ((target === 1 && (nine() > 0.003 || lensA() > 0.003)) || (target === 2 && coreQ() > 0.003)) return true;
+    // On a return to 9 those elements grow back outside the ring; let the
+    // complete picture reach its fitted position before checking its clearance.
+    if (target === 0 && morph) return true;
+    const copy = hosts[target].querySelectorAll(':scope > .num, :scope > .fw-stat, :scope > .split > :first-child > *, :scope > .split > .fw-asks');
+    const [cx, cy, rx, ry] = cur.ring, pad = 8;
+    return [...copy].some((el) => {
+      // Slide 11 reserves the label's box for the mark but hides the label itself.
+      if (target === 2 && el.classList.contains('num')) return false;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return false;
+      const left = r.left - pad, right = r.right + pad, top = r.top - pad, bottom = r.bottom + pad;
+      const nearX = Math.max(left, Math.min(cx, right)), nearY = Math.max(top, Math.min(cy, bottom));
+      // Both strands and their beads occupy the band from the outer ring to
+      // its inner lane, not only the outer ellipse.
+      const outerNear = ((nearX - cx) / rx) ** 2 + ((nearY - cy) / ry) ** 2;
+      const innerX = Math.max(1, rx - lane()), innerY = Math.max(1, ry - lane());
+      const innerFar = Math.max(...[left, right].flatMap((x) => [top, bottom].map((y) => ((x - cx) / innerX) ** 2 + ((y - cy) / innerY) ** 2)));
+      if (outerNear <= 1 && innerFar >= 1) return true;
+      return vis.some((v, i) => v && chipQ(i) > 0.01 && v.x + v.w / 2 > left && v.x - v.w / 2 < right && v.y + v.h / 2 > top && v.y - v.h / 2 < bottom);
+    });
+  };
   const frame = () => {
     // A cleared stage on 10/11 includes all its cards, even when the morph or
     // its wall-time deadline arrives before their staggered introduction.
@@ -1016,8 +1043,14 @@
     draw();
     place();
     if (m >= 1) window.AstridMark?.follow(Math.min(1, m - 1)); // the deck's mark grows with the halo on the way to 11 (and back)
-    if (textClear && !morph && m === textClear.target) {
-      const release = textClear.release; textClear = null; release();
+    if (textClear) {
+      const blocked = copyBlocked(textClear.target);
+      if (blocked) textClear.blocked = true;
+      // If the initial picture was already clear, wait for the completed move:
+      // it may still cross the incoming copy on its way to the destination.
+      if (!blocked && (textClear.blocked || !morph)) {
+        const release = textClear.release; textClear = null; release();
+      }
     }
   };
 
@@ -1129,13 +1162,14 @@
     const withinWheel = ctx.from >= 8 && ctx.from <= 10 && activeStage >= 0 && begun;
     const target = ctx.to - 8;
     const clearing = withinWheel && !ctx.direct && !motionOff();
+    const duration = 1.15 + 0.45 * Math.abs(target - m);
     if (clearing) {
       const release = ctx.holdText(() => {
         if (!ctx.isCurrent()) return;
         m = target; morph = null; lastM = -1; frame();
         finishOperation(ctx);
-      });
-      textClear = { ctx, target, release };
+      }, duration * 1000 + 500);
+      textClear = { ctx, target, release, blocked: false };
     }
     const arrived = ctx.direct || withinWheel ? 'completed' : await ctx.arrived;
     if (arrived !== 'completed' || !ctx.isCurrent()) return 'cancelled';
@@ -1161,7 +1195,7 @@
       finishOperation(ctx);
       return done;
     }
-    morph = { from: m, to: target, t0: ta, dur: clearing ? 0.5 : 1.15 + 0.45 * Math.abs(target - m) };
+    morph = { from: m, to: target, t0: ta, dur: duration };
     if (target >= 1 && attach.dir <= 0) attach = { dir: 1, t0: Math.max(ta + 0.9, T.chips) };
     if (target === 0 && attach.dir > 0) { attach = { dir: -1, t0: ta, from: chips.map((_, i) => chipQ(i)) }; pulsed = [false, false, false]; }
     stop(); entryCtx = ctx; start(ctx);

@@ -2247,8 +2247,8 @@
     const back = !motionOff && stepped && dir < 0 && to === from - 1 && !reversePair;
     const disposers = new Set();
     // Scene hooks can synchronously hold text until their picture clears it.
-    // The deadline uses wall time, independent of animation pace.
-    const textStarted = performance.now(), textHolds = new Set();
+    // The deadline shares the animation clock, including its pauses and pace.
+    const textHolds = new Set();
     let textSealed = false, textDone = false, resolveText;
     const textReady = new Promise((resolve) => { resolveText = resolve; });
     const completeText = (result) => {
@@ -2264,19 +2264,19 @@
       rest: motionOff || (dir < 0 && !reversePair), back, signal: turnController.signal,
       now: window.deckNow, isCurrent: () => window.deckNav === context && !context.signal.aborted,
       arrived, textReady, superseded,
-      holdText(onDeadline) {
+      holdText(onDeadline, deadlineMs) {
         if (textSealed || textDone || !context.isCurrent()) throw new Error('Text holds must be declared synchronously during scene entry');
         let live = true;
         const release = () => {
           if (!live) return;
-          live = false; clearTimeout(timer); textHolds.delete(release);
+          live = false; window.deckCancelLater(timer); textHolds.delete(release);
           if (textSealed && !textHolds.size) completeText('completed');
         };
         textHolds.add(release);
-        const timer = setTimeout(() => {
+        const timer = window.deckLater(() => {
           if (!live || !context.isCurrent()) return;
           try { onDeadline?.(); } finally { release(); }
-        }, Math.max(0, 600 - (performance.now() - textStarted)));
+        }, deadlineMs, context);
         return release;
       },
       sealText() {
