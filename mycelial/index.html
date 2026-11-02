@@ -15,6 +15,47 @@
 <link rel="icon" type="image/png" sizes="96x96" href="../assets/brand/favicon-96.png">
 <link rel="apple-touch-icon" sizes="180x180" href="../assets/brand/apple-touch-icon.png">
 <script>
+  // Capture failures and allocations before any scene script runs, only on diagnostic URLs.
+  if (new URLSearchParams(location.search).has('debug')) {
+    const debug = window.__deckDebug = {};
+    const errors = [], lifecycle = [];
+    const canvas = { created: 0, bytes: 0, nulls: 0 };
+    const append = (list, item, limit) => { list.push(item); if (list.length > limit) list.shift(); };
+    const recordError = (kind, value, fallback) => append(errors, {
+      kind, message: String(value?.message || value || fallback || 'unknown'),
+      frame: String(value?.stack || '').split('\n').slice(1, 2)[0]?.trim() || ''
+    }, 3);
+    addEventListener('error', (event) => recordError('error', event.error, event.message || event.target?.src), true);
+    addEventListener('unhandledrejection', (event) => recordError('rejection', event.reason));
+    for (const name of ['visibilitychange', 'pageshow', 'pagehide', 'resize', 'deck-overview']) {
+      (name === 'visibilitychange' ? document : window).addEventListener(name, (event) => append(lifecycle,
+        { event: name, at: Math.round(performance.now()), hidden: document.hidden,
+          ...(name === 'pageshow' || name === 'pagehide' ? { persisted: event.persisted } : {}) }, 8));
+    }
+    let watchdogs = 0;
+    addEventListener('deck-watchdog', () => watchdogs++);
+    const create = document.createElement;
+    document.createElement = function(...args) {
+      const el = create.apply(this, args);
+      if (String(args[0]).toLowerCase() === 'canvas') { canvas.created++; canvas.bytes += el.width * el.height * 4; }
+      return el;
+    };
+    const proto = HTMLCanvasElement.prototype, getContext = proto.getContext;
+    proto.getContext = function(...args) {
+      const result = getContext.apply(this, args);
+      if (result === null) canvas.nulls++;
+      return result;
+    };
+    for (const name of ['width', 'height']) {
+      const descriptor = Object.getOwnPropertyDescriptor(proto, name);
+      Object.defineProperty(proto, name, { ...descriptor, set(value) {
+        descriptor.set.call(this, value); canvas.bytes += this.width * this.height * 4;
+      } });
+    }
+    Object.defineProperties(debug, {
+      capture: { get: () => ({ canvas: { ...canvas }, errors: errors.slice(), lifecycle: lifecycle.slice(), watchdogs }) }
+    });
+  }
   // Version F opens with the Mycelial mark: hide the slide before first paint (dot-transitions.js takes over).
   const root = document.documentElement;
   let gateOpened, gateMark;
@@ -2294,6 +2335,19 @@
   window.visualViewport?.addEventListener('resize', scheduleResize);
 
   // stepPace: an arrow, a click, a swipe or the back button, one slide at a time (never a jump), at the pace paceFor() chose.
+  if (window.__deckDebug) Object.defineProperty(window.__deckDebug, 'controller', { get: () => {
+    const context = turn?.context || window.deckNav;
+    return { index: i, generation, paused: timelinePaused, now: window.deckNow(), pace,
+      pending: pendingTurns.length, turnsStarted: generation,
+      turn: context ? { generation: context.generation, from: context.from, to: context.to, dir: context.dir,
+        back: context.back, rest: context.rest, direct: context.direct, superseded: context.superseded,
+        terminal: context.terminal, network: turn?.network ?? null, entry: turn?.entry ?? null,
+        textReady: turn?.textReady ?? null, scenePending: turn?.scenePending ?? null,
+        rewinding: turn?.rewinding ?? null, recovering: turn?.recovering ?? null,
+        wallMs: turn ? Date.now() - turn.debugWallStarted : null,
+        deckMs: turn ? window.deckNow() - turn.started : null,
+        watchdogMs: turn?.watchdogDeadline ? Math.max(0, turn.watchdogDeadline - Date.now()) : null } : null };
+  } });
   const startTurn = (n, historyMode = 'push', stepPace = 0, superseded = false) => {
     if (!booted) return;
     const stepped = stepPace > 0;
@@ -2399,6 +2453,7 @@
     turn = { context, arrive, to, dir: stepped ? dir : 0, basePace, network: false, entry: false, textReady: false,
       entryRequested: reduced && !scenes.has(to), scenePending: 0, watchdog: null, watchdogDeadline: 0, recovering: false, started: window.deckNow(), rewinding: false,
       budget: from === null ? 6500 : turnBudgets[to] };
+    if (window.__deckDebug) turn.debugWallStarted = Date.now();
     textReady.then((result) => {
       if (result !== 'completed' || turn?.context !== context || !context.isCurrent()) return;
       turn.textReady = true;
@@ -2600,5 +2655,86 @@
 <script src="flowers.js"></script>
 <script src="flywheel.js"></script>
 <script>window.deckBoot();</script>
+<script>
+// Diagnostic UI is intentionally independent of the animation clock.
+if (new URLSearchParams(location.search).has('debug')) (() => {
+  const debug = window.__deckDebug, panel = document.createElement('div');
+  panel.style.cssText = 'position:fixed;z-index:2147483647;top:env(safe-area-inset-top);left:0;right:0;pointer-events:none;color:#fff;font:11px/1.2 monospace';
+  const controls = document.createElement('div'), output = document.createElement('pre');
+  controls.style.cssText = 'text-align:right;pointer-events:none';
+  output.style.cssText = 'margin:0;padding:3px;background:rgba(0,0,0,.82);white-space:pre-wrap;overflow-wrap:anywhere';
+  const button = (label, action) => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
+    b.style.cssText = 'pointer-events:auto;font:11px monospace;padding:3px;color:white;background:#333;border:1px solid #aaa';
+    for (const event of ['pointerdown', 'touchstart', 'touchend', 'click']) b.addEventListener(event, e => e.stopPropagation());
+    b.addEventListener('click', action); controls.appendChild(b);
+  };
+  const copyColumn = (slide) => slide?.querySelector(slide.matches('.fw-raise') ? ':scope > .split' : ':scope > .split > :first-child');
+  let bottom = false, lastNow, lastFrame = performance.now(), frames = [], snapshot;
+  button('↕', () => { bottom = !bottom; panel.style.top = bottom ? 'auto' : 'env(safe-area-inset-top)'; panel.style.bottom = bottom ? 'env(safe-area-inset-bottom)' : 'auto'; });
+  button('repaint', () => {
+    const slide = document.querySelector('.slide.on'), el = copyColumn(slide);
+    if (!el) return;
+    const old = el.style.willChange; el.style.willChange = 'opacity'; requestAnimationFrame(() => { el.style.willChange = old; });
+  });
+  button('copy log', () => { navigator.clipboard?.writeText(JSON.stringify(snapshot, null, 2)).catch(() => {}); });
+  panel.append(controls, output); document.body.appendChild(panel);
+  const frame = (now) => { lastFrame = now; frames.push(now); while (frames.length && frames[0] < now - 1000) frames.shift(); requestAnimationFrame(frame); };
+  requestAnimationFrame(frame);
+  const maskSummary = (mask) => {
+    if (!mask || mask === 'none') return 'none';
+    const radius = mask.match(/(?:transparent|rgba\([^)]*,\s*0\))\s+([\d.]+)px\s*\)$/i);
+    if (radius) return 'r=' + radius[1];
+    if (/linear-gradient/i.test(mask)) return 'linear';
+    return mask.slice(0, 32);
+  };
+  const copyState = (el) => {
+    if (!el) return null;
+    const style = getComputedStyle(el), rect = el.getBoundingClientRect();
+    let product = 1;
+    for (let node = el; node; node = node.parentElement) product *= Number(getComputedStyle(node).opacity);
+    const mask = el.style.maskImage || el.style.webkitMaskImage;
+    let check = null;
+    try { if (el.checkVisibility) check = el.checkVisibility({ opacityProperty: true, visibilityProperty: true }); } catch (e) {}
+    return { inlineMask: /linear-gradient/i.test(mask) ? 'r=0' : maskSummary(mask),
+      inlineVisibility: el.style.visibility || 'default', opacity: style.opacity, opacityProduct: +product.toFixed(3),
+      visibility: style.visibility, mask: style.maskImage, webkitMask: style.webkitMaskImage, checkVisibility: check,
+      rect: [rect.x, rect.y, rect.width, rect.height].map(Math.round) };
+  };
+  let build = 'dev';
+  fetch('/release-revision.txt', { cache: 'no-store' }).then((r) => (r.ok ? r.text() : '')).then((t) => { if (/^[0-9a-f]{7,}/.test(t.trim())) build = t.trim().slice(0, 7); }).catch(() => {});
+  const tick = () => {
+    const c = debug.controller || {}, cap = debug.capture, now = performance.now(), slide = document.querySelector('.slide.on');
+    const vv = window.visualViewport, ua = navigator.userAgent;
+    const uaTag = /CriOS/i.test(ua) ? 'Chrome-iOS' : /iP(?:hone|ad|od)/i.test(ua) && !/Safari/i.test(ua) ? 'SFSafariVC?' : /Safari/i.test(ua) ? 'Safari' : 'other';
+    snapshot = { build, ua: uaTag, userAgent: ua, viewport: [innerWidth, innerHeight],
+      visualViewport: vv ? [Math.round(vv.width), Math.round(vv.height)] : null, dpr: devicePixelRatio,
+      clock: { hidden: document.hidden, visibility: document.visibilityState, paused: c.paused, now: c.now,
+        advanced: lastNow == null ? null : c.now > lastNow, pace: c.pace,
+        rafPerSecond: frames.filter(t => t >= now - 1000).length, rafAgeMs: Math.round(now - lastFrame) },
+      controller: c, slide: slide ? { classes: [...slide.classList].filter(x => x === 'on' || x.startsWith('dt-') || x.endsWith('-host')),
+        settled: slide.hasAttribute('data-settled'), present: slide.hasAttribute('data-deck-present') } : null,
+      copy: { column: copyState(copyColumn(slide)),
+        stat: copyState(slide?.querySelector(':scope > .fw-stat')), h1: copyState(slide?.querySelector('h1')) },
+      network: debug.network || null, ...cap };
+    lastNow = c.now;
+    const t = c.turn || {}, k = snapshot.clock, n = snapshot.network || {};
+    const shortCopy = (v) => v ? `${v.inlineMask} iv:${v.inlineVisibility} op:${v.opacity}/${v.opacityProduct} vis:${v.visibility} masks:${maskSummary(v.mask)}|${maskSummary(v.webkitMask)} check:${v.checkVisibility} rect:${v.rect}` : '-';
+    const errors = cap.errors.map(e => `${e.kind}:${e.message.slice(0, 65)} ${e.frame.slice(0, 90)}`).join('\n');
+    const events = cap.lifecycle.map(e => `${e.at}:${e.event}${e.persisted === undefined ? '' : '(' + Number(e.persisted) + ')'}${e.hidden ? '[hidden]' : ''}`).join(' ');
+    output.textContent = `${build} ${uaTag} ${innerWidth}×${innerHeight} vv:${snapshot.visualViewport} dpr:${devicePixelRatio}\n` +
+      `hidden:${k.hidden}/${k.visibility} paused:${k.paused} now:${Math.round(k.now || 0)} advanced:${k.advanced} pace:${k.pace} rAF:${k.rafPerSecond}/s age:${k.rafAgeMs}\n` +
+      `turn:${t.generation} ${t.from}→${t.to} dir:${t.dir} back/rest/direct/super:${t.back}/${t.rest}/${t.direct}/${t.superseded} terminal:${t.terminal}\n` +
+      `net/entry/text:${t.network}/${t.entry}/${t.textReady} scene:${t.scenePending} rewind:${t.rewinding} recover:${t.recovering} wall/deck:${Math.round(t.wallMs || 0)}/${Math.round(t.deckMs || 0)} watchdog:${t.watchdogMs} queue:${c.pending} starts:${c.turnsStarted} wd:${cap.watchdogs}\n` +
+      `slide:${c.index + 1} ${snapshot.slide?.classes.join(' ')} settled:${snapshot.slide?.settled} present:${snapshot.slide?.present}\n` +
+      `column ${shortCopy(snapshot.copy.column)}\nstat ${shortCopy(snapshot.copy.stat)}\nh1 ${shortCopy(snapshot.copy.h1)}\n` +
+      `network current:${n.current} turning:${n.turning} visit:${n.visit} tweens:${n.textTweens} zones/hyphae/baked:${n.zones}/${n.hyphae}/${n.baked} canvas:${n.canvas}\n` +
+      `canvas created:${cap.canvas.created} bytes~:${cap.canvas.bytes} nulls:${cap.canvas.nulls}\n` +
+      `errors:${errors || '-'}\nevents:${events || '-'}`;
+  };
+  tick(); setInterval(tick, 250);
+})();
+</script>
+
 </body>
 </html>
