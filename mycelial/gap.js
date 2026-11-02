@@ -120,18 +120,16 @@
   document.body.appendChild(sky);
   const g = sky.getContext('2d');
   let flights = [], flying = false, timers = [], forwardRaf = 0, visitCtx = null, forwardGeneration = 0;
-  // The flight layer is kept (sized) only while slide 2 or 3 is up, the turns that fly on it, and shown only in flight;
-  // elsewhere it is let go, so the other slides neither hold nor composite a full-screen canvas. size() brings it back.
+  // Keep the flight layer sized for reuse, and show it only during flight.
   const near = () => slide.classList.contains('on') || !!fieldSlide?.classList.contains('on');
   const show = (on) => { sky.style.display = on ? '' : 'none'; };
   const retireForward = (keepCanvas = false) => {
     forwardGeneration++;
     if (forwardRaf) cancelAnimationFrame(forwardRaf);
     forwardRaf = 0; flying = false; flights = [];
-    g.clearRect(0, 0, innerWidth, innerHeight);
+    g?.clearRect(0, 0, innerWidth, innerHeight);
     if (!keepCanvas) {
       show(false);
-      if (!near()) sky.width = sky.height = 0;
     }
   };
   const idleSoon = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 100));
@@ -150,16 +148,14 @@
   const size = () => {
     const dpr = Math.min(2, devicePixelRatio || 1);
     const width = Math.round(innerWidth * dpr), height = Math.round(innerHeight * dpr);
-    if (sky.width !== width || sky.height !== height) {
-      sky.width = width; sky.height = height;
-    }
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (sky.width !== width) sky.width = width;
+    if (sky.height !== height) sky.height = height;
+    g?.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
   const keepSky = () => {
     if (near()) setTimeout(() => idleSoon(() => { if (near() && !flying && !backs.length) size(); }), 1200);
-    else setTimeout(() => { if (!near() && !flying && !backs.length && !backRaf) { sky.width = 0; sky.height = 0; } }, 700);
   };
-  if (near()) size(); else { sky.width = 0; sky.height = 0; }
+  if (near()) size();
   show(false);
   // Where each disc will be once the slide has finished rising into place.
   const lift = () => { const m = getComputedStyle(slide).transform; return m && m !== 'none' ? new DOMMatrixReadOnly(m).f : 0; };
@@ -238,6 +234,7 @@
 
   const smooth = (k) => k * k * (3 - 2 * k);
   const orb = (x, y, r, c, a, glow) => {
+    if (!g) return;
     if (glow > 0.004) {
       const halo = g.createRadialGradient(x, y, 0, x, y, r * 2.4);
       halo.addColorStop(0, `rgba(${c},${glow.toFixed(3)})`);
@@ -265,7 +262,7 @@
     flightTime += Math.max(0, (clock - (flightLast || clock)) / 1000);
     flightLast = clock;
     const t = flightTime;
-    g.clearRect(0, 0, innerWidth, innerHeight);
+    g?.clearRect(0, 0, innerWidth, innerHeight);
     const drawn = t > 0.95; // once the axes start drawing, the settled dust fades into them
     flights = flights.filter((f) => {
       const k = clamp((t - f.delay) / f.dur);
@@ -288,7 +285,7 @@
       return true;
     });
     if (flights.length) forwardRaf = requestAnimationFrame((t) => fly(t, ctx, generation));
-    else { g.clearRect(0, 0, innerWidth, innerHeight); flying = false; if (!backs.length) show(false); window.deckEntryDone?.(slide, ctx); }
+    else { g?.clearRect(0, 0, innerWidth, innerHeight); flying = false; if (!backs.length) show(false); window.deckEntryDone?.(slide, ctx); }
   };
 
   // ---- Going back ----------------------------------------------------------
@@ -302,7 +299,7 @@
     const dt = Math.max(0, (clock - (backLast || clock)) / 1000);
     backLast = clock;
     backT += dt;
-    g.clearRect(0, 0, innerWidth, innerHeight);
+    g?.clearRect(0, 0, innerWidth, innerHeight);
     backs = backs.filter((f) => {
       const t = f.end - backT; // the arrival's own clock, running backwards
       if (f.dot) {
@@ -328,8 +325,8 @@
     departRaf = 0;
     if (backRaf) cancelAnimationFrame(backRaf);
     backRaf = 0; backs = [];
-    g.clearRect(0, 0, innerWidth, innerHeight);
-    if (!flying) { show(false); if (!near()) { sky.width = 0; sky.height = 0; } } // kept while slide 2 or 3 is up (size() brings it back)
+    g?.clearRect(0, 0, innerWidth, innerHeight);
+    if (!flying) show(false);
     if (!slide.classList.contains('on')) reset();
     if (fieldSlide) window.deckRewound?.(fieldSlide, reverseCtx);
   };
@@ -428,7 +425,7 @@
     // Flight endpoints were measured in the old viewport. Finish at the new
     // chart instead of leaving old pixel coordinates suspended over it.
     show(false);
-    g.clearRect(0, 0, innerWidth, innerHeight);
+    g?.clearRect(0, 0, innerWidth, innerHeight);
     root.classList.add('is-drawn', 'is-labelled');
     tools.forEach((el) => { el.classList.add('is-in'); el.style.removeProperty('--m'); });
     window.deckEntryDone?.(slide, ctx);

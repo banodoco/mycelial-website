@@ -170,7 +170,8 @@
     const nextDpr = Math.min(2, devicePixelRatio || 1);
     const pixelW = Math.round(nextW * nextDpr), pixelH = Math.round(nextH * nextDpr);
     if (canvas.width !== pixelW || canvas.height !== pixelH) {
-      canvas.width = pixelW; canvas.height = pixelH;
+      if (canvas.width !== pixelW) canvas.width = pixelW;
+      if (canvas.height !== pixelH) canvas.height = pixelH;
     }
     w = nextW; h = nextH; dpr = nextDpr;
     measure();
@@ -307,6 +308,7 @@
     }
     const calm = front ? 0.45 : 1;
 
+    if (!ctx) { if (rewind) stepRewind(); return; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     let paint = null;
@@ -465,8 +467,7 @@
   // tile now, then released (edges first) to fly at us and thin into stars.
   const collage = document.querySelector('[data-collage]');
   const collageSlide = collage && collage.closest('.slide');
-  const sampler = document.createElement('canvas');
-  const sctx = sampler.getContext('2d', { willReadFrequently: true });
+  const samplers = new Map();
   let motes = [];
   // The ring's centre, in the stage's px.
   const middle = (base) => {
@@ -539,7 +540,16 @@
     return [sx, sy, sw, sh];
   };
   const grab = (pic, w, h, aspect, cols, rows) => {
-    sampler.width = cols; sampler.height = rows;
+    const key = `${cols}x${rows}`;
+    let sctx = samplers.get(key);
+    if (sctx === undefined) {
+      const sampler = document.createElement('canvas');
+      sampler.width = cols; sampler.height = rows;
+      sctx = sampler.getContext('2d', { willReadFrequently: true });
+      samplers.set(key, sctx);
+    }
+    if (!sctx) return null;
+    sctx.clearRect(0, 0, cols, rows);
     try { sctx.drawImage(pic, ...cropOf(pic, w, h, aspect), 0, 0, cols, rows); return sctx.getImageData(0, 0, cols, rows).data; } catch { return null; }
   };
   // Reading a picture back from the GPU is slow, and slower still while the turn to slide 2 is under way, so each

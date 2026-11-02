@@ -778,6 +778,14 @@
       state?.resolve?.('completed');
       return true;
     },
+    retire(slide) {
+      if (!slide) return;
+      const state = copyStates.get(slide);
+      if (state?.timer) window.deckCancelLater(state.timer);
+      state?.resolve?.('cancelled');
+      copyStates.set(slide, { phase: 'retired' });
+      textOf(slide).forEach((el) => paintCopy(el, null, 0, true));
+    },
     paint(el, at, r) { paintCopy(el, at, r); },
   };
   const reach = (el, at) => {
@@ -900,14 +908,24 @@
   const GATHER = 400;
   const gather = (s, at, context) => {
     const tw = [];
+    const old = copyStates.get(s);
+    if (old?.timer) window.deckCancelLater(old.timer);
+    old?.resolve?.('cancelled');
+    const state = { context, phase: 'gathering' };
+    copyStates.set(s, state);
     for (const el of textOf(s)) {
       const saved = masks.get(el), centre = saved?.at || at, far = saved?.r ?? reach(el, at);
       for (const p of spots(el, 6)) {
         hypha(wander(p, at), { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38, owner: context });
       }
-      const run = tween(GATHER, easeIn, (k) => { if (!s.classList.contains('on')) copy.paint(el, centre, (1 - k) * far); }, 0, context);
+      const run = tween(GATHER, easeIn, (k) => {
+        if (copyStates.get(s) === state && !s.classList.contains('on')) copy.paint(el, centre, (1 - k) * far);
+      }, 0, context);
       tw.push(run);
     }
+    Promise.all(tw).then((results) => {
+      if (copyStates.get(s) === state && results.every((result) => result === 'completed') && context.isCurrent() && !s.classList.contains('on')) copy.retire(s);
+    });
     return tw;
   };
   // How far into the gather (ms) the new text starts growing from its node: OVERLAP of the way, so its first words
@@ -1179,7 +1197,7 @@
     stopText(context);
     if (active()) adopt(); else restore();
     [slides[context.from], slides[context.to]].filter(Boolean).forEach((sl) => context.present(sl, '', 'dt-leaving dt-release'));
-    slides.forEach((sl) => copy.show(sl));
+    slides.forEach((sl) => sl === targetSlide ? copy.show(sl) : copy.retire(sl));
     trail = { x: 0, y: 0 };
     anchor = targetSlide ? anchorOf(targetSlide) : null;
     const on = active() && !!anchor;
@@ -1230,6 +1248,7 @@
         done = true;
         landed?.('cancelled');
         tweens.forEach((tw) => tw.stop());
+        if (!prev.classList.contains('on')) copy.retire(prev);
         anims.forEach((a) => a.cancel());
         // Retire only this interrupted turn's transient drawing, not ambient growth.
         hyphae = hyphae.filter((h) => h.owner !== context);
@@ -1249,6 +1268,9 @@
 
     // 1. Threads reach across the old text and draw it back into its node.
     context.present(prev, 'dt-leaving');
+    // Start the outgoing clock before measuring and initializing the next
+    // slide, so expensive layout work counts towards the gather.
+    tweens.push(...gather(prev, from, context));
     current = next;
     const to = anchorOf(next) || from;
     const early = overlap(prev, from, to);
@@ -1256,7 +1278,6 @@
     // only after both that hold and the overlap milestone have passed.
     const revealAt = Math.max(started + early, context.textDeadline);
     const copyVisit = copy.hide(next, context, to, Math.max(0, revealAt - context.now()) + revealDuration(next, to) + 400);
-    tweens.push(...gather(prev, from, context));
     anchor = to;
     drift = { x: 0, y: 0 }; trail = { x: 0, y: 0 };
     // The closing mark grows only when the travelling node reaches its destination (arrive below).
@@ -1290,7 +1311,7 @@
       timers.push(window.deckLater(() => {
         if (prev.classList.contains('on')) return;
         context.present(prev, '', 'dt-leaving dt-release');
-        copy.show(prev);
+        copy.retire(prev);
       }, 700));
       landed('completed');
     };
@@ -1472,6 +1493,8 @@
     attempt(() => stopText(context));
     const destination = slides[context.to];
     if (!destination) return false;
+    const source = slides[context.from];
+    if (source && source !== destination) attempt(() => copy.retire(source));
     let complete = false;
     attempt(() => { complete = copy.show(destination); });
     if (complete) finishNetwork(context);

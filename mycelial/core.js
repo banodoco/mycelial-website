@@ -55,12 +55,14 @@
   glow.width = glow.height = 128;
   {
     const sg = glow.getContext('2d');
-    const rg = sg.createRadialGradient(64, 64, 0, 64, 64, 64);
-    rg.addColorStop(0, `rgba(${NODE},1)`);
-    rg.addColorStop(0.35, `rgba(${NODE},0.35)`);
-    rg.addColorStop(1, `rgba(${NODE},0)`);
-    sg.fillStyle = rg;
-    sg.fillRect(0, 0, 128, 128);
+    if (sg) {
+      const rg = sg.createRadialGradient(64, 64, 0, 64, 64, 64);
+      rg.addColorStop(0, `rgba(${NODE},1)`);
+      rg.addColorStop(0.35, `rgba(${NODE},0.35)`);
+      rg.addColorStop(1, `rgba(${NODE},0)`);
+      sg.fillStyle = rg;
+      sg.fillRect(0, 0, 128, 128);
+    }
   }
   const halo = (x, y, r, a) => {
     if (a <= 0.003 || r <= 0) return;
@@ -176,8 +178,8 @@
     if (!b.width || !b.height) return false;
     W = b.width; H = b.height;
     dpr = Math.min(2, devicePixelRatio || 1);
-    canvas.width = Math.round(W * dpr);
-    canvas.height = Math.round(H * dpr);
+    if (canvas.width !== Math.round(W * dpr)) canvas.width = Math.round(W * dpr);
+    if (canvas.height !== Math.round(H * dpr)) canvas.height = Math.round(H * dpr);
     small = W <= 760 && (H >= W || H > 500); // a phone held upright (one on its side takes the wide layout)
     const num = slide.querySelector('.num');
     const nb = num.getBoundingClientRect();
@@ -669,6 +671,7 @@
   };
 
   const draw = () => {
+    if (!g) return;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
     if (!rings.length) return;
@@ -782,8 +785,7 @@
     hot = pinned = null;
     card.classList.remove('is-on');
     slide.style.cursor = '';
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.clearRect(0, 0, canvas.width, canvas.height);
+    if (g) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height); }
     canvas.style.opacity = '';
   };
   // Everything grown at once: for reduced motion, and after a resize.
@@ -1006,32 +1008,36 @@
   // and its layers (painted on their own canvases) and carries them into its panels.
   // They are painted at the press (slide 4 breathes, so they are painted as it stands), on three canvases allocated
   // ahead, while slide 4 or 5 is up (the hand-off runs both ways), and reused, so the press allocates nothing (three
-  // full-screen canvases there set off a full garbage collection in the press frame). Leaving both lets them go.
+  // full-screen canvases there set off a full garbage collection in the press frame). They stay allocated for the next handoff.
   const layerCv = { agent: null, face: null, outer: null };
   let lent = false; // slide 5's morph is drawing them
   const sizeLayers = () => {
     for (const w in layerCv) {
       const c = layerCv[w] || (layerCv[w] = document.createElement('canvas'));
-      if (c.width !== canvas.width || c.height !== canvas.height) { c.width = canvas.width; c.height = canvas.height; }
+      if (c.width !== canvas.width) c.width = canvas.width;
+      if (c.height !== canvas.height) c.height = canvas.height;
     }
   };
-  const freeLayers = () => { for (const w in layerCv) if (layerCv[w]) { layerCv[w].width = 0; layerCv[w].height = 0; } };
   const paintLayer = (which) => {
     // One of the right size is cleared back to its first state, as a new canvas starts; otherwise it is sized now.
     let off = layerCv[which];
     if (!off) off = layerCv[which] = document.createElement('canvas');
-    const x = off.width === canvas.width && off.height === canvas.height && off.getContext('2d');
-    if (x && x.reset) x.reset();
-    else { off.width = canvas.width; off.height = canvas.height; }
+    if (off.width !== canvas.width) off.width = canvas.width;
+    if (off.height !== canvas.height) off.height = canvas.height;
+    const x = off.getContext('2d');
+    if (!x) return null;
+    if (x.reset) x.reset();
+    else { x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, off.width, off.height); }
     const keep = g;
-    g = off.getContext('2d');
+    g = x;
+    g.save();
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.lineCap = 'round'; g.lineJoin = 'round';
     try {
       if (which === 'agent') drawAgent();
       else if (which === 'face') drawFace();
       else { drawSides(); drawOrbit(); grow(feed, T.feed, 0.75 / pace, 0.7 * LW, 0.38); }
-    } finally { g = keep; }
+    } finally { g.restore(); g = keep; }
     return off;
   };
   const strandPts = (side, n) => STRANDS[side].map((st) => Array.from({ length: n }, (_, i) => {
@@ -1041,6 +1047,8 @@
   window.AstridCore = {
     snapshot() {
       if (!rings.length || ta < T.end) return null; // only a picture that has finished growing is carried on
+      const layers = { agent: paintLayer('agent'), face: paintLayer('face'), outer: paintLayer('outer') };
+      if (Object.values(layers).some((layer) => !layer)) return null;
       lent = true;
       const b = root.getBoundingClientRect();
       return {
@@ -1049,20 +1057,19 @@
         outline: lens.outline.pts, throat: lens.throat.pts, eye: lens.eye,
         slots: sides.flatMap((sd) => sd.slots.filter((x) => x.state !== 'none').map((x) => ({ x: x.x, y: x.y, side: x.side }))),
         orbit: orbit.filter((_, i) => i % 3 === 0).map((o) => ({ x: o.x, y: o.y })),
-        layers: { agent: paintLayer('agent'), face: paintLayer('face'), outer: paintLayer('outer') },
+        layers,
       };
     },
     hide() { canvas.style.opacity = '0'; },
     show() { canvas.style.opacity = ''; }, // slide 5 folding back into this picture: it is whole again
-    release() { lent = false; if (!near45()) freeLayers(); }, // slide 5's morph is done with them
+    release() { lent = false; }, // slide 5's morph is done with them
   };
 
-  // The hand-off's layers: allocated once slide 4 or 5 is up and the page is idle, let go once both are left.
+  // The hand-off's layers: allocated once slide 4 or 5 is up and the page is idle, retained for later handoffs.
   const demoSlide = document.querySelector('[data-astrid-demo]')?.closest('.slide');
   const near45 = () => slide.classList.contains('on') || !!demoSlide?.classList.contains('on');
   const keepLayers = () => {
     if (near45()) { if (!still) setTimeout(() => idleSoon(() => { if (near45() && !lent) sizeLayers(); }), 1500); }
-    else setTimeout(() => { if (!near45() && !lent) freeLayers(); }, 700);
   };
   const keep = new MutationObserver(keepLayers);
   [slide, demoSlide].filter(Boolean).forEach((s) => keep.observe(s, { attributes: true, attributeFilter: ['class'] }));

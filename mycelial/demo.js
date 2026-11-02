@@ -99,6 +99,7 @@
   const mink = { pose: 'profile', lift: 0, glint: 0, seq: null, hover: null };
   let paintedMink = { pose: 'profile', lift: 0, glint: 0 };
   const paint = (pose, lift, glint) => {
+    if (!mg) return;
     paintedMink = { pose, lift, glint };
     const P = M.POSES[pose], w = P[0].length, h = P.length, u = cell * dpr;
     mg.clearRect(0, 0, minkCv.width, minkCv.height);
@@ -117,7 +118,8 @@
     dpr = Math.min(2, Math.round(devicePixelRatio || 1) || 1);
     cell = innerWidth <= 760 ? 2 : innerHeight >= 860 ? 4 : innerHeight >= 660 ? 3 : 2;
     root.style.setProperty('--as-cell', `${cell}px`);
-    minkCv.width = 23 * cell * dpr; minkCv.height = (20 + HEAD) * cell * dpr;
+    if (minkCv.width !== 23 * cell * dpr) minkCv.width = 23 * cell * dpr;
+    if (minkCv.height !== (20 + HEAD) * cell * dpr) minkCv.height = (20 + HEAD) * cell * dpr;
     minkCv.style.width = `${23 * cell}px`; minkCv.style.height = `${(20 + HEAD) * cell}px`;
     minkCv.style.transform = `translateX(-${Math.round(23 * cell / 2)}px)`;
     paint(mink.pose, mink.lift, mink.glint);
@@ -157,13 +159,16 @@
   // ResizeObserver rather than a layout read every frame.
   let picCW = -1, picCH = -1, picKey = '';
   const outgoing = document.createElement('canvas'), og = outgoing.getContext('2d');
+  const saved = document.createElement('canvas'), savedG = saved.getContext('2d');
   const PIC_FADE = 450;
   let picFade = null, hasPicFrame = false;
-  const clearPicFade = () => { picFade = null; hasPicFrame = false; outgoing.width = outgoing.height = 1; };
+  const clearPicFade = () => { picFade = null; hasPicFrame = false; og?.clearRect(0, 0, outgoing.width, outgoing.height); };
   const fadePic = () => {
-    if (motionOff() || !hasPicFrame) return;
+    if (motionOff() || !hasPicFrame || !og) return;
     // Capture the complete displayed result, including effects and any interrupted dissolve.
-    outgoing.width = pic.width; outgoing.height = pic.height;
+    if (outgoing.width !== pic.width) outgoing.width = pic.width;
+    if (outgoing.height !== pic.height) outgoing.height = pic.height;
+    og.clearRect(0, 0, outgoing.width, outgoing.height);
     og.drawImage(pic, 0, 0);
     picFade = { at: null };
     picKey = '';
@@ -171,14 +176,22 @@
   const sizePic = () => {
     const b = pic.getBoundingClientRect();
     pdpr = Math.min(2, devicePixelRatio || 1);
-    const saved = document.createElement('canvas');
-    if (hasPicFrame) { saved.width = pic.width; saved.height = pic.height; saved.getContext('2d').drawImage(pic, 0, 0); }
-    pic.width = Math.max(1, Math.round(b.width * pdpr)); pic.height = Math.max(1, Math.round(b.height * pdpr));
-    if (hasPicFrame) pg.drawImage(saved, 0, 0, pic.width, pic.height);
+    const width = Math.max(1, Math.round(b.width * pdpr)), height = Math.max(1, Math.round(b.height * pdpr));
+    if (pic.width === width && pic.height === height) return;
+    if (hasPicFrame && savedG) {
+      if (saved.width !== pic.width) saved.width = pic.width;
+      if (saved.height !== pic.height) saved.height = pic.height;
+      savedG.clearRect(0, 0, saved.width, saved.height);
+      savedG.drawImage(pic, 0, 0);
+    }
+    if (pic.width !== width) pic.width = width;
+    if (pic.height !== height) pic.height = height;
+    if (hasPicFrame && savedG && pg) pg.drawImage(saved, 0, 0, pic.width, pic.height);
     picKey = ''; // sizing a canvas clears it
   };
   new ResizeObserver((es) => { for (const e of es) { picCW = e.contentRect.width; picCH = e.contentRect.height; } }).observe(pic);
   const drawPic = (t) => {
+    if (!pg) return;
     const cw = picCW < 0 ? pic.clientWidth : picCW, ch = picCH < 0 ? pic.clientHeight : picCH;
     if (Math.abs(cw * pdpr - pic.width) > 1 || Math.abs(ch * pdpr - pic.height) > 1) sizePic();
     const src = view.mode === 'still' ? anchors[view.i] : (view.mode === 'guide' || view.mode === 'guide-hold') ? guide : view.mode === 'play' ? videos[0] : null;
@@ -302,8 +315,7 @@
   };
   const clearAll = () => {
     clearPicFade();
-    pg.setTransform(1, 0, 0, 1, 0, 0);
-    pg.clearRect(0, 0, pic.width, pic.height);
+    if (pg) { pg.setTransform(1, 0, 0, 1, 0, 0); pg.clearRect(0, 0, pic.width, pic.height); }
     root.classList.remove('has-frame');
     picKey = '';
     msgs.innerHTML = ''; follow = true;
@@ -485,13 +497,15 @@
     return out;
   };
   // The sky is allocated ahead, while slide 4 or 5 is up (allocating it in the press frame added to a full garbage
-  // collection there), cleared back to its first state as a morph begins, and let go once both slides are left.
+  // collection there), cleared back to its first state as a morph begins, and retained for later handoffs.
   const skySize = () => [Math.round(innerWidth * Math.min(2, devicePixelRatio || 1)), Math.round(innerHeight * Math.min(2, devicePixelRatio || 1))];
-  const freeSky = () => { sky.width = 0; sky.height = 0; };
   const startMorph = (snap, back = false, ctx = back ? reverseCtx : entryCtx) => {
     const d = Math.min(2, devicePixelRatio || 1);
     const [sw, sh] = skySize();
-    if (sky.width === sw && sky.height === sh && sg.reset) sg.reset(); else { sky.width = sw; sky.height = sh; }
+    if (sky.width !== sw) sky.width = sw;
+    if (sky.height !== sh) sky.height = sh;
+    if (sg?.reset) sg.reset();
+    else if (sg) { sg.setTransform(1, 0, 0, 1, 0, 0); sg.clearRect(0, 0, sw, sh); }
     sky.style.display = 'block';
     if (!back) root.classList.add('is-morphing', 'is-minkless'); // (folding back, the editor is whole as it begins)
     sizeMink();
@@ -536,73 +550,75 @@
   const lerp = (a, b, q) => a + (b - a) * q;
   const drawMorph = (t) => {
     const m = morph, e = Math.max(0, t - m.t0) / 1000, d = m.d;
-    sg.setTransform(d, 0, 0, d, 0, 0);
-    sg.clearRect(0, 0, sky.width / d, sky.height / d);
-    sg.lineCap = 'round'; sg.lineJoin = 'round';
-    const k01 = ([a, b]) => clamp((e - a) / b);
-    const qf = easeIO(k01(MORPH.fly));
-    for (const f of m.fly) {
-      const s = lerp(1, f.to.s * 0.82, qf), x = lerp(f.from.x, f.to.x, qf), y = lerp(f.from.y, f.to.y, qf);
-      const a = 1 - smoothstep(clamp((e - 0.45) / 0.65));
-      if (a <= 0) continue;
-      sg.save();
-      sg.globalAlpha = a;
-      sg.translate(x, y); sg.scale(s, s); sg.translate(-f.from.x, -f.from.y);
-      sg.drawImage(f.img, m.snap.left, m.snap.top, m.snap.W, m.snap.H);
-      sg.restore();
-    }
-    const qo = 1 - clamp(e / 0.3);
-    if (qo > 0) { sg.globalAlpha = qo; sg.drawImage(m.snap.layers.outer, m.snap.left, m.snap.top, m.snap.W, m.snap.H); sg.globalAlpha = 1; }
-    for (const p of m.motes) {
-      const q = clamp((e - p.d) / 0.9);
-      if (q <= 0 || q >= 1) continue;
-      const qq = p.away ? ease(q) : easeIO(q);
-      const x = lerp(p.x, p.tx, qq), y = lerp(p.y, p.ty, qq), a = Math.sin(Math.PI * q) * (p.away ? 0.55 : 0.85);
-      sg.fillStyle = `rgba(255,217,145,${a.toFixed(3)})`;
-      sg.beginPath(); sg.arc(x, y, p.r, 0, Math.PI * 2); sg.fill();
-    }
-    const qr = easeIO(k01(MORPH.rings));
-    const fa = 1 - clamp((e - MORPH.resolve - 0.1) / 0.45);
-    if (fa > 0) {
-      m.rings.forEach((r) => {
-        r.strands.forEach((st, si) => {
-          const spread = 1 - qr;
-          sg.lineWidth = lerp(r.width[si] * m.snap.lw, 1, qr);
-          sg.strokeStyle = `rgba(240,200,119,${(lerp(r.alpha[si], si ? 0 : 0.55, qr) * fa).toFixed(3)})`;
-          sg.beginPath();
-          st.forEach(([x, y], i) => {
-            const [tx, ty] = r.target[i];
-            const px = lerp(x, tx, qr), py = lerp(y, ty, qr);
-            if (spread <= 0 && si) return;
-            i ? sg.lineTo(px, py) : sg.moveTo(px, py);
-          });
-          sg.closePath(); sg.stroke();
-        });
-      });
-    }
-    const qm = easeIO(k01(MORPH.outline));
-    const oa = 1 - clamp((e - MORPH.pixels[0] - 0.15) / 0.35);
-    if (!m.steps.handoff) {
-      if (oa > 0) {
-        for (const [src, dst, w, a] of [[m.outline, m.outlineTo, 1.2, 0.9], [m.throat, m.throatTo, 0.8, 0.45]]) {
-          sg.lineWidth = w;
-          sg.strokeStyle = `rgba(255,217,145,${(a * oa).toFixed(3)})`;
-          sg.beginPath();
-          src.forEach(([x, y], i) => { const px = lerp(x, dst[i][0], qm), py = lerp(y, dst[i][1], qm); i ? sg.lineTo(px, py) : sg.moveTo(px, py); });
-          sg.stroke();
-        }
-        const ex = lerp(m.eyeFrom.x, m.eyeTo.x, qm), ey = lerp(m.eyeFrom.y, m.eyeTo.y, qm);
-        sg.fillStyle = `rgba(255,236,200,${oa.toFixed(3)})`;
-        sg.beginPath(); sg.arc(ex, ey, 3, 0, Math.PI * 2); sg.fill();
+    if (sg) {
+      sg.setTransform(d, 0, 0, d, 0, 0);
+      sg.clearRect(0, 0, sky.width / d, sky.height / d);
+      sg.lineCap = 'round'; sg.lineJoin = 'round';
+      const k01 = ([a, b]) => clamp((e - a) / b);
+      const qf = easeIO(k01(MORPH.fly));
+      for (const f of m.fly) {
+        const s = lerp(1, f.to.s * 0.82, qf), x = lerp(f.from.x, f.to.x, qf), y = lerp(f.from.y, f.to.y, qf);
+        const a = 1 - smoothstep(clamp((e - 0.45) / 0.65));
+        if (a <= 0) continue;
+        sg.save();
+        sg.globalAlpha = a;
+        sg.translate(x, y); sg.scale(s, s); sg.translate(-f.from.x, -f.from.y);
+        sg.drawImage(f.img, m.snap.left, m.snap.top, m.snap.W, m.snap.H);
+        sg.restore();
       }
-      const qp = (e - MORPH.pixels[0]) / MORPH.pixels[1];
-      if (qp > 0) {
-        sg.setTransform(1, 0, 0, 1, 0, 0);
-        const u = cell * d, x0 = Math.round(m.origin.x * d), y0 = Math.round(m.origin.y * d);
-        for (const c of m.cells) {
-          if (c.at > qp) continue;
-          sg.fillStyle = M.COLORS[c.ch];
-          sg.fillRect(x0 + c.x * u, y0 + c.y * u, u, u);
+      const qo = 1 - clamp(e / 0.3);
+      if (qo > 0) { sg.globalAlpha = qo; sg.drawImage(m.snap.layers.outer, m.snap.left, m.snap.top, m.snap.W, m.snap.H); sg.globalAlpha = 1; }
+      for (const p of m.motes) {
+        const q = clamp((e - p.d) / 0.9);
+        if (q <= 0 || q >= 1) continue;
+        const qq = p.away ? ease(q) : easeIO(q);
+        const x = lerp(p.x, p.tx, qq), y = lerp(p.y, p.ty, qq), a = Math.sin(Math.PI * q) * (p.away ? 0.55 : 0.85);
+        sg.fillStyle = `rgba(255,217,145,${a.toFixed(3)})`;
+        sg.beginPath(); sg.arc(x, y, p.r, 0, Math.PI * 2); sg.fill();
+      }
+      const qr = easeIO(k01(MORPH.rings));
+      const fa = 1 - clamp((e - MORPH.resolve - 0.1) / 0.45);
+      if (fa > 0) {
+        m.rings.forEach((r) => {
+          r.strands.forEach((st, si) => {
+            const spread = 1 - qr;
+            sg.lineWidth = lerp(r.width[si] * m.snap.lw, 1, qr);
+            sg.strokeStyle = `rgba(240,200,119,${(lerp(r.alpha[si], si ? 0 : 0.55, qr) * fa).toFixed(3)})`;
+            sg.beginPath();
+            st.forEach(([x, y], i) => {
+              const [tx, ty] = r.target[i];
+              const px = lerp(x, tx, qr), py = lerp(y, ty, qr);
+              if (spread <= 0 && si) return;
+              i ? sg.lineTo(px, py) : sg.moveTo(px, py);
+            });
+            sg.closePath(); sg.stroke();
+          });
+        });
+      }
+      const qm = easeIO(k01(MORPH.outline));
+      const oa = 1 - clamp((e - MORPH.pixels[0] - 0.15) / 0.35);
+      if (!m.steps.handoff) {
+        if (oa > 0) {
+          for (const [src, dst, w, a] of [[m.outline, m.outlineTo, 1.2, 0.9], [m.throat, m.throatTo, 0.8, 0.45]]) {
+            sg.lineWidth = w;
+            sg.strokeStyle = `rgba(255,217,145,${(a * oa).toFixed(3)})`;
+            sg.beginPath();
+            src.forEach(([x, y], i) => { const px = lerp(x, dst[i][0], qm), py = lerp(y, dst[i][1], qm); i ? sg.lineTo(px, py) : sg.moveTo(px, py); });
+            sg.stroke();
+          }
+          const ex = lerp(m.eyeFrom.x, m.eyeTo.x, qm), ey = lerp(m.eyeFrom.y, m.eyeTo.y, qm);
+          sg.fillStyle = `rgba(255,236,200,${oa.toFixed(3)})`;
+          sg.beginPath(); sg.arc(ex, ey, 3, 0, Math.PI * 2); sg.fill();
+        }
+        const qp = (e - MORPH.pixels[0]) / MORPH.pixels[1];
+        if (qp > 0) {
+          sg.setTransform(1, 0, 0, 1, 0, 0);
+          const u = cell * d, x0 = Math.round(m.origin.x * d), y0 = Math.round(m.origin.y * d);
+          for (const c of m.cells) {
+            if (c.at > qp) continue;
+            sg.fillStyle = M.COLORS[c.ch];
+            sg.fillRect(x0 + c.x * u, y0 + c.y * u, u, u);
+          }
         }
       }
     }
@@ -617,8 +633,7 @@
     const completed = morph;
     morph = null;
     if (completed && !completed.back) entryCompletion?.(completed.ctx, 'completed');
-    sg.setTransform(1, 0, 0, 1, 0, 0);
-    sg.clearRect(0, 0, sky.width, sky.height);
+    if (sg) { sg.setTransform(1, 0, 0, 1, 0, 0); sg.clearRect(0, 0, sky.width, sky.height); }
     sky.style.display = 'none';
     window.AstridCore?.release?.();
     root.classList.remove('is-morphing', 'is-minkless');
@@ -794,7 +809,7 @@
   };
   const enter = (ctx) => {
     const promise = makeCompletion(ctx, (fn) => { entryCompletion = fn; }, () => {
-      if (entryCtx === ctx) { stop(); freeSky(); }
+      if (entryCtx === ctx) { stop(); }
     });
     entryCtx = ctx;
     start(ctx.from === 3, ctx);
@@ -805,7 +820,7 @@
     const promise = makeCompletion(ctx, (fn) => { reverseCompletion = fn; }, () => {
       if (reverseCtx === ctx) {
         if (morph?.back) endUnmorph();
-        stop(); freeSky();
+        stop();
       }
     });
     reverseCtx = ctx;
