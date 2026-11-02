@@ -334,14 +334,14 @@
   html[data-ver="f"]:has(.fw-raise.on) .dt-dot i { opacity: 0; } /* the closing mark takes the node’s place */
   .fw-raise .num { min-height: 54px; visibility: hidden; } /* reserve the label’s place for the mark */
   .slide.dt-leaving:not(.dt-release) { opacity: 1; transition: none; }
-  .slide.dt-leaving > :not(.num):not(.split), .slide.dt-leaving > .split > :not(:first-child) { opacity: 0; transition: opacity .45s ease; }
+  .slide.dt-leaving > :not(.num):not(.split):not(.fw-stat), .slide.dt-leaving > .split > :not(:first-child) { opacity: 0; transition: opacity .45s ease; }
   .slide.dt-entering > .split > :first-child { opacity: 0; }
   /* A step back: the slide being left holds its picture on screen while it plays its hand-off in reverse (dt-rewind,
      granted by the navigation context, then swapped for dt-rewound to let the slide fade); its text, drawn in as usual, stays
      out of sight until the slide next comes on. The earlier slide's picture can wait, hidden, for that motion to come
      back into it (dt-await), then fade in (dt-return). */
   .slide.dt-rewind:not(.on) { opacity: 1; transition: none; }
-  .slide.dt-rewind > :not(.num):not(.split), .slide.dt-rewind > .split > :not(:first-child) { opacity: 1; transition: none; }
+  .slide.dt-rewind > :not(.num):not(.split):not(.fw-stat), .slide.dt-rewind > .split > :not(:first-child) { opacity: 1; transition: none; }
   .slide.dt-rewind:not(.dt-leaving) > .split > :first-child, .slide.dt-rewound:not(.on) > .split > :first-child { opacity: 0; }
   .slide.dt-return { z-index: 1; } /* its text over the picture coming back into it */
   .slide.st-host.dt-rewind.dt-leaving > .st { opacity: 1; transition: none; }
@@ -2274,6 +2274,7 @@
       rest: motionOff || (dir < 0 && !reversePair), back, signal: turnController.signal,
       now: window.deckNow, isCurrent: () => window.deckNav === context && !context.signal.aborted,
       arrived, textReady, superseded,
+      copyRects: () => networkScene.copyRects(context),
       holdText(onDeadline, deadlineMs) {
         if (textSealed || textDone || !context.isCurrent()) throw new Error('Text holds must be declared synchronously during scene entry');
         let live = true;

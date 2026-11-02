@@ -424,7 +424,8 @@
 
   // ---- Time ----------------------------------------------------------------------------------------------------
   const END = 2.2;
-  let ta = 0, off = 0, running = false, raf = 0, last = 0, armed = false, timers = [], from = null, handed = false, counted = '';
+  let ta = 0, off = 0, running = false, raf = 0, last = 0, timers = [], from = null, handed = false, counted = '';
+  let retained = false, retainedSnapshot = null;
   let coreHeld = false; // slide 9 is drawing the core (on its way out, or on its way back here): this picture leaves it out
   const k01 = (t0, d) => clamp((ta - t0) / d);
   // The apps and the crowd run on their own clock, which starts a little later when slide 7's picture is carried on.
@@ -442,7 +443,7 @@
       b.length = 0;
     }
   };
-  const pos = (d) => [d.x + Math.sin(ta * d.f * 0.6 + d.ph) * d.w, d.y + Math.cos(ta * d.f * 0.5 + d.ph) * d.w * 0.6];
+  const pos = (d, time = ta) => [d.x + Math.sin(time * d.f * 0.6 + d.ph) * d.w, d.y + Math.cos(time * d.f * 0.5 + d.ph) * d.w * 0.6];
   // The count so far: each app's reach rolls in as it lands.
   const reach = () => {
     let n = apps.length - 1;
@@ -624,6 +625,7 @@
   const start = (ctx = entryCtx) => { if (running || still || document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now(); raf = requestAnimationFrame((t) => tick(ctx, t)); };
   const stop = () => { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; };
   const reset = () => {
+    retained = false; retainedSnapshot = null;
     gen++;
     timers.forEach(window.deckCancelLater); timers = [];
     ta = 0; off = 0; from = null; handed = false; counted = ''; coreHeld = false;
@@ -670,7 +672,7 @@
     const free = new Set(dots.filter((d) => d.t0 < 1.4));
     (snap.people || []).map(v).forEach((p, i) => {
       let best = null, bd = Infinity;
-      for (const d of free) { const dd = Math.hypot(d.x - p.x, d.y - p.y); if (dd < bd) { bd = dd; best = d; } }
+      for (const d of free) { const dd = (d.x - p.x) ** 2 + (d.y - p.y) ** 2; if (dd < bd) { bd = dd; best = d; } }
       if (best) { free.delete(best); best.src = { x: p.x, y: p.y, d: 0.2 + (i % 17) * 0.035 }; } else from.rest.push(p);
     });
     window.AstridPays.hide();
@@ -693,8 +695,7 @@
   const BACK7 = 2.2; // the hand-off is complete by here
   let back7 = null;
   const crowdA = () => (back7 ? smooth(clamp((ta - 0.9) / (BACK7 - 0.9))) : 1);
-  const unhand7 = (ctx) => {
-    const snap = window.AstridPays.snapshot();
+  const unhand7 = (ctx, snap) => {
     if (!snap) return false;
     reverseCtx = ctx;
     const signal = reverseCtx?.signal;
@@ -708,7 +709,7 @@
     const free = new Set(dots.filter((d) => tc0 >= d.t0 + 0.6));
     (snap.people || []).map(v).forEach((p, i) => {
       let best = null, bd = Infinity;
-      for (const d of free) { const dd = Math.hypot(d.x - p.x, d.y - p.y); if (dd < bd) { bd = dd; best = d; } }
+      for (const d of free) { const dd = (d.x - p.x) ** 2 + (d.y - p.y) ** 2; if (dd < bd) { bd = dd; best = d; } }
       if (best) { free.delete(best); best.src = { x: p.x, y: p.y, d: 0.2 + (i % 17) * 0.035 }; } else from.rest.push(p);
     });
     ta = BACK7; off = ta - tc0;
@@ -716,6 +717,37 @@
     reverseCtx.present(slide, 'dt-rewind');
     reverseCtx.present(paysSlide, 'dt-return dt-await');
     back7 = { tc0, shown: false, since: 0 };
+    const rects = ctx.copyRects(), bnd = root.getBoundingClientRect(), step = 0.01;
+    const hit = (x, y, rx, ry = rx) => rects.some((r) => x + bnd.left + rx > r.left && x + bnd.left - rx < r.right && y + bnd.top + ry > r.top && y + bnd.top - ry < r.bottom);
+    let clearAt = Infinity;
+    const speed = Math.max(Math.abs(from.core.x - core.x), Math.abs(from.core.y - core.y), Math.abs(from.core.w - core.w), Math.abs(from.core.h - core.h)) * 3 / 1.1 * step;
+    for (let i = 0; i * step <= BACK7; i++) {
+      const t = i * step, q = easeIO(clamp(t / 1.1));
+      const cx = lerp(from.core.x, core.x, q), cy = lerp(from.core.y, core.y, q);
+      const w = lerp(from.core.w, core.w, q), h = lerp(from.core.h, core.h, q);
+      const machineHit = from.machines.some((m, j) => {
+        const qm = easeIO(clamp((t - 0.1 - j * 0.08) / 0.9));
+        const travel = (Math.hypot(cx - m.x, cy - m.y) * 3 / 0.9 + speed / step) * step;
+        return qm < 1 && hit(lerp(m.x, cx, qm), lerp(m.y, cy, qm), Math.max(m.r, core.w * 0.12) + travel);
+      });
+      if (hit(cx, cy, Math.max(w / 2, h * 0.6) + speed, h * 0.6 + speed) || machineHit) { clearAt = Math.max(0, t - step); break; }
+    }
+    for (const d of dots) {
+      if (!d.src || clearAt === 0) continue;
+      const radius = Math.max(d.r * 2.15, 14 * Math.max(0.7, k));
+      const sway = Math.abs(d.w), pad = radius + (Math.hypot(d.x - d.src.x, d.y - d.src.y) * 3 / 1.4 + sway * Math.abs(d.f)) * step;
+      const x0 = Math.min(d.src.x, d.x - sway) - pad, x1 = Math.max(d.src.x, d.x + sway) + pad;
+      const y0 = Math.min(d.src.y, d.y - sway) - pad, y1 = Math.max(d.src.y, d.y + sway) + pad;
+      if (!rects.some((r) => x1 + bnd.left > r.left && x0 + bnd.left < r.right && y1 + bnd.top > r.top && y0 + bnd.top < r.bottom)) continue;
+      for (let i = 0; i * step < clearAt && i * step <= BACK7; i++) {
+        const t = i * step, u = easeIO(clamp((t - d.src.d) / 1.4)), [x, y] = pos(d, t);
+        if (hit(lerp(d.src.x, x, u), lerp(d.src.y, y, u), pad)) { clearAt = Math.max(0, t - step); break; }
+      }
+    }
+    if (clearAt < Infinity) {
+      back7.clearAt = clearAt;
+      back7.release = ctx.holdText(() => { ta = 0; off = -back7.tc0; end7(); }, (BACK7 + 0.65) * 1000 + 300);
+    }
     signal?.addEventListener('abort', end7, { once: true });
     stop(); entryCtx = reverseCtx; start(reverseCtx);
     return true;
@@ -724,6 +756,7 @@
     ta = Math.max(0, ta - dt);
     off = ta - back7.tc0;
     coreLabel.style.opacity = count.style.opacity = crowdA().toFixed(3);
+    if (back7.release && ta < back7.clearAt) { back7.release(); back7.release = null; }
     if (back7.shown) back7.since += dt;
     // Slide 7 fades in under its people as the core settles into its lens; once it is whole, this picture goes.
     if (!back7.shown && ta <= 0.2) { back7.shown = true; back7.since = 0; reverseCtx.present(paysSlide, '', 'dt-await'); }
@@ -736,6 +769,7 @@
     // still drawn back), so there is never a second mink.
     window.AstridPays?.holdCore?.(false);
     if (!slide.classList.contains('on')) { coreHeld = true; draw(); }
+    back7.release?.();
     back7 = null;
     reverseCtx.present(slide, 'dt-rewound', 'dt-rewind');
     reverseCtx.present(paysSlide, '', 'dt-return dt-await');
@@ -745,9 +779,12 @@
     }
     if (reverseDone) { reverseDone('completed'); reverseDone = null; }
   };
+  let preparedReturn = null;
   const enter = (ctx) => {
     end7();
-    reset();
+    const prepared = preparedReturn === ctx;
+    preparedReturn = null;
+    if (!prepared) reset();
     entryCtx = ctx;
     let resolve;
     const done = new Promise((r) => { resolve = r; });
@@ -757,38 +794,36 @@
       gen++;
       if (waiting) { waiting.disconnect(); waiting = null; }
     });
+    if (prepared) { finishEntry(ctx); return done; }
     if (ctx.direct || ctx.rest) { begin(ctx); return done; }
     const snap = ctx.from === 6 && !motionOff() && window.AstridPays?.snapshot();
     if (snap) { handoff(snap, ctx); return done; }
-    layout(); draw(); armed = true;
-    ctx.arrived.then((result) => {
-      if (result === 'completed' && ctx.isCurrent() && armed) { armed = false; whenOpen(ctx, begin); }
-    });
+    whenOpen(ctx, begin);
     return done;
   };
   const exit = (ctx) => {
     slide.classList.remove('fl-arrive');
     const to7 = ctx.to === 6 && ctx.back && !motionOff() && running && !handed && ta - off >= END && ta >= BACK7 && !!window.AstridPays;
-    armed = false; gen++;
+    gen++;
     if (waiting) { waiting.disconnect(); waiting = null; }
     if (to7) {
       let resolve;
       const done = new Promise((r) => { resolve = r; });
       reverseDone = resolve;
       ctx.defer(() => { if (back7) end7(); if (reverseDone) { reverseDone('cancelled'); reverseDone = null; } });
-      if (unhand7(ctx)) return done;
+      const snap = window.AstridPays.snapshot();
+      if (snap && unhand7(ctx, snap)) return done;
       reverseDone = null;
     }
     stop(); html.classList.remove('fl-quiet');
-    // Flywheel snapshots after arrival. Keep the source intact until it takes
-    // ownership, or until this navigation is cancelled.
-    if (ctx.to === 8 && !ctx.direct && !motionOff() && core && ta - off >= END) {
+    // Keep the source intact until Flywheel takes ownership.
+    if (ctx.to === 8 && !ctx.direct && !motionOff() && canSnapshot()) {
       ctx.present(slide, 'dt-rewind');
       // The picture waits for Flywheel, but its labels leave with the copy.
       pool.forEach((p) => { p.el.style.transition = 'opacity .45s ease'; p.el.style.opacity = '0'; p.o = 0; });
       coreLabel.style.transition = count.style.transition = 'opacity .45s ease';
       coreLabel.style.opacity = count.style.opacity = '0';
-      ctx.defer(() => { if (!slide.classList.contains('on')) reset(); });
+      ctx.defer(() => { if (!retained && !slide.classList.contains('on')) reset(); });
     } else if (motionOff()) reset();
     else timers.push(window.deckLater(() => { if (ctx.isCurrent() && !slide.classList.contains('on')) reset(); }, 700, ctx));
   };
@@ -808,7 +843,10 @@
   document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
+  window.deckOnResize(() => { retained = false; retainedSnapshot = null; });
+  document.fonts?.addEventListener?.('loadingdone', () => { retained = false; retainedSnapshot = null; });
   const resize = (ctx) => {
+    if (back7) { ta = 0; off = -back7.tc0; }
     end7(); // its people's way back was measured on the old screen
     if (!slide.classList.contains('on')) return;
     entryCtx = ctx;
@@ -817,10 +855,9 @@
     stop();
     // layout rebuilds the crowd in the new geometry. Keep its clock: draw()
     // deterministically recreates every app already due at that phase.
-    if (armed || from || ta < END) {
+    if (from || ta < END) {
       gen++;
       if (waiting) { waiting.disconnect(); waiting = null; }
-      armed = false;
       timers.forEach(window.deckCancelLater); timers = [];
       from = null; off = 0;
       ta = END + 0.2;
@@ -835,9 +872,27 @@
   // For slide 9: the core and the visible communities' people, in viewport pixels, so the wheel can grow out of them.
   // The most recent communities go first, then an even sample of the rest, at most HAND people in all.
   const HAND = 900;
+  const canSnapshot = () => !!core && ta - off >= END;
   window.AstridFlowers = {
+    prepareReturn(ctx) {
+      end7();
+      const snap = retained && retainedSnapshot;
+      if (snap) {
+        retained = false; retainedSnapshot = null; handed = false; coreHeld = true; entryCtx = ctx;
+        dots.forEach((d) => { delete d.handed; });
+        canvas.style.transition = ''; canvas.style.opacity = '';
+        pool.forEach((p) => { p.el.style.transition = ''; });
+        coreLabel.style.transition = count.style.transition = '';
+        coreLabel.style.opacity = count.style.opacity = '';
+        html.classList.add('fl-quiet');
+        draw(); labels();
+      } else { reset(); begin(ctx); }
+      preparedReturn = ctx;
+      ctx.defer(() => { if (preparedReturn === ctx) preparedReturn = null; });
+      return snap || this.snapshot();
+    },
     snapshot() {
-      if (!core || ta - off < END) return null;
+      if (!canSnapshot()) return null;
       tc = ta - off;
       const b = root.getBoundingClientRect(), v = (x, y) => ({ x: b.left + x, y: b.top + y });
       const recent = apps.length ? apps[Math.max(0, apps.length - 12)].i : 0, fresh = [], rest = [];
@@ -853,16 +908,15 @@
     },
     // Slide 9 brings the core back on a step back: this picture leaves it out until it has landed, then takes it
     // back in the same frame, so only one mink is ever on screen.
-    holdCore(on) { coreHeld = on; if (!on && core && slide.classList.contains('on')) draw(); },
-    hide(ctx) { // fade out as the next slide's picture takes over; its people are drawn there from now on
-      handed = true; coreHeld = true; draw(); // the core goes at once: slide 9 draws it from this frame, in the same place
+    holdCore(on) { coreHeld = on; if (!on && core && slide.classList.contains('on')) { draw(); start(entryCtx); } },
+    hide(ctx, snap) { // fade out as the next slide's picture takes over; its people are drawn there from now on
+      retained = true; retainedSnapshot = snap; handed = true; coreHeld = true; draw(); // the core goes at once: slide 9 draws it from this frame, in the same place
       canvas.style.transition = 'opacity .5s ease'; canvas.style.opacity = '0';
       pool.forEach((p) => { p.el.style.transition = 'opacity .4s ease'; p.el.style.opacity = '0'; p.o = 0; });
       coreLabel.style.opacity = '0'; count.style.opacity = '0';
       timers.push(window.deckLater(() => {
         if (ctx?.isCurrent?.() && !slide.classList.contains('on')) {
           ctx.present(slide, '', 'dt-rewind');
-          reset();
         }
       }, 700, ctx));
     },
