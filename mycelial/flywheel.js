@@ -185,9 +185,12 @@
   const glow = document.createElement('canvas');
   glow.width = glow.height = 128;
   {
-    const sg = glow.getContext('2d'), rg = sg.createRadialGradient(64, 64, 0, 64, 64, 64);
-    rg.addColorStop(0, `rgba(${NODE},1)`); rg.addColorStop(0.35, `rgba(${NODE},0.35)`); rg.addColorStop(1, `rgba(${NODE},0)`);
-    sg.fillStyle = rg; sg.fillRect(0, 0, 128, 128);
+    const sg = glow.getContext('2d');
+    if (sg) {
+      const rg = sg.createRadialGradient(64, 64, 0, 64, 64, 64);
+      rg.addColorStop(0, `rgba(${NODE},1)`); rg.addColorStop(0.35, `rgba(${NODE},0.35)`); rg.addColorStop(1, `rgba(${NODE},0)`);
+      sg.fillStyle = rg; sg.fillRect(0, 0, 128, 128);
+    }
   }
   const halo = (x, y, r, a) => { if (a <= 0.003 || r <= 0) return; g.globalAlpha = Math.min(1, a); g.drawImage(glow, x - r, y - r, r * 2, r * 2); g.globalAlpha = 1; };
   const dot = (x, y, r, color, a) => { if (a <= 0.003 || r <= 0) return; g.fillStyle = `rgba(${color},${Math.min(1, a).toFixed(3)})`; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); };
@@ -372,7 +375,8 @@
     lastPlacedM = null;
     layoutVersion++;
     dpr = Math.min(2, devicePixelRatio || 1);
-    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    if (canvas.width !== Math.round(W * dpr)) canvas.width = Math.round(W * dpr);
+    if (canvas.height !== Math.round(H * dpr)) canvas.height = Math.round(H * dpr);
     tall = W <= 760 && H > W;
     short = !tall && H <= 500;
     R = tall ? TALL : short ? SHORT : WIDE;
@@ -616,6 +620,7 @@
       a: (d.bright ? 1 : 0.75) * (1 - smooth(clamp((time - d.d - 1.1) / 0.4))) };
   };
   const draw = () => {
+    if (!g) return;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
     if (!cur || !begun) return;
@@ -921,6 +926,7 @@
     });
   };
   const drawPose = (cx2, u, d) => { // the profile pose at u CSS px per art pixel, d device px per CSS px
+    if (!cx2) return;
     const P2 = M.POSES.profile;
     cx2.clearRect(0, 0, cx2.canvas.width, cx2.canvas.height);
     for (let j = 0; j < P2.length; j++) for (let i = 0; i < P2[0].length; i++) {
@@ -935,7 +941,8 @@
     [[seat, seatCell()], [fullSeat, tall || short ? 2 : 3]].forEach(([el, u]) => {
       if (!el) return;
       const w = 23 * u, h = 20 * u, cv = el === seat ? seat : seatPaint;
-      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      if (cv.width !== Math.round(w * dpr)) cv.width = Math.round(w * dpr);
+      if (cv.height !== Math.round(h * dpr)) cv.height = Math.round(h * dpr);
       el.style.width = `${w}px`; el.style.height = `${h}px`;
       drawPose(cv.getContext('2d'), u, dpr);
       if (cv === seatPaint) el.src = seatPaint.toDataURL();
@@ -946,7 +953,8 @@
     const w = 23 * u, h = 20 * u;
     if (flyCell !== u) {
       flyCell = u;
-      fly.width = Math.round(w * dpr); fly.height = Math.round(h * dpr);
+      if (fly.width !== Math.round(w * dpr)) fly.width = Math.round(w * dpr);
+      if (fly.height !== Math.round(h * dpr)) fly.height = Math.round(h * dpr);
       fly.style.width = `${w}px`; fly.style.height = `${h}px`;
       drawPose(fly.getContext('2d'), u, dpr);
     }
@@ -1133,7 +1141,7 @@
     vids.forEach((v) => v && !v.paused && v.pause()); cardsRoot.inert = true; cardsRoot.classList.remove('is-live'); fly.style.opacity = '0';
     T = T_FRESH; hand = null; minkAt = null;
     flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], plug: chips.map(() => 0) };
-    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height);
+    if (g) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height); }
     for (const key in labels) labels[key].style.opacity = '0';
     chips.forEach((c) => { c.style.opacity = '0'; });
   };
@@ -1190,7 +1198,7 @@
     if (!unhanding) return;
     unhanding = null;
     window.AstridFlowers?.holdCore?.(false);
-    if (activeStage < 0) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height); }
+    if (activeStage < 0) { if (g) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height); } }
     if (reverseCtx) reverseCtx.present(flSlide, '', 'dt-return dt-await');
     if (activeStage >= 0) return;
     setVisible(false);

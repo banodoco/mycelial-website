@@ -90,9 +90,12 @@
   const glow = document.createElement('canvas');
   glow.width = glow.height = 128;
   {
-    const sg = glow.getContext('2d'), rg = sg.createRadialGradient(64, 64, 0, 64, 64, 64);
-    rg.addColorStop(0, `rgba(${NODE},1)`); rg.addColorStop(0.35, `rgba(${NODE},0.35)`); rg.addColorStop(1, `rgba(${NODE},0)`);
-    sg.fillStyle = rg; sg.fillRect(0, 0, 128, 128);
+    const sg = glow.getContext('2d');
+    if (sg) {
+      const rg = sg.createRadialGradient(64, 64, 0, 64, 64, 64);
+      rg.addColorStop(0, `rgba(${NODE},1)`); rg.addColorStop(0.35, `rgba(${NODE},0.35)`); rg.addColorStop(1, `rgba(${NODE},0)`);
+      sg.fillStyle = rg; sg.fillRect(0, 0, 128, 128);
+    }
   }
   const halo = (x, y, r, a) => { if (a <= 0.003 || r <= 0) return; g.globalAlpha = Math.min(1, a); g.drawImage(glow, x - r, y - r, r * 2, r * 2); g.globalAlpha = 1; };
   const dot = (x, y, r, color, a) => { if (a <= 0.003 || r <= 0) return; g.fillStyle = `rgba(${color},${Math.min(1, a).toFixed(3)})`; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); };
@@ -273,7 +276,8 @@
     if (!b.width || !b.height) return false;
     W = b.width; H = b.height;
     dpr = Math.min(2, devicePixelRatio || 1);
-    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    if (canvas.width !== Math.round(W * dpr)) canvas.width = Math.round(W * dpr);
+    if (canvas.height !== Math.round(H * dpr)) canvas.height = Math.round(H * dpr);
     small = W <= 760 && (H >= W || H > 500); // a phone held upright (one on its side takes the wide layout)
     k = small ? clamp(W / 430, 0.72, 1) : clamp(Math.min(W / 1440, H / 900), 0.6, 1.3);
     LW = Math.max(0.75, Math.min(1.15, k * 1.1));
@@ -479,6 +483,7 @@
   };
 
   const draw = () => {
+    if (!g) return;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
     if (!core) return;
@@ -637,7 +642,7 @@
     coreLabel.style.transition = count.style.transition = '';
     coreLabel.style.opacity = ''; count.style.opacity = '';
     countV.textContent = '0'; countU.textContent = '';
-    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height);
+    if (g) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height); }
   };
   // Start once the fonts are in (everything is measured from the text) and, on a first load, once the Mycelial mark
   // has landed and the slide shows. A visit that has since ended (gen moved on) never starts.

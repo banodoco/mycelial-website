@@ -289,7 +289,8 @@
     } else world.style.transform = `translate(${view.ox.toFixed(1)}px, ${view.oy.toFixed(1)}px) scale(${k.toFixed(4)})`;
     dpr = Math.min(2, Math.round(devicePixelRatio || 1) || 1);
     const pixelW = Math.round(W * dpr), pixelH = Math.round(H * dpr);
-    if (cv.width !== pixelW || cv.height !== pixelH) { cv.width = pixelW; cv.height = pixelH; }
+    if (cv.width !== pixelW) cv.width = pixelW;
+    if (cv.height !== pixelH) cv.height = pixelH;
     cell = Math.max(1, Math.round(k * 3.4));
     // Settled geometry, in screen px: the corners the threads tie together, the flags' places, the roots.
     const corners = cw.map((c) => Object.fromEntries(Object.entries(c).map(([key, p]) => [key, toS(p)])));
@@ -357,8 +358,11 @@
   // Poses as on slide 5: profile, glint (her eye flash), facing, focus (eyes lit); lift raises her a cell or two.
   const mk = { pose: 'profile', lift: 0, glint: 0, seq: null, hover: null, at: null };
   const paintMink = (x, y, c, upto = 1) => {
+    if (!mg) return;
     const u = c * dpr;
-    if (minkCv.width !== MW * u) { minkCv.width = MW * u; minkCv.height = MH * u; minkCv.style.width = `${MW * c}px`; minkCv.style.height = `${MH * c}px`; }
+    if (minkCv.width !== MW * u) minkCv.width = MW * u;
+    if (minkCv.height !== MH * u) minkCv.height = MH * u;
+    minkCv.style.width = `${MW * c}px`; minkCv.style.height = `${MH * c}px`;
     const P = M.POSES[mk.pose];
     mg.clearRect(0, 0, minkCv.width, minkCv.height);
     const fill = (rows, only) => {
@@ -416,9 +420,12 @@
   const glow = document.createElement('canvas');
   glow.width = glow.height = 128;
   {
-    const sg = glow.getContext('2d'), rg = sg.createRadialGradient(64, 64, 0, 64, 64, 64);
-    rg.addColorStop(0, 'rgba(255,226,170,0.55)'); rg.addColorStop(1, 'rgba(255,217,145,0)');
-    sg.fillStyle = rg; sg.fillRect(0, 0, 128, 128);
+    const sg = glow.getContext('2d');
+    if (sg) {
+      const rg = sg.createRadialGradient(64, 64, 0, 64, 64, 64);
+      rg.addColorStop(0, 'rgba(255,226,170,0.55)'); rg.addColorStop(1, 'rgba(255,217,145,0)');
+      sg.fillStyle = rg; sg.fillRect(0, 0, 128, 128);
+    }
   }
   const dot = (x, y, r, a) => {
     if (a <= 0.01) return;
@@ -434,6 +441,7 @@
     g.stroke();
   };
   const draw = () => {
+    if (!g) return;
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, cv.width, cv.height);
     if (!geo) return;
@@ -514,9 +522,11 @@
     Object.assign(cy, { on: false, A: null, P: null, nw: 0, nh: 0, a: 1, back: false });
     carry.remove(); carry.style.display = 'none'; carry.classList.remove('is-back');
     carryPic.style.removeProperty('width'); carryPic.style.removeProperty('height');
-    carryCv.width = carryCv.height = 0;
+    carryG?.clearRect(0, 0, carryCv.width, carryCv.height);
     planes[0].classList.remove('is-carrying');
   };
+  const ghostCanvases = PL.map(() => []);
+  const flightCopies = [];
   const retireGhosts = () => ghosts.forEach((gh, i) => {
     if (!gh) return;
     gh.remove(); gh.replaceChildren(); gh.removeAttribute('style');
@@ -575,11 +585,26 @@
       const wrap = document.createElement('div');
       wrap.className = demo.className;
       wrap.style.cssText = `position:absolute;left:0;top:0;margin:0;flex:none;transform-origin:0 0;width:${r.width}px;height:${r.height}px`;
-      const c = src.cloneNode(true);
+      let canvasIndex = 0;
+      const clonePanel = (node) => {
+        if (node.nodeName === 'CANVAS') {
+          const pool = ghostCanvases[i], canvas = pool[canvasIndex] || (pool[canvasIndex] = document.createElement('canvas'));
+          canvasIndex++;
+          for (const attr of [...canvas.attributes]) if (attr.name !== 'width' && attr.name !== 'height') canvas.removeAttribute(attr.name);
+          for (const attr of node.attributes) if (attr.name !== 'width' && attr.name !== 'height') canvas.setAttribute(attr.name, attr.value);
+          if (canvas.width !== node.width) canvas.width = node.width;
+          if (canvas.height !== node.height) canvas.height = node.height;
+          const context = canvas.getContext('2d');
+          if (context) { context.clearRect(0, 0, canvas.width, canvas.height); context.drawImage(node, 0, 0); }
+          return canvas;
+        }
+        const clone = node.cloneNode(false);
+        node.childNodes.forEach((child) => clone.appendChild(clonePanel(child)));
+        return clone;
+      };
+      const c = clonePanel(src);
       c.style.width = `${r.width}px`; c.style.height = `${r.height}px`;
       c.querySelectorAll('.as-in').forEach((n) => n.classList.remove('as-in'));
-      const from = src.querySelectorAll('canvas'), to = c.querySelectorAll('canvas');
-      from.forEach((cs, j) => { to[j].width = cs.width; to[j].height = cs.height; try { to[j].getContext('2d').drawImage(cs, 0, 0); } catch { /* empty */ } });
       wrap.appendChild(c);
       gh.replaceChildren(wrap);
       gh.dataset.w = r.width; gh.dataset.h = r.height;
@@ -600,11 +625,13 @@
     // state until it fades into the stack's completed preview.
     if (!demo.classList.contains('has-frame')) { endCarry(); return; }
     const pic = src.querySelector('.as-pic'), copy = ghosts[0].querySelector('.as-pic'), b = pic && pic.getBoundingClientRect();
-    if (!b || !b.width || !pic.width || !copy) { endCarry(); return; }
+    if (!b || !b.width || !pic.width || !copy || !carryG || !copy.getContext('2d')) { endCarry(); return; }
     const w = pic.width, h = pic.height, f = Math.min(w / 16, h / 9) * 0.86, dw = 16 * f, dh = 9 * f;
     const dx = Math.round((w - dw) / 2), dy = Math.round((h - dh) / 2), u = b.width / w;
     Object.assign(cy, { A: { x: b.left - r.left + dx * u, y: b.top - r.top + dy * u, w: dw * u }, nw: r.width, nh: r.height });
-    carryCv.width = Math.round(dw); carryCv.height = Math.round(dh);
+    if (carryCv.width !== Math.round(dw)) carryCv.width = Math.round(dw);
+    if (carryCv.height !== Math.round(dh)) carryCv.height = Math.round(dh);
+    carryG.clearRect(0, 0, carryCv.width, carryCv.height);
     try { carryG.drawImage(pic, dx, dy, dw, dh, 0, 0, carryCv.width, carryCv.height); } catch { /* empty */ }
     copy.getContext('2d').clearRect(0, 0, copy.width, copy.height); copy.dataset.carried = '1';
     const pe = planes[0].querySelector('.st-pic'), scr = pe.parentElement, n = (PL[0].w - 2) / (inners[0].offsetWidth || 1); // laid out unscaled
@@ -923,9 +950,8 @@
       b.src = snapFrom5(b.ctx);
       if (!b.src) { endFold(); return false; }
       if (cy.on && video.readyState >= 2) { // folding back, the plane's own frame rides back (its film holds as it folds)
-        const w = Math.round(cy.A.w * dpr);
-        carryCv.width = w; carryCv.height = Math.round((w * 9) / 16);
-        carryG.drawImage(video, 0, 0, carryCv.width, carryCv.height);
+        carryG?.clearRect(0, 0, carryCv.width, carryCv.height);
+        carryG?.drawImage(video, 0, 0, carryCv.width, carryCv.height);
         cy.back = true; carry.classList.add('is-back');
       } else if (cy.on) { endCarry(); delete ghosts[0].querySelector('.as-pic')?.dataset.carried; } // slide 5's picture stays on its copy
     }
@@ -943,7 +969,7 @@
   };
   const repaintGhosts = () => Object.keys(SRC).forEach((i) => {
     const from = demo.querySelector(SRC[i])?.querySelectorAll('canvas') || [], to = ghosts[i].querySelectorAll('canvas');
-    from.forEach((cs, j) => { const c = to[j]; if (!c || c.dataset.carried || c.width !== cs.width || c.height !== cs.height) return; try { const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.drawImage(cs, 0, 0); } catch { /* empty */ } });
+    from.forEach((cs, j) => { const c = to[j]; if (!c || c.dataset.carried || c.width !== cs.width || c.height !== cs.height) return; try { const x = c.getContext('2d'); if (!x) return; x.clearRect(0, 0, c.width, c.height); x.drawImage(cs, 0, 0); } catch { /* empty */ } });
   });
   const abortFold = () => {
     if (!build?.back) { releaseFoldText(); return; }
@@ -1046,9 +1072,14 @@
       ctx.present(slide, 'dt-rewind dt-over');
       const rect = minkCv.getBoundingClientRect(), box = root.getBoundingClientRect();
       if (!rect.width || !box.width || !box.height) return undefined;
-      const copy = document.createElement('canvas');
-      copy.width = minkCv.width; copy.height = minkCv.height;
-      copy.getContext('2d').drawImage(minkCv, 0, 0);
+      const copy = flightCopies.find((canvas) => !canvas.isConnected) || document.createElement('canvas');
+      if (!flightCopies.includes(copy)) flightCopies.push(copy);
+      if (copy.width !== minkCv.width) copy.width = minkCv.width;
+      if (copy.height !== minkCv.height) copy.height = minkCv.height;
+      const copyContext = copy.getContext('2d');
+      if (!copyContext) return undefined;
+      copyContext.clearRect(0, 0, copy.width, copy.height);
+      copyContext.drawImage(minkCv, 0, 0);
       Object.assign(copy.style, { position: 'fixed', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, imageRendering: 'pixelated', pointerEvents: 'none', zIndex: '3' });
       document.body.appendChild(copy);
       const visibility = minkCv.style.visibility;
