@@ -695,7 +695,7 @@
   const restore = () => homes.forEach((s, num) => s.insertBefore(num, s.querySelector(':scope > .split')));
 
   const textOf = (s) => [s.matches('.fw-raise') ? s.querySelector(':scope > .split') : columnOf(s), s.querySelector(':scope > .fw-stat')].filter(Boolean);
-  const copyRects = (context) => textOf(slides[context.to]).flatMap((el) => {
+  const copyRectsOf = (el) => {
     const items = el.matches('.fw-stat') ? [el] : el.matches('.split') ? [...el.children].flatMap((child, i) => i === 0 ? [...child.children] : [child]) : [...el.children];
     return items.flatMap((item) => {
       if (getComputedStyle(item).display === 'none' || (item.matches('.num') && item.closest('.fw-raise'))) return [];
@@ -705,7 +705,8 @@
       }
       const r = item.getBoundingClientRect(); return r.width && r.height ? [r] : [];
     });
-  });
+  };
+  const copyRects = (context) => textOf(slides[context.to]).flatMap(copyRectsOf);
   // The node sits just above the start of the label (its end when right-aligned, its middle when centred).
   const anchorOf = (s) => {
     const col = columnOf(s);
@@ -725,6 +726,41 @@
     const x = align === 'center' ? (left + right) / 2 : align === 'right' || align === 'end' ? right - 3 : left + 3;
     return { x, y: rects[0].top - 13 };
   };
+  // Capture the participating copy before scene hooks write styles. Keep only
+  // immutable viewport coordinates for the copy masks and thread geometry.
+  const copyOffset = (el) => {
+    const match = /^translate\(\s*([+-]?[\d.]+)px,\s*([+-]?[\d.]+)px\s*\)$/.exec(el.style.transform);
+    return match ? { x: Number(match[1]), y: Number(match[2]) } : { x: 0, y: 0 };
+  };
+  const geometry = (from, to) => {
+    const boxes = new Map();
+    for (const slide of [slides[from], slides[to]].filter(Boolean)) {
+      for (const el of textOf(slide)) {
+        const r = el.getBoundingClientRect();
+        const offset = copyOffset(el);
+        boxes.set(el, Object.freeze({ left: r.left - offset.x, top: r.top - offset.y, right: r.right - offset.x, bottom: r.bottom - offset.y, width: r.width, height: r.height }));
+      }
+    }
+    const column = columnOf(slides[to]), p = anchorOf(slides[to]);
+    const initial = copyOffset(column);
+    const anchor = p && { x: p.x - initial.x, y: p.y - initial.y };
+    const rects = textOf(slides[to]).flatMap((el) => {
+      const offset = copyOffset(el);
+      return copyRectsOf(el).map((r) => ({ el, left: r.left - offset.x, top: r.top - offset.y, right: r.right - offset.x, bottom: r.bottom - offset.y, width: r.width, height: r.height }));
+    });
+    const root = document.querySelector('[data-astrid-flowers]');
+    const r = root?.getBoundingClientRect();
+    const flowers = r ? Object.freeze({ left: r.left, top: r.top }) : null;
+    return Object.freeze({
+      get anchor() { const offset = copyOffset(column); return anchor && { x: anchor.x + offset.x, y: anchor.y + offset.y }; },
+      get rects() { return rects.map(({ el, ...r }) => { const offset = copyOffset(el); return { ...r, left: r.left + offset.x, right: r.right + offset.x, top: r.top + offset.y, bottom: r.bottom + offset.y }; }); },
+      flowers, box: (el) => {
+      const b = boxes.get(el);
+      if (!b) return null;
+      const offset = copyOffset(el);
+      return { left: b.left + offset.x, top: b.top + offset.y, right: b.right + offset.x, bottom: b.bottom + offset.y, width: b.width, height: b.height };
+    } });
+  };
   const place = (p) => { dot.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px)`; };
 
   // Text shows only inside a soft-edged circle around the node; growing the
@@ -732,11 +768,11 @@
   const SOFT = 150;
   const masks = new WeakMap();
   // All copy mask and visibility writes pass through this one function.
-  const paintCopy = (el, at, r, hidden = false) => {
+  const paintCopy = (el, at, r, hidden = false, bounds = null) => {
     let value = '';
     if (at) {
       masks.set(el, { at: { ...at }, r });
-      const b = el.getBoundingClientRect();
+      const b = bounds || el.getBoundingClientRect();
       const x = at.x - b.left, y = at.y - b.top;
       value = r <= 0 ? 'linear-gradient(transparent, transparent)'
         : `radial-gradient(circle at ${x.toFixed(1)}px ${y.toFixed(1)}px, #000 ${Math.max(0, r - SOFT).toFixed(1)}px, transparent ${r.toFixed(1)}px)`;
@@ -760,7 +796,7 @@
         stopText(context);
         copy.show(slide);
       }, deadline, context);
-      textOf(slide).forEach((el) => paintCopy(el, at, 0, !at));
+      textOf(slide).forEach((el) => paintCopy(el, at, 0, !at, context?.geometry?.box(el)));
       return state;
     },
     pending(slide, context) {
@@ -786,17 +822,17 @@
       copyStates.set(slide, { phase: 'retired' });
       textOf(slide).forEach((el) => paintCopy(el, null, 0, true));
     },
-    paint(el, at, r) { paintCopy(el, at, r); },
+    paint(el, at, r, bounds) { paintCopy(el, at, r, false, bounds); },
   };
-  const reach = (el, at) => {
-    const b = el.getBoundingClientRect();
+  const reach = (el, at, bounds) => {
+    const b = bounds || el.getBoundingClientRect();
     return Math.max(...[[b.left, b.top], [b.right, b.top], [b.left, b.bottom], [b.right, b.bottom]]
       .map(([x, y]) => Math.hypot(x - at.x, y - at.y))) + SOFT;
   };
-  const revealDuration = (slide, at) => Math.max(0, ...textOf(slide).map((el) => clamp(reach(el, at) / 0.62, 1100, 1600)));
+  const revealDuration = (slide, at, context) => Math.max(0, ...textOf(slide).map((el) => clamp(reach(el, at, context?.geometry?.box(el)) / 0.62, 1100, 1600)));
   // Points spread through a text block, for threads to run to or from.
-  const spots = (el, n) => {
-    const b = el.getBoundingClientRect();
+  const spots = (el, n, bounds) => {
+    const b = bounds || el.getBoundingClientRect();
     return Array.from({ length: n }, (_, i) => ({
       x: b.left + b.width * (0.08 + 0.84 * rnd()),
       y: b.top + b.height * ((i + 0.3 + rnd() * 0.4) / n),
@@ -875,15 +911,16 @@
   // they reach. The circle's edge keeps pace with the threads' tips.
   const reveal = (s, at, delay = 0, context = window.deckNav) => {
     if (context.terminal) return [];
-    const state = copy.hide(s, context, at, delay + revealDuration(s, at) + 400);
+    const state = copy.hide(s, context, at, delay + revealDuration(s, at, context) + 400);
     if (state) state.phase = 'revealing';
     const tw = [];
     for (const el of textOf(s)) {
-      copy.paint(el, at, 0);
-      const far = reach(el, at);
+      const bounds = context.geometry?.box(el);
+      copy.paint(el, at, 0, bounds);
+      const far = reach(el, at, bounds);
       const duration = clamp(far / 0.62, 1100, 1600);
       if (!still) {
-        for (const p of spots(el, 7)) {
+        for (const p of spots(el, 7, bounds)) {
           const pts = wander(at, p);
           const d = lengths(pts).at(-1);
           hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 1.1, rest: 0, smooth: true, owner: context, delay: delay / 1000, duration: (duration / 1000) * clamp(d / (far - SOFT), 0.3, 1) });
@@ -893,7 +930,7 @@
       const run = tween(duration, seep, (k) => {
         if (!s.classList.contains('on')) return;
         if (copyStates.get(s) !== state) return;
-        copy.paint(el, at, k * far);
+        copy.paint(el, at, k * far, context.geometry?.box(el));
         for (const f of lit) if (!f.lit && k >= f.from) { f.lit = true; flash(f); }
       }, delay, context);
       tw.push(run);
@@ -914,12 +951,13 @@
     const state = { context, phase: 'gathering' };
     copyStates.set(s, state);
     for (const el of textOf(s)) {
-      const saved = masks.get(el), centre = saved?.at || at, far = saved?.r ?? reach(el, at);
-      for (const p of spots(el, 6)) {
+      const bounds = context.geometry?.box(el);
+      const saved = masks.get(el), centre = saved?.at || at, far = saved?.r ?? reach(el, at, bounds);
+      for (const p of spots(el, 6, bounds)) {
         hypha(wander(p, at), { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38, owner: context });
       }
       const run = tween(GATHER, easeIn, (k) => {
-        if (copyStates.get(s) === state && !s.classList.contains('on')) copy.paint(el, centre, (1 - k) * far);
+        if (copyStates.get(s) === state && !s.classList.contains('on')) copy.paint(el, centre, (1 - k) * far, context.geometry?.box(el));
       }, 0, context);
       tw.push(run);
     }
@@ -932,10 +970,10 @@
   // show as the old is about half drawn in; or, where the two nodes are close, once what is left of the old text no
   // longer reaches the new node, so the two never show in the same place.
   const OVERLAP = 0.3;
-  const overlap = (s, from, to) => {
+  const overlap = (s, from, to, context) => {
     const d = Math.hypot(to.x - from.x, to.y - from.y);
     let k = OVERLAP;
-    for (const el of textOf(s)) { const far = reach(el, from); while (k < 1 && (1 - easeIn(k)) * far > d) k += 0.02; }
+    for (const el of textOf(s)) { const far = reach(el, from, context.geometry?.box(el)); while (k < 1 && (1 - easeIn(k)) * far > d) k += 0.02; }
     return Math.min(1, k) * GATHER;
   };
   let current = null, visit = null;
@@ -1272,12 +1310,12 @@
     // slide, so expensive layout work counts towards the gather.
     tweens.push(...gather(prev, from, context));
     current = next;
-    const to = anchorOf(next) || from;
-    const early = overlap(prev, from, to);
+    const to = context.geometry?.anchor || anchorOf(next) || from;
+    const early = overlap(prev, from, to, context);
     // A hold's declared deadline is on the same clock; the reveal can begin
     // only after both that hold and the overlap milestone have passed.
     const revealAt = Math.max(started + early, context.textDeadline);
-    const copyVisit = copy.hide(next, context, to, Math.max(0, revealAt - context.now()) + revealDuration(next, to) + 400);
+    const copyVisit = copy.hide(next, context, to, Math.max(0, revealAt - context.now()) + revealDuration(next, to, context) + 400);
     anchor = to;
     drift = { x: 0, y: 0 }; trail = { x: 0, y: 0 };
     // The closing mark grows only when the travelling node reaches its destination (arrive below).
@@ -1502,5 +1540,5 @@
   };
   window.deckCopy = copy;
 
-  window.deckRegisterNetwork({ enter, resize, finish: finishText, copyRects });
+  window.deckRegisterNetwork({ enter, resize, finish: finishText, copyRects, geometry });
 })();
