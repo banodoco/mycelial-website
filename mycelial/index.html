@@ -2263,6 +2263,7 @@
   };
   const recoverExpiredTurn = (context) => {
     if (document.hidden || !context.isCurrent() || turn?.context !== context) return;
+    if (timelinePaused) { turn.watchdog = watchTurn(context, 1000); return; }
     dispatchEvent(new CustomEvent('deck-watchdog', { detail: { generation: context.generation } }));
     console.warn('Deck navigation recovery', context.generation);
     window.deckTransaction('recover', context);
@@ -2420,9 +2421,7 @@
     if (historyMode !== 'none' || location.hash || history.state?.deckSlide !== i + 1) {
       history.replaceState({ ...history.state, deckSlide: i + 1 }, '', url);
     }
-    // Preserve extra time for the intro and shared wheel; use scene budgets elsewhere.
-    const recoveryMs = from === null ? 18000 : to >= 8 && to <= 10 ? 3000 : Math.max(5000, turn.budget + 1000);
-    turn.watchdog = watchTurn(context, recoveryMs);
+    turn.watchdog = watchTurn(context, from === null ? 18000 : 12000);
     dispatchScenes(context);
   };
   const go = (n, historyMode = 'push') => {
