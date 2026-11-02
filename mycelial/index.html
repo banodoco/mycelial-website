@@ -2675,7 +2675,7 @@
 // Diagnostic UI is intentionally independent of the animation clock.
 if (new URLSearchParams(location.search).has('debug')) (() => {
   const debug = window.__deckDebug, panel = document.createElement('div');
-  panel.style.cssText = 'position:fixed;z-index:2147483647;top:env(safe-area-inset-top);left:0;right:0;pointer-events:none;color:#fff;font:11px/1.2 monospace';
+  panel.style.cssText = 'position:fixed;z-index:2147483647;bottom:env(safe-area-inset-bottom);left:0;right:0;pointer-events:none;color:#fff;font:11px/1.2 monospace';
   const controls = document.createElement('div'), output = document.createElement('pre');
   controls.style.cssText = 'text-align:right;pointer-events:none';
   output.style.cssText = 'margin:0;padding:3px;background:rgba(0,0,0,.82);white-space:pre-wrap;overflow-wrap:anywhere';
@@ -2686,12 +2686,17 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
     b.addEventListener('click', action); controls.appendChild(b);
   };
   const copyColumn = (slide) => slide?.querySelector(slide.matches('.fw-raise') ? ':scope > .split' : ':scope > .split > :first-child');
-  let bottom = false, lastNow, lastFrame = performance.now(), frames = [], snapshot;
+  const repaints = [];
+  let bottom = true, lastNow, lastFrame = performance.now(), frames = [], snapshot;
   button('↕', () => { bottom = !bottom; panel.style.top = bottom ? 'auto' : 'env(safe-area-inset-top)'; panel.style.bottom = bottom ? 'env(safe-area-inset-bottom)' : 'auto'; });
+  button('hide', () => { output.style.display = output.style.display === 'none' ? '' : 'none'; });
   button('repaint', () => {
-    const slide = document.querySelector('.slide.on'), el = copyColumn(slide);
-    if (!el) return;
-    const old = el.style.willChange; el.style.willChange = 'opacity'; requestAnimationFrame(() => { el.style.willChange = old; });
+    // Forces the copy to be laid out and painted from scratch: if the text appears, the browser had failed to repaint it.
+    const slide = document.querySelector('.slide.on'), els = [copyColumn(slide), slide?.querySelector('.fw-stat')].filter(Boolean);
+    els.forEach((el) => { el.dataset.dbgDisplay = el.style.display; el.style.display = 'none'; });
+    void document.body.offsetHeight;
+    requestAnimationFrame(() => els.forEach((el) => { el.style.display = el.dataset.dbgDisplay; delete el.dataset.dbgDisplay; }));
+    repaints.push(new Date().toTimeString().slice(0, 8));
   });
   button('copy log', () => { navigator.clipboard?.writeText(JSON.stringify(snapshot, null, 2)).catch(() => {}); });
   panel.append(controls, output); document.body.appendChild(panel);
@@ -2746,7 +2751,7 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
       `column ${shortCopy(snapshot.copy.column)}\nstat ${shortCopy(snapshot.copy.stat)}\nh1 ${shortCopy(snapshot.copy.h1)}\n` +
       `network current:${n.current} turning:${n.turning} visit:${n.visit} tweens:${n.textTweens} zones/hyphae/baked:${n.zones}/${n.hyphae}/${n.baked} canvas:${n.canvas}\n` +
       `canvas created:${cap.canvas.created} bytes~:${cap.canvas.bytes} nulls:${cap.canvas.nulls}\n` +
-      `errors:${errors || '-'}\nevents:${events || '-'}`;
+      `errors:${errors || '-'}\nevents:${events || '-'}\nrepaint taps:${repaints.slice(-3).join(',') || '-'}`;
   };
   tick(); setInterval(tick, 250);
 })();
