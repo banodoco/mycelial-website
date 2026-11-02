@@ -2147,7 +2147,6 @@
   const completePhase = (phase, slideEl, context) => {
     if (!ownsTurn(slideEl, context) || turn[phase]) return false;
     if (phase === 'entry') {
-      if (turn.rewinding) return false;
       turn.entryRequested = true;
       if (turn.scenePending) return true;
     }
@@ -2158,22 +2157,7 @@
   };
   window.deckTurnDone = (slideEl, context) => completePhase('network', slideEl, context);
   window.deckArrived = (context) => { if (turn?.context === context && context.isCurrent()) turn.arrive('completed'); };
-  window.deckEntryDone = (slideEl, context) => completePhase('entry', slideEl, context);
-  // Compatibility for source scenes not yet registered. Registered exit work is
-  // joined before entry runs, so it needs no late reverse claim.
-  window.deckRewinding = (slideEl, context) => {
-    if (!ownsTurn(slideEl, context)) return false;
-    turn.rewinding = true; turn.entry = false;
-    return true;
-  };
-  window.deckRewound = (slideEl, context) => {
-    if (!ownsTurn(slideEl, context) || !turn.rewinding) return false;
-    turn.rewinding = false;
-    return completePhase('entry', slideEl, context);
-  };
-
-  // A static dispatcher, not another slide-selection authority. Legacy scenes
-  // continue using their phase callbacks until their observers are migrated.
+  // A static dispatcher, not another slide-selection authority.
   const scenes = new Map();
   let networkScene = null;
   window.deckRegisterScene = (ids, scene) => {
@@ -2208,10 +2192,12 @@
         let pending;
         try { pending = scene[hook](context); }
         catch (error) { requestRecovery(context, `scene ${hook}`, error); continue; }
+        if (hook === 'exit' && context.back && typeof pending?.then === 'function') turn.reverseExitPending = true;
         Promise.resolve(pending).then((result) => {
           if (!context.isCurrent() || turn?.context !== context) return;
           if (result === 'cancelled') { requestRecovery(context, `scene ${hook}`, new Error('participant cancelled while its visit was current')); return; }
           if (hook === 'enter') turn.entryRequested = true;
+          else turn.reverseExitPending = false;
           turn.scenePending--;
           if (!turn.scenePending && turn.entryRequested) completePhase('entry', slides[context.to], context);
         }, (error) => requestRecovery(context, `scene ${hook}`, error));
@@ -2288,6 +2274,7 @@
           turn.entry = true;
           turn.entryRequested = true;
           turn.scenePending = 0;
+          turn.reverseExitPending = false;
           turn.textReady = true;
         }
       }
@@ -2343,7 +2330,7 @@
         back: context.back, rest: context.rest, direct: context.direct, superseded: context.superseded,
         terminal: context.terminal, network: turn?.network ?? null, entry: turn?.entry ?? null,
         textReady: turn?.textReady ?? null, scenePending: turn?.scenePending ?? null,
-        rewinding: turn?.rewinding ?? null, recovering: turn?.recovering ?? null,
+        rewinding: turn ? turn.reverseExitPending : null, recovering: turn?.recovering ?? null,
         wallMs: turn ? Date.now() - turn.debugWallStarted : null,
         deckMs: turn ? window.deckNow() - turn.started : null,
         watchdogMs: turn?.watchdogDeadline ? Math.max(0, turn.watchdogDeadline - Date.now()) : null } : null };
@@ -2453,7 +2440,7 @@
     window.deckNav = context;
     const basePace = motionOff && !reduced ? STILL_PACE : stepPace || 1;
     turn = { context, arrive, to, dir: stepped ? dir : 0, basePace, network: false, entry: false, textReady: false,
-      entryRequested: reduced && !scenes.has(to), scenePending: 0, watchdog: null, watchdogDeadline: 0, recovering: false, started: window.deckNow(), rewinding: false,
+      entryRequested: reduced && !scenes.has(to), scenePending: 0, reverseExitPending: false, watchdog: null, watchdogDeadline: 0, recovering: false, started: window.deckNow(),
       budget: from === null ? 6500 : turnBudgets[to] };
     if (window.__deckDebug) turn.debugWallStarted = Date.now();
     textReady.then((result) => {

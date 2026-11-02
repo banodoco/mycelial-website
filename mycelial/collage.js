@@ -524,7 +524,7 @@
   // on the way back from slide 2, whose motes gather into the ring at rest; and with motion off it is simply there.
   // Its hold, and the front film's preview, begin once it has landed.
   const ARRIVE = 2600, SWEEP = 0.55 * 2 * Math.PI;
-  let arrival = null, wasOn = slide.classList.contains('on'), parked = 0;
+  let arrival = null, parked = 0;
   const arrive = () => {
     if (still || !box || !active()) return;
     const to = nearest(goal());
@@ -679,19 +679,6 @@
   // On, off, hidden, overview: the ring only moves (and the front film only plays) while slide 1 is on screen.
   // Left part way through a turn, it holds where it is, so slide 2 takes it apart (and puts it back) exactly there.
   const syncMotion = () => {
-    // Coming on (not on the way back from slide 2, where its motes gather into the ring as it was): arrive.
-    const on = slide.classList.contains('on');
-    if (on && stale) relayout(); // a change made while it was away
-    if (on && !wasOn && !slide.classList.contains('vc-dissolve') && !opening()) {
-      clearTimeout(parked); land(); wasOn = on;
-      if (window.deckNav?.direct || window.deckNav?.rest) {
-        angle = wrap(nearest(goal())); G.sigma = 1;
-        root.style.opacity = root.style.transition = floor.style.transform = '';
-        pose(); sync();
-      } else { arrive(); sync(); }
-      return;
-    }
-    wasOn = on;
     if (active() && !slide.classList.contains('vc-dissolve')) {
       clearTimeout(parked);
       if (arrival && !raf) land(); // back to it while cut short (a hidden tab, the overview): simply there
@@ -713,7 +700,30 @@
     sync();
     syncPause();
   };
-  new MutationObserver(syncMotion).observe(slide, { attributes: true, attributeFilter: ['class'] });
+  const sceneEnter = (ctx) => {
+    if (stale) relayout();
+    if (!(ctx.from === 1 && ctx.back) && !opening()) {
+      clearTimeout(parked); land();
+      if (ctx.direct || ctx.rest) {
+        angle = wrap(nearest(goal())); G.sigma = 1;
+        root.style.opacity = root.style.transition = floor.style.transform = '';
+        pose();
+      } else arrive();
+    }
+    syncMotion();
+  };
+  const sceneExit = (ctx) => {
+    // The field measures the departing tiles before the network starts its turn.
+    if (ctx.to === 1 && !ctx.direct && !ctx.rest && !still) ctx.present(slide, 'dt-leaving');
+    syncMotion();
+  };
+  window.deckRegisterScene?.([0], { enter: sceneEnter, exit: sceneExit, resize: syncMotion });
+  // The field controls dissolution while its reverse flight is in progress.
+  let dissolved = slide.classList.contains('vc-dissolve');
+  new MutationObserver(() => {
+    const next = slide.classList.contains('vc-dissolve');
+    if (next !== dissolved) { dissolved = next; syncMotion(); }
+  }).observe(slide, { attributes: true, attributeFilter: ['class'] });
   // The opening keeps the ring still; the first turn waits a full hold after the films appear.
   let opened = !opening();
   new MutationObserver(() => {

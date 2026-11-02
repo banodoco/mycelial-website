@@ -179,7 +179,7 @@
     visitCtx = ctx;
     reset();
     size();
-    if (motionOff() || ctx?.rest || ctx?.direct) { root.classList.add('is-drawn', 'is-labelled'); tools.forEach((el) => el.classList.add('is-in')); window.deckEntryDone?.(slide, ctx); return; }
+    if (motionOff() || ctx?.rest || ctx?.direct) { root.classList.add('is-drawn', 'is-labelled'); tools.forEach((el) => el.classList.add('is-in')); entryFinish?.(ctx, 'completed'); return; }
     const dy = lift();
     tools.forEach((el, i) => {
       const p = disc(el, dy);
@@ -285,14 +285,14 @@
       return true;
     });
     if (flights.length) forwardRaf = requestAnimationFrame((t) => fly(t, ctx, generation));
-    else { g?.clearRect(0, 0, innerWidth, innerHeight); flying = false; if (!backs.length) show(false); window.deckEntryDone?.(slide, ctx); }
+    else { g?.clearRect(0, 0, innerWidth, innerHeight); flying = false; if (!backs.length) show(false); entryFinish?.(ctx, 'completed'); }
   };
 
   // ---- Going back ----------------------------------------------------------
   // A step back to slide 2: the arrival from the field, played backwards. Each logo melts back into its orb, which
   // flies back along a curve to one of the field's dots, shrinking and taking on its colour as it goes; the dust
   // lifts off the axes as they fade and flies back out into the field, which waits, still, for its dots.
-  let backs = [], backT = 0, backLast = 0, backRaf = 0, departRaf = 0, reverseCtx = null;
+  let backs = [], backT = 0, backLast = 0, backRaf = 0, departRaf = 0;
   const unfly = (now) => {
     backRaf = 0;
     const clock = window.deckNow?.() ?? now;
@@ -328,13 +328,11 @@
     g?.clearRect(0, 0, innerWidth, innerHeight);
     if (!flying) show(false);
     if (!slide.classList.contains('on')) reset();
-    if (fieldSlide) window.deckRewound?.(fieldSlide, reverseCtx);
+    reverseFinish?.(visitCtx, 'completed');
   };
-  const depart = () => {
-    const ctx = window.deckNav;
-    reverseCtx = ctx;
+  const depart = (ctx) => {
+    visitCtx = ctx;
     const signal = ctx?.signal;
-    window.deckRewinding?.(fieldSlide, ctx);
     field.hold?.(2.2);
     // Once the field has drawn a frame, its dots are where they will be met.
     departRaf = requestAnimationFrame(() => {
@@ -369,31 +367,43 @@
       show(true);
       backRaf = requestAnimationFrame(unfly);
     });
-    signal?.addEventListener('abort', endDepart, { once: true });
   };
 
-  // Act only when the slide itself comes or goes, not on every class change.
-  let wasOn = slide.classList.contains('on');
-  const watch = new MutationObserver((records) => {
-    const on = slide.classList.contains('on');
-    if (on === wasOn) return;
-    wasOn = on;
-    if (!on) {
-      clearInterval(asking);
-      focus(null);
-      const toField = fieldSlide && fieldSlide.classList.contains('on') && field.snapshot && window.deckNav?.back && !motionOff() && tools.every((el) => el.classList.contains('is-in'));
-      if (toField) { timers.forEach(window.deckCancelLater); timers = []; retireForward(true); depart(); return; }
-      retireForward();
-      later(700, () => { if (!slide.classList.contains('on')) reset(); });
-      return;
+  let entryFinish = null, reverseFinish = null;
+  const completion = (ctx, assign, cleanup) => {
+    let resolve, done = false;
+    const promise = new Promise((r) => { resolve = r; });
+    const finish = (owner, result) => {
+      if (owner !== ctx || done) return;
+      done = true; assign(null); resolve(result);
+    };
+    assign(finish);
+    ctx.defer(() => { finish(ctx, 'cancelled'); cleanup(); });
+    return promise;
+  };
+  const sceneEnter = (ctx) => {
+    const promise = completion(ctx, (fn) => { entryFinish = fn; }, () => { retireForward(); if (waiting) { waiting.disconnect(); waiting = null; } });
+    visitCtx = ctx;
+    if (backs.length || backRaf || departRaf) endDepart();
+    if (ctx.rest || ctx.direct) enter(0, ctx);
+    else if (ctx.from === 1) arrive(ctx);
+    else begin(ctx);
+    return promise;
+  };
+  const sceneExit = (ctx) => {
+    clearInterval(asking);
+    focus(null);
+    // The neighbouring scene can measure before the network starts its turn.
+    if ((ctx.to === 3 && !ctx.direct && !ctx.rest && !motionOff()) || (ctx.to === 1 && ctx.back)) ctx.present(slide, 'dt-leaving');
+    if (ctx.to === 1 && field?.snapshot && ctx.back && !motionOff() && tools.every((el) => el.classList.contains('is-in'))) {
+      timers.forEach(window.deckCancelLater); timers = []; retireForward(true);
+      const promise = completion(ctx, (fn) => { reverseFinish = fn; }, () => endDepart());
+      depart(ctx);
+      return promise;
     }
-    visitCtx = window.deckNav;
-    if (backs.length || backRaf) endDepart();
-    const fromField = fieldSlide && !fieldSlide.classList.contains('on') && records.some((r) => r.target === fieldSlide);
-    const ctx = visitCtx;
-    if (ctx?.rest || ctx?.direct) enter(0, ctx);
-    else fromField ? arrive(ctx) : begin(ctx);
-  });
+    retireForward();
+    later(700, () => { if (!slide.classList.contains('on')) reset(); });
+  };
   // On a first load the Mycelial mark plays first (dot-transitions.js): the tools bloom once it has landed.
   const html = document.documentElement;
   let waiting = null;
@@ -408,14 +418,11 @@
     });
     waiting.observe(html, { attributes: true, attributeFilter: ['class'] });
   };
-  watch.observe(slide, { attributes: true, attributeFilter: ['class'] });
-  if (fieldSlide) watch.observe(fieldSlide, { attributes: true, attributeFilter: ['class'] });
   const keep = new MutationObserver(keepSky);
   keep.observe(slide, { attributes: true, attributeFilter: ['class'] });
   if (fieldSlide) keep.observe(fieldSlide, { attributes: true, attributeFilter: ['class'] });
-  if (slide.classList.contains('on')) { visitCtx = window.deckNav; begin(visitCtx); }
   window.addEventListener('deck-motion', () => { if (motionOff() && slide.classList.contains('on')) enter(0, visitCtx); });
-  window.deckOnSettle?.((ctx) => {
+  const sceneResize = (ctx) => {
     if (backs.length || backRaf || departRaf) endDepart();
     if (waiting) { waiting.disconnect(); waiting = null; }
     retireForward(Boolean(backs.length || backRaf || departRaf));
@@ -428,6 +435,7 @@
     g?.clearRect(0, 0, innerWidth, innerHeight);
     root.classList.add('is-drawn', 'is-labelled');
     tools.forEach((el) => { el.classList.add('is-in'); el.style.removeProperty('--m'); });
-    window.deckEntryDone?.(slide, ctx);
-  });
+    entryFinish?.(ctx, 'completed');
+  };
+  window.deckRegisterScene?.([2], { enter: sceneEnter, exit: sceneExit, resize: sceneResize });
 })();
