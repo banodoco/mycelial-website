@@ -2687,9 +2687,27 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
   };
   const copyColumn = (slide) => slide?.querySelector(slide.matches('.fw-raise') ? ':scope > .split' : ':scope > .split > :first-child');
   const repaints = [];
+  let canvasesHidden = false;
+  // What is painted on top of the heading's centre (pointer-events forced on for the hit test only).
+  const hitsAt = (el) => {
+    if (!el) return '-';
+    const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + Math.min(r.height / 2, 20);
+    const style = document.createElement('style');
+    style.textContent = '*{pointer-events:auto!important}#dbg-panel,#dbg-panel *{pointer-events:none!important}';
+    document.head.appendChild(style);
+    let list = [];
+    try { list = document.elementsFromPoint(x, y); } finally { style.remove(); }
+    const name = (n) => n.tagName.toLowerCase() + (n.id ? '#' + n.id : '') + (n.classList.length ? '.' + [...n.classList].slice(0, 2).join('.') : '');
+    return list.filter((n) => getComputedStyle(n).opacity !== '0').slice(0, 4).map(name).join(' > ');
+  };
   let bottom = true, lastNow, lastFrame = performance.now(), frames = [], snapshot;
   button('↕', () => { bottom = !bottom; panel.style.top = bottom ? 'auto' : 'env(safe-area-inset-top)'; panel.style.bottom = bottom ? 'env(safe-area-inset-bottom)' : 'auto'; });
   button('hide', () => { output.style.display = output.style.display === 'none' ? '' : 'none'; });
+  button('canvases', () => {
+    // Hides every canvas: if the text appears, something drawn on a canvas was covering it.
+    canvasesHidden = !canvasesHidden;
+    document.querySelectorAll('canvas').forEach((c) => { c.style.visibility = canvasesHidden ? 'hidden' : ''; });
+  });
   button('repaint', () => {
     // Forces the copy to be laid out and painted from scratch: if the text appears, the browser had failed to repaint it.
     const slide = document.querySelector('.slide.on'), els = [copyColumn(slide), slide?.querySelector('.fw-stat')].filter(Boolean);
@@ -2699,6 +2717,7 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
     repaints.push(new Date().toTimeString().slice(0, 8));
   });
   button('copy log', () => { navigator.clipboard?.writeText(JSON.stringify(snapshot, null, 2)).catch(() => {}); });
+  panel.id = 'dbg-panel';
   panel.append(controls, output); document.body.appendChild(panel);
   const frame = (now) => { lastFrame = now; frames.push(now); while (frames.length && frames[0] < now - 1000) frames.shift(); requestAnimationFrame(frame); };
   requestAnimationFrame(frame);
@@ -2751,7 +2770,7 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
       `column ${shortCopy(snapshot.copy.column)}\nstat ${shortCopy(snapshot.copy.stat)}\nh1 ${shortCopy(snapshot.copy.h1)}\n` +
       `network current:${n.current} turning:${n.turning} visit:${n.visit} tweens:${n.textTweens} zones/hyphae/baked:${n.zones}/${n.hyphae}/${n.baked} canvas:${n.canvas}\n` +
       `canvas created:${cap.canvas.created} bytes~:${cap.canvas.bytes} nulls:${cap.canvas.nulls}\n` +
-      `errors:${errors || '-'}\nevents:${events || '-'}\nrepaint taps:${repaints.slice(-3).join(',') || '-'}`;
+      `errors:${errors || '-'}\nevents:${events || '-'}\nrepaint taps:${repaints.slice(-3).join(',') || '-'} canvases:${canvasesHidden ? 'hidden' : 'shown'}\non top of h1: ${hitsAt(document.querySelector('.slide.on h1'))}`;
   };
   tick(); setInterval(tick, 250);
 })();
