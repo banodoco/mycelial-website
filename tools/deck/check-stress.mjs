@@ -77,7 +77,7 @@ async function snapshot(page) {
         if (!visibleRects.length) textProblems.push(`${label}: no text in viewport`);
       }
     }
-    const knownFlights = ['gp-flight', 'as-flight'];
+    const knownFlights = ['gp-flight', 'as-flight', 'as-flight-flier'];
     const flights = [...document.querySelectorAll('canvas[class*="flight" i],canvas[data-flight-canvas]')];
     const flightProblems = [];
     const flightCanvases = flights.map(c => {

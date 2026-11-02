@@ -1,7 +1,7 @@
 // Version F, slide 6: where it goes. Slide 5's product taken apart into one exploded stack of thin
 // floating planes on the right, the text top left, top to bottom: rendering, editing, effects, the agent's
-// tools, and the models and runtime at the foundation, rooted by gold mycelium into the network. The mink
-// perches on the top plane. (On an upright phone the stack stands under the text, its mirror: flags on the left.)
+// tools, and the models and runtime at the foundation, rooted by gold mycelium into the network.
+// On an upright phone the stack stands under the text, its mirror: flags on the left.
 // Each layer has a named flag sticking out to the right on a fine gold leader. Hovering, focusing or
 // tapping a flag (or its plane) unfolds it into a small card: what can be customised there, in a line,
 // and a few real examples. A guide, a mote of light in the deck's own language, tours the layers on its
@@ -11,11 +11,10 @@
 // From slide 5 the product itself becomes the stack: the top planes begin as exact copies of slide 5's
 // preview, timeline and chat, the chat folding under into the agent's plane; the planes part, effects and
 // runtime come up into place, then the threads, flags and roots draw in. Any other arrival builds from the
-// foundation up. Hovering the mink flashes her eye; clicking her turns her to face you, as on slide 5.
+// foundation up.
 (() => {
   const root = document.querySelector('[data-astrid-stack]');
-  const M = window.AstridMink;
-  if (!root || !M) return;
+  if (!root) return;
   const slide = root.closest('.slide');
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const motionOff = () => still || window.deckStill?.();
@@ -142,9 +141,6 @@
   const cv = document.createElement('canvas');
   cv.className = 'st-threads';
   const g = cv.getContext('2d');
-  const minkCv = document.createElement('canvas');
-  minkCv.className = 'st-mink';
-  const mg = minkCv.getContext('2d');
   // The flags (buttons, so keyboard users can reach them) and the cards they unfold into.
   const flags = TAGS.map((t, i) => {
     const b = document.createElement('button');
@@ -159,17 +155,16 @@
     c.innerHTML = `<b class="st-ch">${t.name}</b><p>${t.line}</p><ul>${t.ex.map(([n, d]) => `<li><b>${n}</b> <span>${d}</span></li>`).join('')}</ul>${t.more ? `<div class="st-more">${t.more}</div>` : ''}<em>${t.foot}</em>`;
     return c;
   });
-  // An unseen hit area over the whole picture (flags column, planes, mink, roots): a stray click between the planes
+  // An unseen hit area over the whole picture (flags column, planes, roots): a stray click between the planes
   // would otherwise turn the deck.
   const hit = document.createElement('div');
   hit.className = 'st-hit';
-  root.append(hit, world, cv, ...flags, ...cards, minkCv);
+  root.append(hit, world, cv, ...flags, ...cards);
   const video = planes[0].querySelector('video');
   const timeEl = planes[0].querySelector('.st-time');
   const head = planes[1].querySelector('.st-head');
 
   // ---- Plane state and the projection ----------------------------------------------------------
-  const MW = 23, MH = 20;
   const settledOf = (p) => ({ x: p.cx, y: p.cy, w: p.w, h: p.h, rx: TILT, rz: TURN, o: 1, c: 1, g: 0 });
   const st = PL.map(settledOf);
   const shown = PL.map(() => ({}));
@@ -220,7 +215,6 @@
     return { x: PO.x + (X - PO.x) * f, y: PO.y + (Y - PO.y) * f };
   };
   const toS = (p) => ({ x: view.ox + view.k * p.x, y: view.oy + view.k * p.y });
-  const project = (s, u, v) => toS(projW(s, u, v));
   const toWorld = (r) => ({ x: (r.left + r.width / 2 - view.ox) / view.k, y: (r.top + r.height / 2 - view.oy) / view.k, w: r.width / view.k, h: r.height / view.k });
   // Each plane's far edge sits GAP below the near edge of the one above it.
   const stackUp = () => {
@@ -232,7 +226,7 @@
   };
 
   // ---- Layout ------------------------------------------------------------------------------------
-  let dpr = 1, cell = 3, geo = null;
+  let dpr = 1, geo = null;
   const CARDW = 300, CARDW_L = 240, FLAG_PITCH = 40;
   let flagY = [];
   // A polyline with its running lengths, and a point a fraction q of the way along it.
@@ -252,14 +246,13 @@
     PO.x = right ? 1900 : 210; TURN = right ? 4.5 : -4.5;
     world.style.perspectiveOrigin = `${PO.x}px ${PO.y}px`;
     stackUp();
-    // The whole picture's extent in scene px: labels to callouts, the mink's head to the roots' ends.
+    // The whole picture's extent in scene px: labels, planes and roots.
     const S = PL.map(settledOf);
     const cw = S.map((s) => ({
       nl: projW(s, -s.w / 2 + 3, s.h / 2 - 3), nr: projW(s, s.w / 2 - 3, s.h / 2 - 3), fr: projW(s, s.w / 2 - 3, -s.h / 2 + 3), fl: projW(s, -s.w / 2 + 3, -s.h / 2 + 3),
       lm: projW(s, -s.w / 2, 0), rm: projW(s, s.w / 2, 0),
     }));
     const callXw = right ? Math.max(...cw.map((c) => c.rm.x)) + 40 : Math.min(...cw.map((c) => c.lm.x)) - 40; // the flags' column
-    const perchW = projW(S[0], perchU(S[0]), -S[0].h / 2 + 2);
     const h1 = slide.querySelector('h1').getBoundingClientRect();
     // On a desktop the cards open in a column beside the flags, right of the stack (the text top left); on a
     // phone, in a slot below the stack and above the footer. On a phone on its side the column is narrower and a card
@@ -274,7 +267,7 @@
     const Rg = view.mobile ? { l: 16, r: W - 16, t: h1.bottom + 12, b: slotT - 12 }
       : low ? { l: h1.right + 20, r: W - 12 - CARDW_L + 6, t: 14, b: H - 76 } : { l: h1.right + 28, r: W - 48 - CARDW + 6, t: 22, b: H - 66 };
     const box = { l: right ? Math.min(...cw.map((c) => Math.min(c.fl.x, c.nl.x))) - 12 : callXw, r: right ? callXw : Math.max(...cw.map((c) => Math.max(c.fr.x, c.nr.x))) + 12,
-      t: perchW.y - MH * 3.6 - HEADROOM, b: Math.max(cw[4].nl.y, cw[4].nr.y) + ROOTS };
+      t: Math.min(...cw.map((c) => Math.min(c.fl.y, c.fr.y))) - HEADROOM, b: Math.max(cw[4].nl.y, cw[4].nr.y) + ROOTS };
     // The flags stay readable in screen pixels: include their measured width once in the mobile fit,
     // then centre flags, leaders and planes together rather than pinning labels to the viewport edge.
     const mobileFlagW = view.mobile ? Math.max(...flags.map((f) => f.offsetWidth)) : 0;
@@ -291,7 +284,6 @@
     const pixelW = Math.round(W * dpr), pixelH = Math.round(H * dpr);
     if (cv.width !== pixelW) cv.width = pixelW;
     if (cv.height !== pixelH) cv.height = pixelH;
-    cell = Math.max(1, Math.round(k * 3.4));
     // Settled geometry, in screen px: the corners the threads tie together, the flags' places, the roots.
     const corners = cw.map((c) => Object.fromEntries(Object.entries(c).map(([key, p]) => [key, toS(p)])));
     const callX = toS({ x: callXw, y: 0 }).x;
@@ -331,7 +323,7 @@
     geo = { corners, callX, roots, ways, anchors: A, base: corners.map((c) => c[E.m].y), ch, H, E, out };
     const pts = corners.flatMap((c) => [c.nl, c.nr, c.fl, c.fr]), flagW = Math.max(...flags.map((f) => f.offsetWidth));
     const hx0 = right ? Math.min(...pts.map((p) => p.x)) - 12 : callX - flagW - 10, hx1 = right ? callX + flagW + 10 : Math.max(...pts.map((p) => p.x)) + 12;
-    const hy0 = Math.min(...pts.map((p) => p.y)) - MH * cell - 12, hy1 = Math.max(...pts.map((p) => p.y)) + ROOTS * k;
+    const hy0 = Math.min(...pts.map((p) => p.y)) - 12, hy1 = Math.max(...pts.map((p) => p.y)) + ROOTS * k;
     Object.assign(hit.style, { left: `${hx0.toFixed(0)}px`, top: `${hy0.toFixed(0)}px`, width: `${(hx1 - hx0).toFixed(0)}px`, height: `${(hy1 - hy0).toFixed(0)}px` });
     // An open card opens where its flag was; the flags above and below it slide apart to make room (an accordion),
     // so every flag stays in reach. Near the foot of the screen the card rides up instead of pushing a flag off.
@@ -352,62 +344,6 @@
     flagY = (openI >= 0 && !view.mobile ? geo.place[openI].flags : geo.base).slice();
     flags.forEach((el, i) => { el.style.top = `${flagY[i].toFixed(1)}px`; });
     if (openI >= 0 && !view.mobile) cards[openI].style.top = `${geo.place[openI].top.toFixed(1)}px`;
-  };
-
-  // ---- The mink ----------------------------------------------------------------------------------
-  // Poses as on slide 5: profile, glint (her eye flash), facing, focus (eyes lit); lift raises her a cell or two.
-  const mk = { pose: 'profile', lift: 0, glint: 0, seq: null, hover: null, at: null };
-  const paintMink = (x, y, c, upto = 1) => {
-    if (!mg) return;
-    const u = c * dpr;
-    if (minkCv.width !== MW * u) minkCv.width = MW * u;
-    if (minkCv.height !== MH * u) minkCv.height = MH * u;
-    minkCv.style.width = `${MW * c}px`; minkCv.style.height = `${MH * c}px`;
-    const P = M.POSES[mk.pose];
-    mg.clearRect(0, 0, minkCv.width, minkCv.height);
-    const fill = (rows, only) => {
-      for (let r = 0; r < MH; r++) for (let q = 0; q < MW; q++) {
-        const ch = rows[r][q];
-        if (ch === '.' || (only && ch === P[r][q]) || (r + (22 - q) * 0.35) / (19 + 22 * 0.35) > upto) continue; // from the head down the neck
-        mg.fillStyle = M.COLORS[ch];
-        mg.fillRect(q * u, r * u, u, u);
-      }
-    };
-    fill(P);
-    if (mk.glint > 0 && mk.pose === 'profile') { mg.globalAlpha = mk.glint; fill(M.POSES.glint, true); mg.globalAlpha = 1; }
-    minkCv.style.transform = `translate(${Math.round(x)}px, ${Math.round(y - mk.lift * c)}px)`;
-    mk.at = { x, y, c, upto };
-  };
-  // Her click, as on slide 5 (and the homepage): she turns to face you with a little hop, her eyes light half
-  // a second later and she floats a cell or two, then she hops round and turns back.
-  const TURNS = [[0, 'facing'], [500, 'focus'], [1900, 'facing'], [2400, 'profile']];
-  const stepMink = (t) => {
-    if (!mk.at) return;
-    let pose = 'profile', lift = 0, glint = 0;
-    if (mk.seq) {
-      const e = Math.max(0, t - mk.seq), cur = TURNS.filter(([at]) => e >= at).pop();
-      pose = cur[1];
-      const since = e - cur[0];
-      lift = pose === 'facing' ? (since < 130 ? 1 : 0) : pose === 'focus' ? ((since % 1100) < 550 ? 1 : 2) : 0;
-      if (e >= 2400) mk.seq = null;
-    }
-    if (mk.hover !== null) { // the glint: up and back over 2.6 s
-      const e = Math.max(0, t - mk.hover) / 2600;
-      glint = e >= 1 ? 0 : Math.sin(Math.PI * e) ** 2;
-      if (e >= 1) mk.hover = null;
-    }
-    if (pose !== mk.pose || lift !== mk.lift || Math.abs(glint - mk.glint) > 0.01) {
-      Object.assign(mk, { pose, lift, glint });
-      paintMink(mk.at.x, mk.at.y, mk.at.c, mk.at.upto);
-    }
-  };
-  const restMink = () => Object.assign(mk, { pose: 'profile', lift: 0, glint: 0, seq: null, hover: null });
-  // Her place on the top plane's far edge, as the plane stands now (or settled): near its left end beside the text,
-  // or its right end on an upright phone.
-  const perchU = (s) => (view.right ? -s.w / 2 + 0.16 * s.w : s.w / 2 - 0.2 * s.w);
-  const perchOf = (s = settledOf(PL[0])) => {
-    const p = project(s, perchU(s), -s.h / 2 + 2);
-    return { x: p.x - Math.round(MW * cell * 0.42), y: p.y - MH * cell + Math.round(cell * 0.5), c: cell };
   };
 
   // ---- Drawing the threads -----------------------------------------------------------------------
@@ -506,18 +442,7 @@
   };
 
   // ---- States ------------------------------------------------------------------------------------
-  let snapshotRelease = null, minkRelease = null;
-  // The travelling canvas owns the mink until it lands. Restore the editor on
-  // completion, resize or abort, even if another navigation interrupts the fold.
-  const releaseMink = () => { const release = minkRelease; minkRelease = null; release?.(); };
-  const takeMink = (ctx) => {
-    releaseMink();
-    const source = demo.querySelector('.as-mink');
-    if (!source) return;
-    const previous = source.style.visibility;
-    source.style.visibility = 'hidden';
-    minkRelease = ctx.defer(() => { source.style.visibility = previous; });
-  };
+  let snapshotRelease = null;
   const endCarry = () => {
     Object.assign(cy, { on: false, A: null, P: null, nw: 0, nh: 0, a: 1, back: false });
     carry.remove(); carry.style.display = 'none'; carry.classList.remove('is-back');
@@ -526,7 +451,6 @@
     planes[0].classList.remove('is-carrying');
   };
   const ghostCanvases = PL.map(() => []);
-  const flightCopies = [];
   const retireGhosts = () => ghosts.forEach((gh, i) => {
     if (!gh) return;
     gh.remove(); gh.replaceChildren(); gh.removeAttribute('style');
@@ -545,7 +469,6 @@
     vis.sh = 0; vis.lb = PL.map(() => 0); vis.rt = 0;
     flags.forEach((el) => el.style.setProperty('--in', '0'));
     show(-1);
-    minkCv.style.opacity = '0';
     draw();
   };
   const settleAll = () => {
@@ -553,7 +476,6 @@
     apply();
     clearGhosts();
     vis.sh = 1; vis.lb = PL.map(() => 1); vis.rt = 1;
-    const m = perchOf(); paintMink(m.x, m.y, m.c); minkCv.style.opacity = '1';
     draw();
   };
 
@@ -566,8 +488,8 @@
   // wide: on a wider screen the headline is read first, so the first card waits until the words are whole.
   // open: every plane is in place, so the tour takes over while the threads, leaders and roots finish.
   const FROM5 = { a: { 0: [0.05, 1.3], 1: [0.12, 1.42], 3: [0.2, 1.62] }, spread: [1.0, 2.1], low: { 2: [1.25, 2.15], 4: [1.5, 2.4] }, fade: [0.25, 0.45, 0.72, 0.56, 0.86],
-    carry: [1.3, 1.9], mink: [0.15, 1.35], sh: [1.9, 2.9], lb: 2.05, lbGap: 0.1, lbDur: 0.55, rt: [2.0, 3.4], card: 1.2, wide: 2.0, open: 2.4, end: 3.4 };
-  const QUICK = { rise: 0.12, dur: 0.75, mink: [1.0, 0.45], sh: [0.95, 1.75], lb: 1.05, lbGap: 0.07, lbDur: 0.45, rt: [1.0, 2.25], card: 0.9, wide: 1.6, open: 1.45, end: 2.25 };
+    carry: [1.3, 1.9], sh: [1.9, 2.9], lb: 2.05, lbGap: 0.1, lbDur: 0.55, rt: [2.0, 3.4], card: 1.2, wide: 2.0, open: 2.4, end: 3.4 };
+  const QUICK = { rise: 0.12, dur: 0.75, sh: [0.95, 1.75], lb: 1.05, lbGap: 0.07, lbDur: 0.45, rt: [1.0, 2.25], card: 0.9, wide: 1.6, open: 1.45, end: 2.25 };
   // Landing at rest on a wider screen, the words are drawn in as the stack lands: its first card waits this long (s).
   const REST_WIDE = 1.7, FOLD_SHOW = 0.3, FOLD_FADE = 0.65;
   const wide = () => view.right && !view.low; // a desktop or tablet, not a phone on its side
@@ -587,13 +509,20 @@
       wrap.style.cssText = `position:absolute;left:0;top:0;margin:0;flex:none;transform-origin:0 0;width:${r.width}px;height:${r.height}px`;
       let canvasIndex = 0;
       const clonePanel = (node) => {
-        if (node.nodeName === 'CANVAS') {
+        if (node.nodeName === 'CANVAS' || (node.nodeName === 'IMG' && node.complete && node.naturalWidth)) {
+          const isImage = node.nodeName === 'IMG';
           const pool = ghostCanvases[i], canvas = pool[canvasIndex] || (pool[canvasIndex] = document.createElement('canvas'));
           canvasIndex++;
           for (const attr of [...canvas.attributes]) if (attr.name !== 'width' && attr.name !== 'height') canvas.removeAttribute(attr.name);
           for (const attr of node.attributes) if (attr.name !== 'width' && attr.name !== 'height') canvas.setAttribute(attr.name, attr.value);
-          if (canvas.width !== node.width) canvas.width = node.width;
-          if (canvas.height !== node.height) canvas.height = node.height;
+          const width = isImage ? node.naturalWidth : node.width, height = isImage ? node.naturalHeight : node.height;
+          if (canvas.width !== width) canvas.width = width;
+          if (canvas.height !== height) canvas.height = height;
+          if (isImage) {
+            const style = getComputedStyle(node);
+            canvas.style.width = style.width; canvas.style.height = style.height;
+            canvas.style.imageRendering = style.imageRendering;
+          } else canvas.dataset.ghostCanvas = '';
           const context = canvas.getContext('2d');
           if (context) { context.clearRect(0, 0, canvas.width, canvas.height); context.drawImage(node, 0, 0); }
           return canvas;
@@ -612,11 +541,7 @@
     });
     snapshotRelease = ctx.defer(() => { retireGhosts(); endCarry(); });
     takePicture(demo.querySelector(SRC[0]), rects[0]);
-    const mr = q('.as-mink');
-    const c5 = mr ? Math.max(1, Math.round(mr.width / MW)) : cell;
-    const frame = window.AstridDemo?.minkFrame() || { pose: 'profile', lift: 0, glint: 0 };
-    if (mr) takeMink(ctx);
-    return { planes: Object.fromEntries(at.map((i, j) => [i, toWorld(rects[j])])), mink: mr ? { x: mr.left, y: mr.top + (3 - frame.lift) * c5, c: c5, ...frame } : null }; // slide 5 keeps 3 spare rows above her
+    return { planes: Object.fromEntries(at.map((i, j) => [i, toWorld(rects[j])])) };
   };
   // The player's picture leaves its copy for the carry layer: its rect in the player, placed as slide 5 draws it
   // (demo.js: 16:9, 0.86 of the screen's fit, centred), and its pixels; and the plane's own picture box to land in.
@@ -696,13 +621,6 @@
         if (build.back && build.shown) cy.a = Math.min(cy.a, 1 - seep(clamp((t - build.shownAt) / 600)));
         planes[0].classList.toggle('is-carrying', e < T.carry[0]);
       }
-      if (build.src.mink) {
-        const a = build.src.mink, b = perchOf(st[0]), q = easeIO(k01(e, T.mink));
-        const c = Math.round(lerp(a.c, b.c, q)), lift = Math.sin(Math.PI * q) * 40 * view.k;
-        mk.pose = q < 1 ? a.pose : 'profile'; mk.glint = q < 1 ? a.glint : 0; mk.lift = 0;
-        paintMink(lerp(a.x, b.x, q), lerp(a.y, b.y, q) - lift, c);
-      } else if (e >= T.mink[1]) { const m = perchOf(st[0]); paintMink(m.x, m.y, m.c); }
-      minkCv.style.opacity = '1';
       vis.sh = k01(e, T.sh); vis.rt = k01(e, T.rt);
       const stage = view.mobile ? clamp((e - first) / Math.max(0.01, T0.open - first)) : null;
       vis.lb = PL.map((_, i) => view.mobile ? stage : clamp((e - T.lb - i * T.lbGap) / T.lbDur));
@@ -712,8 +630,6 @@
         const p = PL[i], q = ease(clamp((e - (4 - i) * T.rise) / T.dur));
         Object.assign(st[i], settledOf(p), { y: p.cy + 46 * (1 - q), rx: TILT + 10 * (1 - q), o: seep(q) });
       }
-      const qm = (e - T.mink[0]) / T.mink[1];
-      if (qm > 0) { const m = perchOf(st[0]); paintMink(m.x, m.y, m.c, clamp(qm)); minkCv.style.opacity = '1'; }
       vis.sh = k01(e, T.sh); vis.rt = k01(e, T.rt);
       const stage = view.mobile ? clamp((e - first) / Math.max(0.01, T.open - first)) : null;
       vis.lb = PL.map((_, i) => view.mobile ? stage : clamp((e - T.lb - i * T.lbGap) / T.lbDur));
@@ -723,7 +639,6 @@
       const ctx = build.ctx;
       build = null;
       if (amb) { vis.sh = 1; vis.lb = PL.map(() => 1); vis.rt = 1; } else { settleAll(); amb = { t }; tourFrom(0, t + 1100); }
-      releaseMink();
       entryFinished = true;
       if (current(ctx)) entryCompletion?.(ctx, 'completed');
     }
@@ -777,13 +692,13 @@
     guide.a += ((guide.on && !guide.paused ? 1 : 0) - guide.a) * (1 - Math.exp(-dt / 0.2));
     guide.breath = guide.mode === 'dwell' ? 0.5 + 0.5 * Math.sin(t / 420) : 0;
     arrangeFlags(dt);
-    // The layer being explained lifts a little (the mink rides the top one).
+    // The layer being explained lifts a little.
     let moved = false;
     lit.forEach((l, i) => {
       const nl = l + ((i === openI ? 1 : 0) - l) * (1 - Math.exp(-dt / 0.22));
       if (Math.abs(nl - l) > 1e-4) { lit[i] = nl; st[i].y = PL[i].cy - 6 * nl; moved = true; }
     });
-    if (moved) { apply(); if (lit[0] > 1e-3 || st[0].y !== PL[0].cy) { const m = perchOf(st[0]); paintMink(m.x, m.y, m.c); } }
+    if (moved) apply();
     draw();
   };
   const arrangeFlags = (dt) => { // dt = 0: jump there
@@ -833,7 +748,6 @@
   const step = (t) => {
     if (build) stepBuild(t);
     if (amb) stepTour(t);
-    if (!build) stepMink(t);
     stepHead();
   };
   const tick = (ctx) => {
@@ -912,9 +826,8 @@
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
     build = null;
-    releaseMink();
     clearGhosts(); // transient editor snapshots must not outlive an interrupted hand-off
-    if (!preserveScene) { amb = null; restMink(); }
+    if (!preserveScene) { amb = null; }
     clearTimeout(leaving); Object.assign(hold, { hover: -1, focus: -1, pin: -1 }); guide.on = false; guide.a = 0; guide.last = 0;
     if (!preserveScene) { show(-1); lit.fill(0); }
     flags.forEach((f) => { f.tabIndex = -1; });
@@ -927,7 +840,7 @@
   // ---- Going back to slide 5 ------------------------------------------------------------------
   // A step back: the arrival from slide 5 played backwards. The roots draw back in, the threads and the flags go, the
   // effects and the runtime sink away, and the rendering, timeline and agent planes untilt and fold back into exact
-  // copies of slide 5's panels, the mink flying back to her seat; slide 5 fades in beneath them and the stack goes.
+  // copies of slide 5's panels; slide 5 fades in beneath them and the stack goes.
   const fold = (ctx) => {
     if (!current(ctx)) return;
     activeCtx = ctx;
@@ -937,7 +850,6 @@
     clearTimeout(leaving); Object.assign(hold, { hover: -1, focus: -1, pin: -1 }); guide.on = false; guide.a = 0;
     show(-1); lit.fill(0);
     flags.forEach((f) => { f.tabIndex = -1; });
-    restMink();
     ctx.present(slide, 'dt-rewind');
     ctx.present(slide5, 'dt-return dt-await');
     // From the settled stack, the arrival's clock runs back from its end.
@@ -971,7 +883,7 @@
     return true;
   };
   const repaintGhosts = () => Object.keys(SRC).forEach((i) => {
-    const from = demo.querySelector(SRC[i])?.querySelectorAll('canvas') || [], to = ghosts[i].querySelectorAll('canvas');
+    const from = demo.querySelector(SRC[i])?.querySelectorAll('canvas') || [], to = ghosts[i].querySelectorAll('canvas[data-ghost-canvas]');
     from.forEach((cs, j) => { const c = to[j]; if (!c || c.dataset.carried || c.width !== cs.width || c.height !== cs.height) return; try { const x = c.getContext('2d'); if (!x) return; x.clearRect(0, 0, c.width, c.height); x.drawImage(cs, 0, 0); } catch { /* empty */ } });
   });
   const abortFold = () => {
@@ -988,8 +900,6 @@
     if (!build || !build.back) return;
     const ctx = build.ctx;
     build = null;
-    minkCv.style.opacity = '0';
-    releaseMink();
     clearGhosts(); // slide 5's own panels stand exactly where their copies were
     ctx.present(slide, 'dt-rewound', 'dt-rewind');
     ctx.present(slide5, '', 'dt-return dt-await');
@@ -1004,7 +914,7 @@
       const ctx = activeCtx;
       if (raf) cancelAnimationFrame(raf); raf = 0;
       running = true; paused = false; build = null; amb = null;
-      releaseMink(); clearGhosts(); layout(); softenNet(ctx, true); settleAll(); stepHead();
+      clearGhosts(); layout(); softenNet(ctx, true); settleAll(); stepHead();
       flags.forEach((f) => { f.tabIndex = 0; });
       show(view.mobile ? 0 : -1);
       entryFinished = true; entryCompletion?.(ctx, 'completed');
@@ -1034,33 +944,75 @@
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
   const sceneEnter = (ctx) => start(ctx);
-  // Stack owns its geometry and temporary styles in both directions.
+  // Capture the agent avatar's projected corners once at handoff, then animate only transforms.
   let stackFlight = null, collapseSource = null;
   const resetStackFlight = () => {
     root.style.transform = ''; root.style.transformOrigin = ''; root.style.opacity = '';
+  };
+  const avatar = planes[3].querySelector('.st-avatar img');
+  const flightGeometry = () => {
+    let x = 0, y = 0, el = avatar;
+    while (el && el !== planes[3]) { x += el.offsetLeft; y += el.offsetTop; el = el.offsetParent; }
+    const state = st[3], p = PL[3];
+    // Match the precision of box(), fit(), and applyPlanes(), which write the CSS transform.
+    const w0 = +state.w.toFixed(1), h0 = +state.h.toFixed(1);
+    const s = { ...state, x: +(state.x - state.w / 2).toFixed(1) + w0 / 2,
+      y: +(state.y - state.h / 2).toFixed(1) + h0 / 2, w: w0, h: h0,
+      rx: +state.rx.toFixed(2), rz: +state.rz.toFixed(2) };
+    const scale = +Math.min((s.w - 2) / (p.w - 2), (s.h - 2) / (p.h - 2)).toFixed(5);
+    x = 1 + (s.w - 2 - scale * (p.w - 2)) / 2 + scale * (x + 1);
+    y = 1 + (s.h - 2 - scale * (p.h - 2)) / 2 + scale * (y + 3);
+    const w = 30 * scale, h = 26 * scale;
+    const k = +view.k.toFixed(4), ox = +view.ox.toFixed(1), oy = +view.oy.toFixed(1);
+    const quad = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].map(([a, b]) => {
+      const point = projW(s, a - s.w / 2, b - s.h / 2);
+      return { x: ox + k * point.x, y: oy + k * point.y };
+    });
+    const width = Math.hypot(quad[1].x - quad[0].x, quad[1].y - quad[0].y);
+    const cx = quad.reduce((n, q) => n + q.x, 0) / 4, cy = quad.reduce((n, q) => n + q.y, 0) / 4;
+    return { quad, left: cx - width / 2, top: cy - width * 20 / 46, width, height: width * 20 / 23, c: width / 23 };
+  };
+  // A projective transform maps the sprite's four corners to the projected plane.
+  const quadTransform = (q) => {
+    const [a, b, c, d] = q, dx1 = b.x - c.x, dx2 = d.x - c.x, dx3 = a.x - b.x + c.x - d.x;
+    const dy1 = b.y - c.y, dy2 = d.y - c.y, dy3 = a.y - b.y + c.y - d.y, det = dx1 * dy2 - dx2 * dy1;
+    const g = det ? (dx3 * dy2 - dx2 * dy3) / det : 0, h = det ? (dx1 * dy3 - dx3 * dy1) / det : 0;
+    return `matrix3d(${(b.x - a.x + g * b.x) / 23},${(b.y - a.y + g * b.y) / 23},0,${g / 23},${(d.x - a.x + h * d.x) / 20},${(d.y - a.y + h * d.y) / 20},0,${h / 20},0,0,1,0,${a.x},${a.y},0,1)`;
   };
   const holdStackFlight = (ctx, rect) => {
     if (!ctx.isCurrent() || ctx.terminal) return null;
     stackFlight?.release();
     resetStackFlight();
     const box = root.getBoundingClientRect();
-    if (!box.width || !box.height) return null;
-    const flight = { ctx, draw(q) {
+    if (!box.width || !box.height || !rect?.width) return null;
+    const copy = avatar.cloneNode();
+    Object.assign(copy.style, { position: 'fixed', left: '0', top: '0', width: '23px', height: '20px', transformOrigin: '0 0', imageRendering: 'pixelated', pointerEvents: 'none', zIndex: '3' });
+    document.body.appendChild(copy); avatar.style.visibility = 'hidden';
+    const pose = (q) => {
+      const u = clamp(q);
+      const upright = [{ x: rect.left, y: rect.top }, { x: rect.left + rect.width, y: rect.top },
+        { x: rect.left + rect.width, y: rect.top + rect.height }, { x: rect.left, y: rect.top + rect.height }];
+      copy.style.transform = quadTransform(rect.quad.map((p, i) => ({ x: lerp(p.x, upright[i].x, u), y: lerp(p.y, upright[i].y, u) })));
+      copy.style.clipPath = u >= 1 ? '' : `ellipse(${lerp(23 * 14 / 30, 30, u)}px ${lerp(20 * 14 / 26, 30, u)}px at ${23 * 14 / 30}px ${20 * 10 / 26}px)`;
+    };
+    const flight = { ctx, copy, hideCopy() { flight.draw(1); }, stand(q) { copy.style.visibility = 'visible'; pose(q); }, draw(q) {
       if (stackFlight !== flight || !ctx.isCurrent() || ctx.terminal) return;
+      copy.style.visibility = q < 1 ? 'visible' : 'hidden';
       q = clamp(q);
       root.style.transform = `scale(${Math.max(0.001, 1 - q ** 3)})`;
       root.style.opacity = String(q < 0.98 ? 1 : (1 - q) / 0.02);
+      pose(clamp(q * 0.5 / 0.18));
     } };
     stackFlight = flight;
     root.style.transformOrigin = `${(rect.left + rect.width / 2 - box.left) * root.offsetWidth / box.width}px ${(rect.top + rect.height / 2 - box.top) * root.offsetHeight / box.height}px`;
     flight.release = ctx.defer(() => {
       if (stackFlight !== flight) return;
-      stackFlight = null; resetStackFlight();
+      stackFlight = null; copy.remove(); avatar.style.visibility = ''; resetStackFlight();
     });
     return flight;
   };
   window.deckStackFlight = { hold: holdStackFlight,
-    source: (ctx) => collapseSource?.ctx === ctx ? collapseSource.rect : null,
+    source: (ctx) => collapseSource?.ctx === ctx ? collapseSource.rect : flightGeometry(),
     collapsed: (ctx) => collapseSource?.ctx === ctx ? collapseSource.completed : Promise.resolve('completed'),
     ready: (ctx) => { if (collapseSource?.ctx === ctx) collapseSource.copy.remove(); },
   };
@@ -1078,22 +1030,10 @@
       activeCtx = ctx;
       stop(ctx, true);
       ctx.present(slide, 'dt-rewind dt-over');
-      const rect = minkCv.getBoundingClientRect(), box = root.getBoundingClientRect();
-      if (!rect.width || !box.width || !box.height) return undefined;
-      const copy = flightCopies.find((canvas) => !canvas.isConnected) || document.createElement('canvas');
-      if (!flightCopies.includes(copy)) flightCopies.push(copy);
-      if (copy.width !== minkCv.width) copy.width = minkCv.width;
-      if (copy.height !== minkCv.height) copy.height = minkCv.height;
-      const copyContext = copy.getContext('2d');
-      if (!copyContext) return undefined;
-      copyContext.clearRect(0, 0, copy.width, copy.height);
-      copyContext.drawImage(minkCv, 0, 0);
-      Object.assign(copy.style, { position: 'fixed', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, imageRendering: 'pixelated', pointerEvents: 'none', zIndex: '3' });
-      document.body.appendChild(copy);
-      const visibility = minkCv.style.visibility;
-      minkCv.style.visibility = 'hidden';
-      const flight = holdStackFlight(ctx, rect);
-      if (!flight) { copy.remove(); minkCv.style.visibility = visibility; return undefined; }
+      const rect = flightGeometry(), flight = holdStackFlight(ctx, rect);
+      if (!flight) return undefined;
+      const copy = flight.copy;
+      flight.stand(0);
       let finish, notifyCollapse, frame = 0, started = null, smallFrame = false;
       const completed = new Promise((resolve) => { finish = resolve; });
       const collapsed = new Promise((resolve) => { notifyCollapse = resolve; });
@@ -1102,10 +1042,12 @@
       const stepCollapse = () => {
         if (!current(ctx)) return;
         if (started === null) started = now();
-        let q = clamp((now() - started) / 500);
+        const elapsed = now() - started;
+        if (elapsed < 180) { flight.stand(easeIO(clamp(elapsed / 180))); frame = requestAnimationFrame(stepCollapse); return; }
+        let q = clamp((elapsed - 180) / 500);
         // A delayed frame must still show the stack small before it disappears.
         if (q === 1 && !smallFrame) q = Math.cbrt(0.8);
-        flight.draw(q);
+        flight.draw(q); flight.stand(1);
         if (q < 1) {
           if (1 - q ** 3 <= 0.2 + 1e-9) smallFrame = true;
           frame = requestAnimationFrame(stepCollapse);
@@ -1114,7 +1056,6 @@
       frame = requestAnimationFrame(stepCollapse);
       ctx.defer(() => {
         copy.remove(); settle('cancelled');
-        minkCv.style.visibility = visibility;
         flight.release();
         if (collapseSource?.ctx === ctx) collapseSource = null;
       });
@@ -1142,7 +1083,7 @@
     if (slide.classList.contains('on') && activeCtx === ctx) {
       running = false; paused = false;
       if (raf) cancelAnimationFrame(raf); raf = 0;
-      build = null; releaseMink(); clearGhosts();
+      build = null; clearGhosts();
       activeCtx = ctx; running = true;
       layout(); softenNet(ctx, true); settleAll(); stepHead();
       flags.forEach((f) => { f.tabIndex = 0; });
@@ -1155,7 +1096,7 @@
   };
   window.deckRegisterScene?.([5], { enter: sceneEnter, exit: sceneExit, resize: sceneResize });
   // Clicks on the stack stay here; they never turn the slide.
-  root.addEventListener('click', (e) => { if (e.target.closest('.st-plane, .st-mink, .st-flag, .st-card, .st-hit')) e.stopPropagation(); });
+  root.addEventListener('click', (e) => { if (e.target.closest('.st-plane, .st-flag, .st-card, .st-hit')) e.stopPropagation(); });
   // Flags: hover (a mouse) or keyboard focus shows a layer's card; a click or tap pins it (again to let go).
   flags.forEach((f, i) => {
     f.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') enter(i); });
@@ -1177,9 +1118,6 @@
     contains: (target) => cards[hold.pin]?.contains(target) || false,
     close: () => { hold.pin = -1; react(); },
   });
-  // The mink, as on slide 5: hovering flashes her eye; clicking turns her to face you and back.
-  minkCv.addEventListener('pointerenter', () => { if (still || build || mk.seq || mk.pose !== 'profile') return; mk.hover = now(); });
-  minkCv.addEventListener('click', (e) => { e.stopPropagation(); if (!still && !build && !mk.seq) { mk.hover = null; mk.seq = now(); } });
   // Loading resets the film to paused, so one that arrives after the slide has started (a cold load) plays then.
   video.addEventListener('loadeddata', () => { if (still) stepHead(); else play(); });
 
