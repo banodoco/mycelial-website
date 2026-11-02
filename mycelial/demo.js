@@ -35,7 +35,6 @@
   const pic = root.querySelector('.as-pic'), pg = pic.getContext('2d');
   const tl = root.querySelector('.as-tl');
   const timeEl = root.querySelector('.as-time');
-  const minkCv = root.querySelector('.as-mink'), mg = minkCv.getContext('2d');
 
   // The timeline
   const SPAN = 14;
@@ -90,65 +89,6 @@
   const kind = (el, k) => { el.querySelector('.as-kind').textContent = k; };
   const anchors = [...root.querySelectorAll('.as-media .as-frame-media')];
   const guide = root.querySelector('.as-media .as-guide-media');
-
-  // The mink
-  // Poses: profile, glint (her eye flash), facing, focus (eyes lit). She is drawn
-  // cell by cell at a whole number of CSS pixels per art pixel, never smoothed.
-  const HEAD = 3; // spare rows above her for the hop and the float
-  let cell = 4, dpr = 1;
-  const mink = { pose: 'profile', lift: 0, glint: 0, seq: null, hover: null };
-  let paintedMink = { pose: 'profile', lift: 0, glint: 0 };
-  const paint = (pose, lift, glint) => {
-    if (!mg) return;
-    paintedMink = { pose, lift, glint };
-    const P = M.POSES[pose], w = P[0].length, h = P.length, u = cell * dpr;
-    mg.clearRect(0, 0, minkCv.width, minkCv.height);
-    const fill = (rows, only) => {
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const ch = rows[y][x];
-        if (ch === '.' || (only && ch === P[y][x])) continue;
-        mg.fillStyle = M.COLORS[ch];
-        mg.fillRect(x * u, (y + HEAD - lift) * u, u, u);
-      }
-    };
-    fill(P);
-    if (glint > 0 && pose === 'profile') { mg.globalAlpha = glint; fill(M.POSES.glint, true); mg.globalAlpha = 1; }
-  };
-  const sizeMink = () => {
-    dpr = Math.min(2, Math.round(devicePixelRatio || 1) || 1);
-    cell = innerWidth <= 760 ? 2 : innerHeight >= 860 ? 4 : innerHeight >= 660 ? 3 : 2;
-    root.style.setProperty('--as-cell', `${cell}px`);
-    if (minkCv.width !== 23 * cell * dpr) minkCv.width = 23 * cell * dpr;
-    if (minkCv.height !== (20 + HEAD) * cell * dpr) minkCv.height = (20 + HEAD) * cell * dpr;
-    minkCv.style.width = `${23 * cell}px`; minkCv.style.height = `${(20 + HEAD) * cell}px`;
-    minkCv.style.transform = `translateX(-${Math.round(23 * cell / 2)}px)`;
-    paint(mink.pose, mink.lift, mink.glint);
-  };
-  const TURN = [[0, 'facing'], [500, 'focus'], [1900, 'facing'], [2400, 'profile']];
-  const turn = () => { if (!mink.seq) { mink.seq = { t0: now() }; wake(); } };
-  const stepMink = (t) => {
-    let { pose, lift } = mink;
-    let glint = 0;
-    if (mink.seq) {
-      const e = Math.max(0, t - mink.seq.t0), cur = TURN.filter(([at]) => e >= at).pop();
-      pose = cur[1];
-      const since = e - cur[0];
-      lift = pose === 'facing' ? (since < 130 ? 1 : 0) : pose === 'focus' ? ((since % 1100) < 550 ? 1 : 2) : 0;
-      if (e >= 2400) mink.seq = null;
-    }
-    if (mink.hover !== null) { // the glint: up and back over 2.6 s
-      const e = Math.max(0, t - mink.hover) / 2600;
-      glint = e >= 1 ? 0 : Math.sin(Math.PI * e) ** 2;
-      if (e >= 1) mink.hover = null;
-    }
-    if (pose !== mink.pose || lift !== mink.lift || Math.abs(glint - mink.glint) > 0.01) {
-      Object.assign(mink, { pose, lift, glint });
-      paint(pose, lift, glint);
-    }
-    return !!(mink.seq || mink.hover !== null);
-  };
-  minkCv.addEventListener('pointerenter', () => { if (still || mink.seq || mink.pose !== 'profile') return; mink.hover = now(); wake(); });
-  minkCv.addEventListener('click', (e) => { e.stopPropagation(); if (!still) turn(); });
 
   // The preview
   // mode: none | still | play.
@@ -473,8 +413,12 @@
   document.body.appendChild(sky);
   const sg = sky.getContext('2d');
   let morph = null;
-  // Type as the panels resolve, so the first message lands during the mink's turn.
-  const MORPH = { rings: [0.05, 1.15], fly: [0, 1.1], outline: [0.1, 0.9], pixels: [0.85, 0.45], resolve: 1.05, handoff: 1.35, end: 1.75 };
+  const spriteCanvas = document.createElement('canvas'); spriteCanvas.width = 23; spriteCanvas.height = 20;
+  spriteCanvas.className = 'as-flight-flier'; spriteCanvas.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(spriteCanvas);
+  const spriteG = spriteCanvas.getContext('2d');
+  // Timings in seconds: each pair is a start and duration; the remaining values are milestones.
+  const MORPH = { rings: [0.05, 1.15], fly: [0, 1.1], fill: [0.05, 0.35], jump: [0.4, 0.85], resolve: 1.05, handoff: 1.8, end: 1.85 };
   // A rounded rectangle as n points spaced evenly round it, clockwise from the top centre.
   const roundRect = (b, rad, n) => {
     const { left: l, top: t, right: r, bottom: bt } = b, pts = [];
@@ -506,23 +450,34 @@
     if (sky.height !== sh) sky.height = sh;
     if (sg?.reset) sg.reset();
     else if (sg) { sg.setTransform(1, 0, 0, 1, 0, 0); sg.clearRect(0, 0, sw, sh); }
+    spriteG.clearRect(0, 0, 23, 20);
     sky.style.display = 'block';
     if (!back) root.classList.add('is-morphing', 'is-minkless'); // (folding back, the editor is whole as it begins)
-    sizeMink();
     const chat = root.querySelector('.as-chat').getBoundingClientRect(), edit = root.querySelector('.as-edit').getBoundingClientRect();
-    const mr = minkCv.getBoundingClientRect();
-    const origin = { x: mr.left, y: mr.top + HEAD * cell };
+    const mr = root.querySelector('.as-avatar img').getBoundingClientRect();
+    const circle = root.querySelector('.as-avatar').getBoundingClientRect();
+    const origin = { x: mr.left, y: mr.top };
+    const xs = snap.outline.map(([x]) => x), ys = snap.outline.map(([, y]) => y);
+    const lens = { x: snap.left + (Math.min(...xs) + Math.max(...xs)) / 2,
+      y: snap.top + (Math.min(...ys) + Math.max(...ys)) / 2 };
+    const target = { x: origin.x + 11.5, y: origin.y + 10 };
+    const phone = matchMedia('(max-width: 760px)').matches;
+    const distance = Math.hypot(target.x - lens.x, target.y - lens.y);
+    const rise = phone ? clamp(distance * 0.35, 30, 110) : clamp(distance * 0.45, 60, 200);
+    const headingBottom = slide.querySelector('.split h1').getBoundingClientRect().bottom;
+    const control = { x: (lens.x + target.x) / 2, y: Math.max(headingBottom + 10, Math.min(lens.y, target.y) - rise) };
     const ox = snap.left, oy = snap.top;
     const N = 180;
     const frames = [roundRect(chat, 12, N), roundRect(edit, 12, N)];
     const rings = snap.rings.map((r, side) => ({ ...r, cx: r.x + ox, cy: r.y + oy, target: frames[side],
       strands: r.strands.map((st) => st.map(([x, y]) => [x + ox, y + oy])) }));
     // Where the mink's outline (in the 16 x 16 icon's units) lies over her pixels (the 23 x 20 profile).
-    const sprite = ([fx, fy]) => [origin.x + fx * 1.44 * cell, origin.y + ((fy - 1.5) * 1.345 + 0.5) * cell];
+    const sprite = ([fx, fy]) => [origin.x + fx * 1.44, origin.y + ((fy - 1.5) * 1.345 + 0.5)];
     const outlineTo = M.smooth(M.OUTLINE, 10).map(sprite), throatTo = M.smooth(M.THROAT, 10).map(sprite);
     const P = M.POSES.profile, cells = [];
     P.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.') cells.push({ x, y, ch, at: 0 }); }));
     cells.forEach((c) => { c.at = (c.y + (22 - c.x) * 0.35) / (19 + 22 * 0.35); }); // from the head down the neck
+    cells.forEach((c) => { spriteG.fillStyle = M.COLORS[c.ch]; spriteG.fillRect(c.x, c.y, 1, 1); });
     const motes = [];
     const rnd = Math.random;
     snap.slots.forEach((sl) => {
@@ -536,9 +491,10 @@
     });
     const fit = (src, dst) => { const s = Math.min(dst.width / src.w, dst.height / src.h); return { s, x: dst.left + dst.width / 2, y: dst.top + dst.height / 2 }; };
     morph = {
-      t0: now(), d, snap, rings, cells, origin, outlineTo, throatTo, motes, ctx,
+      t0: back ? now() : null, d, snap, rings, cells, origin, circle, lens, target, control, outlineTo, throatTo, motes, ctx,
+      spriteScale: Math.max(1, (Math.max(...xs) - Math.min(...xs)) / 23),
       outline: snap.outline.map(([x, y]) => [x + ox, y + oy]), throat: snap.throat.map(([x, y]) => [x + ox, y + oy]),
-      eyeFrom: { x: snap.eye.x + ox, y: snap.eye.y + oy }, eyeTo: { x: origin.x + 16 * cell, y: origin.y + 5 * cell },
+      eyeFrom: { x: snap.eye.x + ox, y: snap.eye.y + oy }, eyeTo: { x: origin.x + 16, y: origin.y + 5 },
       fly: [
         { img: snap.layers.agent, from: { x: rings[0].cx, y: rings[0].cy }, src: { w: rings[0].r * 2, h: rings[0].r * 2 }, to: fit({ w: rings[0].r * 2, h: rings[0].r * 2 }, chat) },
         { img: snap.layers.face, from: { x: rings[1].cx, y: rings[1].cy }, src: { w: rings[1].r * 2, h: rings[1].r * 2 }, to: fit({ w: rings[1].r * 2, h: rings[1].r * 2 }, edit) },
@@ -549,7 +505,14 @@
   };
   const lerp = (a, b, q) => a + (b - a) * q;
   const drawMorph = (t) => {
-    const m = morph, e = Math.max(0, t - m.t0) / 1000, d = m.d;
+    const m = morph;
+    if (m.t0 === null) m.t0 = t; // begin when the first frame can actually be drawn
+    let e = Math.max(0, t - m.t0) / 1000;
+    // CSS fades can lag the morph under load; keep the flier until the whole header is opaque.
+    if (!m.back && e >= MORPH.handoff && !headerShown()) {
+      e = MORPH.handoff - 0.001; m.t0 = t - e * 1000;
+    }
+    const d = m.d;
     if (sg) {
       sg.setTransform(d, 0, 0, d, 0, 0);
       sg.clearRect(0, 0, sky.width / d, sky.height / d);
@@ -595,32 +558,33 @@
           });
         });
       }
-      const qm = easeIO(k01(MORPH.outline));
-      const oa = 1 - clamp((e - MORPH.pixels[0] - 0.15) / 0.35);
-      if (!m.steps.handoff) {
+      const qm = smoothstep(k01(MORPH.jump));
+      const arcX = 2 * (1 - qm) * qm * (m.control.x - (m.lens.x + m.target.x) / 2);
+      const arcY = 2 * (1 - qm) * qm * (m.control.y - (m.lens.y + m.target.y) / 2);
+      const qp = k01(MORPH.fill);
+      if (e < MORPH.handoff) {
+        const oa = 1 - qp;
         if (oa > 0) {
           for (const [src, dst, w, a] of [[m.outline, m.outlineTo, 1.2, 0.9], [m.throat, m.throatTo, 0.8, 0.45]]) {
-            sg.lineWidth = w;
-            sg.strokeStyle = `rgba(255,217,145,${(a * oa).toFixed(3)})`;
-            sg.beginPath();
-            src.forEach(([x, y], i) => { const px = lerp(x, dst[i][0], qm), py = lerp(y, dst[i][1], qm); i ? sg.lineTo(px, py) : sg.moveTo(px, py); });
+            sg.lineWidth = w; sg.strokeStyle = `rgba(255,217,145,${(a * oa).toFixed(3)})`; sg.beginPath();
+            src.forEach(([x, y], i) => { const px = lerp(x, dst[i][0], qm) + arcX, py = lerp(y, dst[i][1], qm) + arcY; i ? sg.lineTo(px, py) : sg.moveTo(px, py); });
             sg.stroke();
           }
-          const ex = lerp(m.eyeFrom.x, m.eyeTo.x, qm), ey = lerp(m.eyeFrom.y, m.eyeTo.y, qm);
-          sg.fillStyle = `rgba(255,236,200,${oa.toFixed(3)})`;
-          sg.beginPath(); sg.arc(ex, ey, 3, 0, Math.PI * 2); sg.fill();
+          sg.fillStyle = `rgba(255,236,200,${oa.toFixed(3)})`; sg.beginPath();
+          sg.arc(lerp(m.eyeFrom.x, m.eyeTo.x, qm) + arcX, lerp(m.eyeFrom.y, m.eyeTo.y, qm) + arcY, 3 * (1 - qm) + qm, 0, Math.PI * 2); sg.fill();
         }
-        const qp = (e - MORPH.pixels[0]) / MORPH.pixels[1];
         if (qp > 0) {
-          sg.setTransform(1, 0, 0, 1, 0, 0);
-          const u = cell * d, x0 = Math.round(m.origin.x * d), y0 = Math.round(m.origin.y * d);
-          for (const c of m.cells) {
-            if (c.at > qp) continue;
-            sg.fillStyle = M.COLORS[c.ch];
-            sg.fillRect(x0 + c.x * u, y0 + c.y * u, u, u);
-          }
-        }
-      }
+          spriteG.clearRect(0, 0, 23, 20);
+          for (const c of m.cells) if (c.at <= qp) { spriteG.fillStyle = M.COLORS[c.ch]; spriteG.fillRect(c.x, c.y, 1, 1); }
+          const scale = lerp(m.spriteScale, 1, qm * qm);
+          const x = lerp(m.lens.x, m.target.x, qm) + arcX - 11.5 * scale;
+          const y = lerp(m.lens.y, m.target.y, qm) + arcY - 10 * scale;
+          spriteCanvas.style.left = `${x}px`; spriteCanvas.style.top = `${y}px`;
+          spriteCanvas.style.transform = scale === 1 ? 'none' : `scale(${scale})`;
+          spriteCanvas.style.clipPath = qm >= 1 ? `circle(${m.circle.width / 2}px at ${m.circle.left + m.circle.width / 2 - m.origin.x}px ${m.circle.top + m.circle.height / 2 - m.origin.y}px)` : '';
+          spriteCanvas.style.display = 'block';
+        } else { spriteCanvas.style.display = 'none'; }
+      } else { spriteCanvas.style.display = 'none'; }
     }
     if (!m.steps.resolve && e >= MORPH.resolve) { m.steps.resolve = true; root.classList.remove('is-morphing'); }
     if (!m.steps.handoff && e >= MORPH.handoff) { m.steps.handoff = true; root.classList.remove('is-minkless'); }
@@ -634,13 +598,23 @@
     morph = null;
     if (completed && !completed.back) entryCompletion?.(completed.ctx, 'completed');
     if (sg) { sg.setTransform(1, 0, 0, 1, 0, 0); sg.clearRect(0, 0, sky.width, sky.height); }
+    spriteG.clearRect(0, 0, 23, 20);
     sky.style.display = 'none';
+    spriteCanvas.style.display = 'none'; spriteCanvas.style.clipPath = '';
     window.AstridCore?.release?.();
     root.classList.remove('is-morphing', 'is-minkless');
   };
 
   // The chat counts as shown once it and its ancestors are fully opaque and not morphing.
   const chatPanel = root.querySelector('.as-chat');
+  const chatHeader = root.querySelector('.as-chat-head');
+  const headerShown = () => {
+    for (let el = chatHeader; el && el !== document.body; el = el.parentElement) {
+      const cs = getComputedStyle(el);
+      if (cs.visibility !== 'visible' || +cs.opacity < 1) return false;
+    }
+    return true;
+  };
   const chatShown = () => {
     if (root.classList.contains('is-morphing')) return false;
     for (let el = chatPanel; el && el !== document.body; el = el.parentElement) {
@@ -662,7 +636,7 @@
     if (!running) { ticking = false; return; } // the fold back into slide 4 has just landed and stopped the demo
     // Coming back from slide 6 the finished editor waits, hidden, for the stack to fold back into it (dt-await).
     if (wait === Infinity && chatShown()) wait = 0.1; // the first prompt types once the chat is fully on screen
-    const busy = morphing | (wait === Infinity) | stepBeats(slide.classList.contains('dt-await') || morph?.back ? 0 : dt) | stepMink(t);
+    const busy = morphing | (wait === Infinity) | stepBeats(slide.classList.contains('dt-await') || morph?.back ? 0 : dt);
     drawPic(t);
     ticking = false;
     if (busy || requested) { requested = false; raf = requestAnimationFrame(() => tick(ctx)); }
@@ -677,7 +651,7 @@
     const value = `url("data:image/svg+xml,${svg.replace(/"/g, "'").replace(/</g, '%3C').replace(/>/g, '%3E')}")`;
     window.deckSetNetMask?.(ctx, 'demo', { image: value, mode: 'luminance', size: '100% 100%' });
   };
-  const layout = () => { sizeMink(); sizePic(); measureTl(); placeHead(); if (slide.classList.contains('on')) softenNet(true, entryCtx); };
+  const layout = () => { sizePic(); measureTl(); placeHead(); if (slide.classList.contains('on')) softenNet(true, entryCtx); };
   new ResizeObserver((es) => { for (const e of es) if (e.target === tl) { measureTl(e.contentRect.width); placeHead(); } }).observe(tl);
   const start = (fromCore, ctx) => {
     entryCtx = ctx;
@@ -697,7 +671,7 @@
     clearAll();
     td = 0; wait = 0; eventIndex = 0; videoGateSeeking = false; guideGateSeeking = false;
     if (motionOff() || ctx?.rest || ctx?.direct) {
-      paint('profile', 0, 0); entryCompletion?.(ctx, 'completed'); wake(); return;
+      entryCompletion?.(ctx, 'completed'); wake(); return;
     }
     const snap = fromCore && window.AstridCore && window.AstridCore.snapshot();
     // The first prompt starts typing once the chat is on screen: held until the morph resolves the panels
@@ -719,16 +693,13 @@
     if (morph?.back) endUnmorph();
     if (morph) endMorph();
     softenNet(false);
-    mink.seq = null; mink.hover = null;
-    Object.assign(mink, { pose: 'profile', lift: 0, glint: 0 });
     videos.forEach((v) => v.pause());
   };
-  window.AstridDemo = { turn, root, minkFrame: () => ({ ...paintedMink }) };
 
   // ---- Going back to slide 4 ------------------------------------------------------------------
   // A step back: the morph from slide 4 played backwards. The panels fade as their frames fold back into the two
-  // rings, the chat and editor layers shrink back into them, the mink dissolves from the neck up as her outline
-  // rises back into the lens's, and the community's motes come home; then slide 4's own picture stands in its place.
+  // rings, the chat and editor layers shrink back into them, the avatar jumps back into the lens and becomes a gold
+  // outline, and the community's motes come home; then slide 4's own picture stands in its place.
   const fold = (ctx) => {
     reverseCtx = ctx;
     const snap = window.AstridCore && window.AstridCore.snapshot(); // slide 4 has settled before this runs
@@ -847,7 +818,8 @@
     }
   };
   window.deckRegisterScene?.([4], { enter, exit, resize });
+  slide.querySelector('.as-link').addEventListener('click', (e) => e.stopPropagation());
   // Clicks on the demos stay here; they never turn the slide.
-  root.addEventListener('click', (e) => { if (e.target.closest('.as-panel, .as-mink, .as-try')) e.stopPropagation(); }); // the link opens its tab and the slide stays
+  root.addEventListener('click', (e) => { if (e.target.closest('.as-panel')) e.stopPropagation(); });
   clearAll();
 })();

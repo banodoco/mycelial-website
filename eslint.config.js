@@ -27,7 +27,6 @@ export default [
         ...globals.browser,
         // Shared by the classic scripts loaded from mycelial/index.html.
         AstridCore: 'readonly',
-        AstridDemo: 'readonly',
         AstridFlowers: 'readonly',
         AstridFlywheel: 'readonly',
         AstridMark: 'readonly',

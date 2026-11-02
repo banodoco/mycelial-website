@@ -279,26 +279,17 @@
     if (portraitFlow) node(x, y - m.r, 0.9 + 0.5 * pub, a);
     else node(x + m.r, y, 0.9 + 0.5 * pub, a);
   };
-  // The mink at any whole-number cell u, her eye lit by `glint` (the profile's glint pose), top-left at (x0, y0).
-  const paintMinkAt = (x0, y0, u, glint = 0) => {
-    const P2 = M.POSES.profile, G2 = M.POSES.glint;
-    x0 = Math.round(x0); y0 = Math.round(y0);
-    for (let j = 0; j < P2.length; j++) for (let i = 0; i < P2[0].length; i++) {
-      const ch = P2[j][i];
-      if (ch === '.') continue;
-      g.fillStyle = M.COLORS[ch];
-      g.fillRect(x0 + i * u, y0 + j * u, u, u);
-    }
-    if (glint > 0) {
-      g.globalAlpha = glint;
-      for (let j = 0; j < G2.length; j++) for (let i = 0; i < G2[0].length; i++) {
-        const ch = G2[j][i];
-        if (ch === '.' || ch === P2[j][i]) continue;
-        g.fillStyle = M.COLORS[ch];
-        g.fillRect(x0 + i * u, y0 + j * u, u, u);
-      }
-      g.globalAlpha = 1;
-    }
+  // A nearest-neighbour sprite keeps its pixels crisp at fractional flight scales.
+  const flightSprite = document.createElement('canvas');
+  flightSprite.width = 23; flightSprite.height = 20;
+  const flightPixels = flightSprite.getContext('2d');
+  M.POSES.profile.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (ch !== '.') { flightPixels.fillStyle = M.COLORS[ch]; flightPixels.fillRect(x, y, 1, 1); }
+  }));
+  const paintMinkAt = (x, y, u) => {
+    g.save(); g.imageSmoothingEnabled = false;
+    g.drawImage(flightSprite, x, y, 23 * u, 20 * u);
+    g.restore();
   };
   // From slide 6: where she starts, in this slide's coordinates.
   let fly = null, flightTextRelease = null;
@@ -309,9 +300,9 @@
   // Sample the remaining quadratic flight, including the mink and its trailing glow.
   const flightCrossesCopy = (ctx, f, q0, q1) => {
     const b = root.getBoundingClientRect(), end = inLens(), u = Math.max(f.c, cell);
-    const start = { x: f.x + 11.5 * f.c, y: f.y + 8 * f.c };
+    const start = { x: f.x + 11.5 * f.c, y: f.y + 10 * f.c };
     const cp = { x: (start.x + end.x) / 2, y: Math.min(start.y, end.y) - 140 * k };
-    const rects = ctx.copyRects(), pad = Math.max(12 * u, 34 * Math.max(1, u / 2));
+    const rects = ctx.copyRects(), pad = Math.max(12 * u, 17 * u);
     for (let i = 0; i <= 40; i++) {
       const q = q0 + (q1 - q0) * i / 40, v = 1 - q;
       const x = b.left + v * v * start.x + 2 * v * q * cp.x + q * q * end.x;
@@ -321,10 +312,10 @@
     return false;
   };
   const flightGeometry = () => {
-    const el = stackSlide?.querySelector('.st-mink'), r = el?.getBoundingClientRect();
+    const r = window.deckStackFlight?.source(window.deckNav);
     if (!r?.width || !layout()) return null;
     const b = root.getBoundingClientRect();
-    return { x: r.left - b.left, y: r.top - b.top, c: Math.round(r.width / 23) };
+    return { x: r.left - b.left, y: r.top - b.top, c: r.c };
   };
   const checkFlightText = (ctx) => {
     if (!flightTextRelease || !fly) return;
@@ -444,23 +435,25 @@
   // The flight, in hand-off time h (0 when she leaves slide 6).
   const drawFly = () => {
     const f = fly, h = ta - f.t0, u0 = f.c, u1 = cell;
-    const end = inLens(); // her centre in the lens, as paintMink draws her
+    const centre = inLens();
+    const end = { x: Math.round(centre.x - 11.5 * u1) + 11.5 * u1, y: Math.round(centre.y - 10 * u1) + 10 * u1 }; // match paintMink at rest
     const T1 = FLY.charge, T2 = T1 + FLY.travel;
     if (f.back) f.flight?.draw(h / FLY.charge);
-    if (h < T1) { // Hold at the perch while the stack unfolds on the reverse journey.
-      paintMinkAt(f.x, f.y, u0, 0);
+    if (h < T1) { // Hold at the agent plane while the stack unfolds on the reverse journey.
+      if (!f.back) paintMinkAt(f.x, f.y, u0);
       return;
     }
     if (h < T2) { // the flight: an arc across into the lens, a trail of light behind her
-      const q = 0.5 - 0.5 * Math.cos(Math.PI * clamp((h - T1) / FLY.travel)), u = q < 0.5 ? u0 : u1; // a gentle sine ease
-      const s0 = { x: f.x + 11.5 * u0, y: f.y + 10 * u0 - 2 * u0 }, cp = { x: (s0.x + end.x) / 2, y: Math.min(s0.y, end.y) - 140 * k };
+      const q = 0.5 - 0.5 * Math.cos(Math.PI * clamp((h - T1) / FLY.travel)); // a gentle sine ease for travel
+      const u = u0 + (u1 - u0) * (1 - (1 - q) ** 2);
+      const s0 = { x: f.x + 11.5 * u0, y: f.y + 10 * u0 }, cp = { x: (s0.x + end.x) / 2, y: Math.min(s0.y, end.y) - 140 * k };
       const pos = (t) => { const v = 1 - t; return { x: v * v * s0.x + 2 * v * t * cp.x + t * t * end.x, y: v * v * s0.y + 2 * v * t * cp.y + t * t * end.y }; };
       for (let j = 12; j >= 1; j--) { // the trail
         const t = f.back ? Math.min(1, q + j * 0.022) : Math.max(0, q - j * 0.022), p = pos(t), a = (1 - j / 13) * 0.55; // behind her, either way
         halo(p.x, p.y, (10 - j * 0.5) * Math.max(1, u / 2), a * 0.6); dot(p.x, p.y, 1.8 - j * 0.1, CORE, a);
       }
       const p = pos(q);
-      halo(p.x, p.y, 34 * Math.max(1, u / 2), 0.45);
+      halo(p.x, p.y, 17 * u, 0.45);
       paintMinkAt(p.x - 11.5 * u, p.y - 10 * u, u, 0);
       return;
     }
@@ -521,23 +514,12 @@
     timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, 1400, ctx));
     start(ctx);
   };
-  // From slide 6: its mink (stack.js paints her on .st-mink) crosses into this slide's lens.
-  // She is read from her canvas at the moment of leaving; slide 6's own copy is hidden while ours flies.
+  // From slide 6, the stack-owned avatar crosses into this slide's lens.
   const stackSlide = document.querySelector('.st-host');
-  let stackMinkRelease = null;
-  const showStackMink = () => { const release = stackMinkRelease; stackMinkRelease = null; release?.(); };
-  const takeStackMink = (el, ctx) => {
-    showStackMink();
-    const previous = el.style.visibility;
-    el.style.visibility = 'hidden';
-    stackMinkRelease = ctx.defer(() => { el.style.visibility = previous; });
-  };
   const flyIn = (ctx = entryCtx) => {
     entryCtx = ctx;
-    const el = stackSlide && stackSlide.querySelector('.st-mink');
-    if (motionOff() || !el) return false;
-    const r = window.deckStackFlight?.source(ctx) || el.getBoundingClientRect(), u0 = Math.round(r.width / 23);
-    if (!r.width || !u0 || getComputedStyle(el).opacity === '0') return false;
+    const r = window.deckStackFlight?.source(ctx), u0 = r?.c;
+    if (motionOff() || !r?.width || !u0) return false;
     reset();
     if (!layout()) return false;
     const b = root.getBoundingClientRect(), x = r.left - b.left, y = r.top - b.top;
@@ -549,7 +531,6 @@
     // Leave the copy in place until a painted frame of the target can replace it.
     window.deckStackFlight?.ready(ctx);
     timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) slide.classList.remove('pa-arrive'); }, 900, ctx));
-    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) showStackMink(); }, (FLY.charge + FLY.travel) * 1000 + 200, ctx));
     timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && slide.classList.contains('on')) document.documentElement.classList.add('pa-quiet'); }, 400, ctx));
     timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, (FLY.charge + FLY.travel + 0.4) * 1000, ctx));
     nextPulse = FIRST;
@@ -559,11 +540,11 @@
   // ---- Going back to slide 6 --------------------------------------------------------------
   // A step back: the arrival from slide 6 played backwards. The picture ungrows (the people, the rays, the boundary,
   // the builders' threads and machines) back to the lens around the mink; she lights up, lifts out of it as the lens
-  // untraces, flies back along her arc to her perch on the stack, and the stack unfolds around her.
+  // untraces, flies back along her arc to the agent plane, and the stack unfolds around her.
   let unflying = null;
   const unfly = (ctx) => {
-    const el = stackSlide.querySelector('.st-mink'), r = el.getBoundingClientRect(), u0 = Math.round(r.width / 23);
-    if (!r.width || !u0) return false;
+    const r = window.deckStackFlight?.source(ctx), u0 = r?.c;
+    if (!r?.width || !u0) return false;
     reverseCtx = ctx;
     stop();
     timers.forEach(window.deckCancelLater); timers = [];
@@ -572,9 +553,9 @@
     const t0 = FLIGHT_START; // the arrival's own clock, as flyIn set it
     fly = { t0, x, y, c: u0, landed: t0 + FLY.charge + FLY.travel, back: true };
     ta = Math.min(ta, END);
-    takeStackMink(el, reverseCtx); // she is drawn here until she is back on her perch
     fly.flight = window.deckStackFlight?.hold(ctx, r);
-    fly.flight?.draw(1);
+    if (!fly.flight) { fly = null; return false; }
+    fly.flight.hideCopy();
     reverseCtx.present(slide, 'dt-rewind dt-over'); // over the stack, which waits for her
     reverseCtx.present(stackSlide, 'dt-return');
     unflying = { ctx, flight: fly.flight, last: window.deckNow?.() ?? performance.now(), raf: 0 };
@@ -606,7 +587,6 @@
     if (u.raf) cancelAnimationFrame(u.raf);
     fly = null;
     u.flight?.release();
-    showStackMink();
     u.ctx.present(slide, 'dt-rewound', 'dt-rewind dt-over');
     u.ctx.present(stackSlide, '', 'dt-return dt-await');
     document.documentElement.classList.remove('pa-quiet');
@@ -627,17 +607,17 @@
     return promise;
   };
   const sceneEnter = (ctx) => {
-    const promise = completion(ctx, (fn) => { entryFinish = fn; }, () => { stop(); fly = null; showStackMink(); });
+    const promise = completion(ctx, (fn) => { entryFinish = fn; }, () => { stop(); fly = null; });
     entryCtx = ctx;
     if (ctx.rest || ctx.direct) { begin(ctx); return promise; }
     if (ctx.from === 5) {
       const path = flightGeometry();
       if (path && flightCrossesCopy(ctx, path, 0, 1)) {
-        // The stack collapse takes 0.5 s; the pays clock then runs from FLIGHT_START to END.
+        // The avatar stands up for 0.18 s and the stack collapses for 0.5 s; the pays clock then runs from FLIGHT_START to END.
         flightTextRelease = ctx.holdText(() => {
-          stop(); fly = null; window.deckStackFlight?.ready(ctx); showStackMink();
+          stop(); fly = null; window.deckStackFlight?.ready(ctx);
           ta = END + 0.2; root.classList.add('is-labelled'); draw(); entryFinish?.(ctx, 'completed');
-        }, (0.5 + END - FLIGHT_START + 0.3) * 1000);
+        }, (0.68 + END - FLIGHT_START + 0.3) * 1000);
         ctx.defer(releaseFlightText);
       }
       Promise.resolve(window.deckStackFlight?.collapsed(ctx)).then((result) => {
@@ -661,7 +641,7 @@
       queueMicrotask(() => { if (ctx.isCurrent() && !unfly(ctx)) { releaseFlightText(); reverseFinish?.(ctx, 'completed'); } });
       return promise;
     }
-    stop(); fly = null; showStackMink(); slide.classList.remove('pa-arrive');
+    stop(); fly = null; slide.classList.remove('pa-arrive');
     document.documentElement.classList.remove('pa-quiet');
     timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) reset(); }, 700, ctx));
     return undefined;
@@ -669,7 +649,7 @@
   const sceneResize = (ctx) => {
     endUnfly();
     if (ctx.to === 6) {
-      entryCtx = ctx; stop(); fly = null; window.deckStackFlight?.ready(ctx); showStackMink();
+      entryCtx = ctx; stop(); fly = null; window.deckStackFlight?.ready(ctx);
       timers.forEach(window.deckCancelLater); timers = [];
       slide.classList.remove('pa-arrive');
       ta = END + 0.2; root.classList.add('is-labelled');

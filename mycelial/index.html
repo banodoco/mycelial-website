@@ -373,6 +373,7 @@
   .fw-raise .num { min-height: 54px; visibility: hidden; } /* reserve the label’s place for the mark */
   .dt-copy-hidden { visibility: hidden !important; opacity: 0 !important; }
   .dt-copy-overlay { visibility: visible !important; opacity: 1 !important; pointer-events: none !important; transition: none !important; }
+  .dt-copy-overlay * { pointer-events: none !important; }
   .slide.dt-leaving:not(.dt-release) { opacity: 1; transition: none; }
   .slide.dt-leaving > :not(.num):not(.split):not(.fw-stat), .slide.dt-leaving > .split > :not(:first-child) { opacity: 0; transition: opacity .45s ease; }
   /* A step back: the slide being left holds its picture on screen while it plays its hand-off in reverse (dt-rewind,
@@ -507,50 +508,35 @@
   .ac-seed em { position: absolute; left: -24px; top: -24px; width: 50px; height: 50px; } /* the empty ring's question mark */
   .ac-seed b { position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%; opacity: 0;
     background: radial-gradient(circle at 40% 35%, #fffaf0, #ffd991 55%, #e0ab5e); box-shadow: 0 0 14px #ffd991aa; }
-  /* Version F, slide 5: Astrid herself (demo.js). Text centred on top; the mink presiding just beneath it; then the
+  /* Version F, slide 5: Astrid herself (demo.js). Text centred on top; beneath it the
      agent's chat beside the editor's preview, on the editor's timeline: the homepage's own pieces, in its dusk palette.
      The network stays visible behind; the panels are a touch translucent so its threads read around them. */
   html[data-ver="f"] .as-host { justify-content: flex-start; padding-top: max(44px, 6vh); text-align: center; }
   html[data-ver="f"] .as-host > .split { grid-template-columns: minmax(0, 1fr); justify-items: center; flex-shrink: 0; }
   html[data-ver="f"] .as-host h1 { max-width: 22em; margin: 0 auto; text-wrap: balance; font-size: clamp(1.8rem, 2.9vw, 3rem); }
   html[data-ver="f"] .as-host .body { display: none; }
-  .as { position: relative; flex: 1 1 auto; min-height: 0; margin: 4px 0 max(74px, 9.5vh); user-select: none; -webkit-user-select: none;
+  .as-link { color: inherit; text-decoration: underline 1px transparent; text-underline-offset: .14em; transition: text-decoration-color .2s ease; }
+  .as-link:hover, .as-link:focus-visible { text-decoration-color: #ecc57eb3; }
+  .as-link:focus-visible { outline: 1px solid #ecc57e88; outline-offset: 4px; border-radius: 3px; }
+  .as { position: relative; flex: 1 1 auto; min-height: 0; margin: 24px 0 max(74px, 9.5vh); user-select: none; -webkit-user-select: none;
     --as-panel: rgb(36 33 27 / .9); --as-card: #2c2822; --as-line: #4a4337; --as-field: rgb(27 25 21 / .9); --as-ink: #f3eee4; --as-muted: #aca395; --as-orange: #ed6b23; --as-sky: #38bdf8;
     --as-gap: 14px; font-family: Inter, "DM Sans", ui-sans-serif, system-ui, sans-serif; text-align: left; }
   .as-stage { position: absolute; left: 50%; top: 0; bottom: 0; width: min(1180px, 100%); transform: translateX(-50%);
-    display: grid; grid-template-columns: minmax(0, 31fr) minmax(0, 69fr); grid-template-rows: auto minmax(0, 1fr); column-gap: var(--as-gap); row-gap: 12px; }
-  .as-seat { grid-column: 1 / -1; position: relative; height: calc(var(--as-cell, 4px) * 21 + 6px); }
-  .as .as-mink { width: 0; height: 0; }
-  /* A quiet way to go and try it: just above the editor's top-right corner, level with the mink's seat, in the deck's
-     small-label voice (clear of the deck's chrome bar at the bottom). Opens in a new tab. */
-  .as-try { position: absolute; right: 4px; top: calc(var(--as-cell, 4px) * 21 + 6px - 1.6em); z-index: 1; font: italic 400 1.05rem/1.2 "Cormorant Garamond", serif;
-    color: #ecc57e; text-decoration: none; letter-spacing: .02em; pointer-events: auto; transition: opacity .5s ease .3s, color .2s ease; }
-  .as-try::before { content: ""; position: absolute; inset: -12px; }
-  .as-try span { display: inline-block; transition: transform .2s ease; }
-  .as-try:hover, .as-try:focus-visible { color: #ffd991; }
-  .as-try:hover span, .as-try:focus-visible span { transform: translateX(3px); }
-  .as-try:focus-visible { outline: 1px solid #ecc57e88; outline-offset: 4px; border-radius: 3px; }
-  .as.is-morphing .as-try { opacity: 0; transition: none; }
+    display: grid; grid-template-columns: minmax(0, 31fr) minmax(0, 69fr); grid-template-rows: minmax(0, 1fr); column-gap: var(--as-gap); row-gap: 12px; }
   /* The inactive editor stays measurable for copies, but only demo's own
      reverse to slide 4 may keep painting outside the selected slide. */
   .as-host:not(.on):not([data-as-rewind]) [data-astrid-demo],
   .as-host.dt-await [data-astrid-demo] { visibility: hidden; }
-  .as-chat { grid-column: 1; grid-row: 2; }
-  .as-edit { grid-column: 2; grid-row: 2; }
+  .as-chat { grid-column: 1; grid-row: 1; }
+  .as-edit { grid-column: 2; grid-row: 1; }
   .as-panel { position: relative; min-height: 0; border-radius: 12px; border: 1px solid rgb(240 200 119 / .2); background: var(--as-panel); color: var(--as-ink);
     box-shadow: 0 1px 0 rgb(255 255 255 / .05) inset, 0 24px 60px -28px rgb(0 0 0 / .85); overflow: hidden; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
-  /* The mink presides over both, on a fine gold line that runs out to the chat and the preview, with a soft warm glow under her. */
-  .as-seat::before { content: ""; position: absolute; left: 50%; bottom: 0; width: 60%; height: 1px; transform: translateX(-50%);
-    background: linear-gradient(90deg, rgb(240 200 119 / 0), rgb(240 200 119 / .45) 30%, rgb(255 217 145 / .75) 50%, rgb(240 200 119 / .45) 70%, rgb(240 200 119 / 0)); }
-  .as-seat::after { content: ""; position: absolute; left: 50%; bottom: -24px; width: 220px; height: 60px; transform: translateX(-50%);
-    background: radial-gradient(closest-side, rgb(255 138 58 / .2), rgb(255 138 58 / .06) 55%, rgb(255 138 58 / 0)); pointer-events: none; }
-  .as-mink { position: absolute; left: 50%; bottom: 0; z-index: 1; image-rendering: pixelated; pointer-events: auto; cursor: pointer; }
   /* The agent: the homepage's conversation surface. */
   .as-chat { display: flex; flex-direction: column; }
   .as-chat-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--as-line); font-size: 12.5px; font-weight: 500; }
   /* The whole 23×20 pixel mink, at 1:1 so her pixels stay crisp, centred in a circle that holds her. */
   .as-avatar { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #3a3128; flex: none; }
-  .as-avatar img { width: 23px; height: 20px; image-rendering: pixelated; transform: translate(1px, -2px); }
+  .as-avatar img, .as-avatar canvas { position: relative; left: 1px; top: -2px; width: 23px; height: 20px; image-rendering: pixelated; }
   .as-state { margin-left: auto; font: italic 400 11px/1 Inter, system-ui, sans-serif; color: var(--as-muted); opacity: 0; transition: opacity .3s ease; }
   .as-state::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #7fbf8f; vertical-align: 1px; }
   .as.is-working .as-state { opacity: 1; }
@@ -629,19 +615,19 @@
   .as-playhead::before { content: ""; position: absolute; top: 0; left: -4px; width: 10px; height: 8px; border-radius: 2px 2px 5px 5px; background: var(--as-sky); }
   .as.is-resetting .as-clip { opacity: 0; }
   /* Arriving from slide 4 the panels draw out of the rings (demo.js): hidden while the frames form, then the shells and their contents resolve. */
+  .as-flight-flier { position: fixed; left: 0; top: 0; width: 23px; height: 20px; z-index: 3; display: none; pointer-events: none; transform-origin: 0 0; image-rendering: pixelated; }
   .as-flight { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; display: none; }
   .as-panel { transition: opacity .45s ease; } .as-panel > * { transition: opacity .5s ease .2s; }
   .as.is-morphing .as-panel, .as.is-morphing .as-panel > * { opacity: 0; transition: none; }
   /* Going back to slide 4, the panels fade as their frames fold back into the rings (demo.js). */
-  .as.as-unmorph .as-panel, .as.as-unmorph .as-panel > *, .as.as-unmorph .as-try { opacity: 0; transition: opacity .45s ease; }
-  .as-seat::before, .as-seat::after { transition: opacity .6s ease; }
-  .as.is-morphing .as-seat::before, .as.is-morphing .as-seat::after, .as.is-minkless .as-mink { opacity: 0; transition: none; }
+  .as.as-unmorph .as-panel, .as.as-unmorph .as-panel > * { opacity: 0; transition: opacity .45s ease; }
+  .as.is-minkless .as-avatar img { visibility: hidden; }
   @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px) {
     html[data-ver="f"] .as-host { padding-top: 52px; }
     html[data-ver="f"] .as-host h1 { font-size: clamp(1.4rem, 5.8vw, 1.8rem); max-width: 22ch; }
-    .as { margin: 6px 0 0; } /* the slide's own 90 px foot already clears the footer */
-    .as-stage { width: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, .75fr) minmax(0, 1.5fr); }
-    .as-chat { grid-column: 1; grid-row: 2; } .as-edit { grid-column: 1; grid-row: 3; padding: 6px; gap: 6px; }
+    .as { margin: 12px 0 0; } /* the slide's own 90 px foot already clears the footer */
+    .as-stage { width: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, .75fr) minmax(0, 1.5fr); }
+    .as-chat { grid-column: 1; grid-row: 1; } .as-edit { grid-column: 1; grid-row: 2; padding: 6px; gap: 6px; }
     .as-tl { --as-hcol: 78px; } .as-th { gap: 5px; padding-right: 6px; padding-left: 6px; } .as-th span { display: none; } .as-th em { display: block; overflow: hidden; }
     .as-msg, .as-step { font-size: 10px; } .as-composer { display: none; }
     /* Three compact rows keep the 14-second scene, frames and output visible together. */
@@ -653,7 +639,7 @@
   /* A phone with its browser's bars showing: the headline in fewer, longer lines, so the editor keeps its preview. */
   @media (max-width: 760px) and (orientation: portrait) and (max-height: 740px) {
     html[data-ver="f"] .as-host h1 { max-width: none; font-size: 1.3rem; }
-    .as-stage { grid-template-rows: auto minmax(0, .5fr) minmax(0, 1.6fr); }
+    .as-stage { grid-template-rows: minmax(0, .5fr) minmax(0, 1.6fr); }
     .as-edit { padding: 4px; gap: 3px; }
     .as-player { --as-pad: 3px; }
     .as-timeline { padding-bottom: 2px; }
@@ -737,7 +723,7 @@
   }
   /* Version F, slide 6: where it goes (stack.js). The text on the left; on the right slide 5's product taken apart into
      one exploded stack of thin planes (preview, timeline, agent, tools & effects, models / runtime), tied by fine gold
-     registration threads and rooted in the network. The planes keep slide 5's dusk palette; the mink perches on top. */
+     registration threads and rooted in the network. The planes keep slide 5's dusk palette. */
   /* The text sits at the top left, left-aligned: read with slides 7 (middle left) and 8 (low on the left), it steps down
      the left side as the deck goes on. The stack stands right of it, its flags and cards opening to the right. */
   html[data-ver="f"] .st-host { justify-content: flex-start; padding-left: max(16px, 7vw); padding-top: max(60px, 8.6vh); }
@@ -783,7 +769,6 @@
   .st-carry span { display: none; }
   .st-carry.is-back span { display: block; }
   .st-plane.is-carrying .st-pic { visibility: hidden; }
-  .st-mink { position: absolute; left: 0; top: 0; image-rendering: pixelated; pointer-events: auto; cursor: pointer; opacity: 0; }
   /* The layer being explained: a brighter rim and a soft gold glow (stack.js also lifts it a little). */
   .st-plane { transition: border-color .5s ease, box-shadow .5s ease; }
   .st-plane.is-lit { border-color: rgb(255 214 150 / .78); border-bottom-color: rgb(255 226 170 / .95);
@@ -1482,7 +1467,7 @@
   .motion:hover span, .motion:focus-visible span, .motion.is-told span { opacity: 1; }
   .motion:focus-visible { outline: none; } .motion:focus-visible i { outline: 1px solid #f0c67e; outline-offset: 2px; }
   /* A short landscape phone packs the slide's label and links to the top: the same 44 px target, tucked into the very
-     corner, with a smaller ring at its outer edge, clear of slide 3's label and slide 5's "Try Astrid". */
+     corner, with a smaller ring at its outer edge, clear of slide 3's label. */
   @media (orientation: landscape) and (max-height: 420px) {
     .motion { top: env(safe-area-inset-top, 0px); right: env(safe-area-inset-right, 0px); place-items: start end; padding: 5px; }
     .motion i { width: 16px; height: 16px; }
@@ -1738,14 +1723,12 @@
     <div class="num">05<span class="act">Astrid</span></div>
     <div class="split">
       <div>
-        <h1>This is <span class="dt-flash">Astrid</span>. It starts as a new kind of video editor: describe what you want, and the agent reaches for <em>everything the community has built</em> to make it.</h1>
+        <h1>This is <a class="dt-flash as-link" href="https://astrid.haus/" target="_blank" rel="noopener">Astrid</a>. It starts as a new kind of video editor: describe what you want, and the agent reaches for <em>everything the community has built</em> to make it.</h1>
         <div class="body">No installs, no node graphs, locally or in the cloud. The agent picks the right models and community-made tools, and when nothing fits, it builds what you need. Every result comes back to your timeline for you to change and build on: you stay the artist. We start with video because that's where open models are moving fastest — and where they're hardest to use.</div>
       </div>
     </div>
     <div class="as" data-astrid-demo role="img" aria-label="Lantern Valley: Astrid builds a 14-second live Three.js flight, adds four Qwen Image 2.1 frames made through VibeComfy at 0, 6.5, 10, and 13 seconds, then previews the MiniMax H3 result made from those frames and the motion guide">
       <div class="as-stage">
-        <div class="as-seat"><canvas class="as-mink" aria-hidden="true"></canvas></div>
-        <a class="as-try" href="https://astrid.haus/" target="_blank" rel="noopener">Try Astrid <span aria-hidden="true">→</span></a>
         <section class="as-panel as-chat" aria-hidden="true">
           <header class="as-chat-head"><span class="as-avatar"><img data-src="../assets/astrid/mink-profile.png" alt=""></span><span>Astrid</span><em class="as-state">working</em></header>
           <div class="as-msgs"></div>
