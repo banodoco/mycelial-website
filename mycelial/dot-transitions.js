@@ -767,18 +767,72 @@
   // circle reveals it from the node outward, shrinking it draws it back in.
   const SOFT = 150;
   const masks = new WeakMap();
+  const overlays = new Map();
+  const removeOverlay = (el) => {
+    const overlay = overlays.get(el);
+    if (overlay) overlay.remove();
+    overlays.delete(el);
+    masks.delete(el);
+  };
+  const clearOverlays = (slide) => textOf(slide).forEach(removeOverlay);
+  const cancelOverlay = (slide, state) => {
+    if (copyStates.get(slide) !== state) return;
+    clearOverlays(slide);
+    // If this visit is cancelled without a successor, the active copy remains readable.
+    if (slide.classList.contains('on')) textOf(slide).forEach((el) => el.classList.remove('dt-copy-hidden'));
+  };
+  // Keep the real copy in the layout and reserve masks for disposable paint layers.
+  const overlayFor = (el) => {
+    if (overlays.has(el)) return overlays.get(el);
+    const wasHidden = el.classList.contains('dt-copy-hidden');
+    el.classList.remove('dt-copy-hidden');
+    const b = el.getBoundingClientRect(), style = getComputedStyle(el);
+    const overlay = el.cloneNode(true);
+    // Structural selectors such as :first-child differ on the sibling clone.
+    // Freeze each element's computed style so every line keeps its original layout.
+    const originals = [el, ...el.querySelectorAll('*')];
+    const clones = [overlay, ...overlay.querySelectorAll('*')];
+    originals.forEach((original, i) => {
+      const computed = getComputedStyle(original), clone = clones[i];
+      for (let j = 0; j < computed.length; j++) {
+        const property = computed[j];
+        clone.style.setProperty(property, computed.getPropertyValue(property), computed.getPropertyPriority(property));
+      }
+    });
+    if (wasHidden) el.classList.add('dt-copy-hidden');
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.setAttribute('inert', '');
+    overlay.classList.remove('dt-copy-hidden');
+    overlay.classList.add('dt-copy-overlay');
+    overlay.style.removeProperty('visibility');
+    overlay.style.removeProperty('opacity');
+    [overlay, ...overlay.querySelectorAll('[id]')].forEach((node) => node.removeAttribute('id'));
+    Object.assign(overlay.style, { position: 'fixed', left: `${b.left}px`, top: `${b.top}px`,
+      width: `${b.width}px`, height: `${b.height}px`, boxSizing: 'border-box', margin: '0',
+      transform: 'none', translate: 'none', textAlign: style.textAlign });
+    el.after(overlay);
+    // Fixed descendants of transformed ancestors use that ancestor's coordinates.
+    const placed = overlay.getBoundingClientRect();
+    overlay.style.left = `${b.left + b.left - placed.left}px`;
+    overlay.style.top = `${b.top + b.top - placed.top}px`;
+    overlays.set(el, overlay);
+    return overlay;
+  };
   // All copy mask and visibility writes pass through this one function.
   const paintCopy = (el, at, r, hidden = false, bounds = null) => {
-    let value = '';
     if (at) {
       masks.set(el, { at: { ...at }, r });
       const b = bounds || el.getBoundingClientRect();
       const x = at.x - b.left, y = at.y - b.top;
-      value = r <= 0 ? 'linear-gradient(transparent, transparent)'
+      const value = r <= 0 ? 'linear-gradient(transparent, transparent)'
         : `radial-gradient(circle at ${x.toFixed(1)}px ${y.toFixed(1)}px, #000 ${Math.max(0, r - SOFT).toFixed(1)}px, transparent ${r.toFixed(1)}px)`;
-    } else masks.delete(el);
-    el.style.webkitMaskImage = el.style.maskImage = value;
-    el.style.visibility = hidden ? 'hidden' : '';
+      const overlay = overlayFor(el);
+      overlay.style.webkitMaskImage = overlay.style.maskImage = value;
+      el.classList.add('dt-copy-hidden');
+    } else {
+      removeOverlay(el);
+      el.classList.toggle('dt-copy-hidden', hidden);
+    }
   };
   const copyStates = new WeakMap();
   const copy = {
@@ -786,11 +840,12 @@
       const old = copyStates.get(slide);
       if (old?.timer) window.deckCancelLater(old.timer);
       const reuse = old?.context === context && old.phase !== 'shown';
-      if (!reuse) old?.resolve?.('cancelled');
+      if (!reuse) { old?.resolve?.('cancelled'); clearOverlays(slide); }
       let resolve;
       const state = reuse ? old : { context, phase: 'hidden', timer: null, done: new Promise((r) => { resolve = r; }) };
       if (!reuse) state.resolve = resolve;
       copyStates.set(slide, state);
+      if (!reuse && context) context.defer(() => cancelOverlay(slide, state));
       if (deadline && context) state.timer = window.deckLater(() => {
         if (copyStates.get(slide) !== state || !context.isCurrent()) return;
         stopText(context);
@@ -823,6 +878,7 @@
       textOf(slide).forEach((el) => paintCopy(el, null, 0, true));
     },
     paint(el, at, r, bounds) { paintCopy(el, at, r, false, bounds); },
+    get liveCloneCount() { return overlays.size; },
   };
   const reach = (el, at, bounds) => {
     const b = bounds || el.getBoundingClientRect();
@@ -888,23 +944,25 @@
   // at any pace; as an animation on the slide, the deck hurries it with the rest and finishes it when motion goes off.
   const ORANGE = '255,122,46'; // her mink's coat (assets/astrid/mink-profile.png; mink.js, COLORS.o)
   const FLASH_UP = 380, FLASH_DOWN = 1050;
-  const flashes = (el, at, far, duration) => [...el.querySelectorAll('.dt-flash')].map((w) => {
+  const flashes = (el, at, far, duration) => [...el.querySelectorAll('.dt-flash')].map((w, i) => {
     const b = w.getBoundingClientRect();
     // The peak: the mask's soft edge has just passed the word's middle (seep() solved for that radius).
     const d = Math.hypot(b.left + b.width / 2 - at.x, b.top + b.height / 2 - at.y);
     const peak = (duration * Math.acos(1 - 2 * clamp((d + SOFT) / far))) / Math.PI;
     const up = Math.min(FLASH_UP, peak);
-    return { w, up, from: seep((peak - up) / duration), lit: false };
+    return { words: [w, overlays.get(el)?.querySelectorAll('.dt-flash')[i]].filter(Boolean), up, from: seep((peak - up) / duration), lit: false };
   });
-  const flash = ({ w, up }) => {
+  const flash = ({ words, up }) => {
     if (still) return; // motion switched off mid-reveal: the word just rests in its ink
-    w.getAnimations().forEach((a) => a.cancel()); // a flash from an earlier visit, so the ink is read clean
-    const ink = getComputedStyle(w).color, glow = (a) => `0 0 .25em rgba(${ORANGE},${0.45 * a}), 0 0 .8em rgba(${ORANGE},${0.2 * a})`;
-    w.animate([
-      { color: ink, textShadow: glow(0), easing: 'cubic-bezier(.35,0,.25,1)' },
-      { offset: up / (up + FLASH_DOWN), color: `rgb(${ORANGE})`, textShadow: glow(1), easing: 'cubic-bezier(.45,0,.3,1)' },
-      { color: ink, textShadow: glow(0) },
-    ], { duration: up + FLASH_DOWN });
+    words.forEach((w) => {
+      w.getAnimations().forEach((a) => a.cancel()); // a flash from an earlier visit, so the ink is read clean
+      const ink = getComputedStyle(w).color, glow = (a) => `0 0 .25em rgba(${ORANGE},${0.45 * a}), 0 0 .8em rgba(${ORANGE},${0.2 * a})`;
+      w.animate([
+        { color: ink, textShadow: glow(0), easing: 'cubic-bezier(.35,0,.25,1)' },
+        { offset: up / (up + FLASH_DOWN), color: `rgb(${ORANGE})`, textShadow: glow(1), easing: 'cubic-bezier(.45,0,.3,1)' },
+        { color: ink, textShadow: glow(0) },
+      ], { duration: up + FLASH_DOWN });
+    });
   };
 
   // Threads run from the node down into the text, and the words appear where
@@ -950,9 +1008,11 @@
     old?.resolve?.('cancelled');
     const state = { context, phase: 'gathering' };
     copyStates.set(s, state);
+    context.defer(() => cancelOverlay(s, state));
     for (const el of textOf(s)) {
       const bounds = context.geometry?.box(el);
       const saved = masks.get(el), centre = saved?.at || at, far = saved?.r ?? reach(el, at, bounds);
+      copy.paint(el, centre, far, bounds);
       for (const p of spots(el, 6, bounds)) {
         hypha(wander(p, at), { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38, owner: context });
       }
@@ -978,7 +1038,16 @@
   };
   let current = null, visit = null;
   const finishNetwork = (context) => {
-    if (visit?.context === context && context.isCurrent()) visit.resolve('completed');
+    if (context.isCurrent()) {
+      // A completed network visit owns no disposable copy paint.
+      for (const el of [...overlays.keys()]) {
+        const slide = el.closest('.slide');
+        if (slide === slides[context.to]) copy.show(slide);
+        else if (slide) copy.retire(slide);
+        else removeOverlay(el);
+      }
+      if (visit?.context === context) visit.resolve('completed');
+    }
   };
   let anchor = null, turning = null;
   if (window.__deckDebug) Object.defineProperty(window.__deckDebug, 'network', { get: () => ({
@@ -1446,7 +1515,7 @@
     if (size(was, anchor) && anchor && active()) { sprawl(levelOf(targetSlide), anchor); ripen(); }
     // A viewport change retires text work as well as node travel, including a
     // rest reveal that has no `turning` object. Completion belongs to this visit.
-    if (busy || textTweens.size) {
+    if (busy || textTweens.size || overlays.size) {
       settle(false, false, context);
       if (targetSlide) finishNetwork(context);
       return;
