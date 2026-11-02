@@ -2334,7 +2334,7 @@
   // stepPace: an arrow, a click, a swipe or the back button, one slide at a time (never a jump), at the pace paceFor() chose.
   if (window.__deckDebug) Object.defineProperty(window.__deckDebug, 'controller', { get: () => {
     const context = turn?.context || window.deckNav;
-    return { index: i, generation, paused: timelinePaused, now: window.deckNow(), pace,
+    return { index: i, generation, paused: paused(), now: window.deckNow(), pace,
       pending: pendingTurns.length, turnsStarted: generation,
       turn: context ? { generation: context.generation, from: context.from, to: context.to, dir: context.dir,
         back: context.back, rest: context.rest, direct: context.direct, superseded: context.superseded,
