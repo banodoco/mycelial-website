@@ -13,7 +13,7 @@
   // Keep absolute animation timestamps on the same clock across a pause.
   let paused = false;
   let pendingStart = null, pausedVideos = [];
-  const motionBlocked = () => document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.();
+  const motionBlocked = () => document.getElementById('overview')?.classList.contains('on') || window.deckStill?.();
   const now = () => window.deckNow?.() ?? performance.now();
 
   const msgs = root.querySelector('.as-msgs');
@@ -681,7 +681,7 @@
   new ResizeObserver((es) => { for (const e of es) if (e.target === tl) { measureTl(e.contentRect.width); placeHead(); } }).observe(tl);
   const start = (fromCore, ctx) => {
     entryCtx = ctx;
-    if (document.hidden || document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingStart = fromCore; return; }
+    if (document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingStart = fromCore; return; }
     pendingStart = null;
     bindMediaHandlers(ctx);
     slide.removeAttribute('data-as-rewind');
@@ -792,7 +792,6 @@
       wake();
     }
   };
-  document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
   const makeCompletion = (ctx, setter, cleanup) => {

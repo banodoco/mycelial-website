@@ -1132,7 +1132,7 @@
     frame();
     raf = requestAnimationFrame((t) => tick(ctx, t));
   };
-  const start = (ctx = entryCtx) => { if (running || still || document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now(); raf = requestAnimationFrame((t) => tick(ctx, t)); };
+  const start = (ctx = entryCtx) => { if (running || still || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now(); raf = requestAnimationFrame((t) => tick(ctx, t)); };
   const stop = () => { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; };
   const reset = () => {
     stop();
@@ -1359,12 +1359,11 @@
       begun = false;
       const ctx = entryCtx;
       if (ctx?.isCurrent?.()) begin(ctx, activeStage);
-    } else if (document.hidden || document.getElementById('overview')?.classList.contains('on')) {
+    } else if (document.getElementById('overview')?.classList.contains('on')) {
       if (unhanding) endUnhand();
       stop();
     } else if (activeStage >= 0 && begun) start(entryCtx);
   };
-  document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
 

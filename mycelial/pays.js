@@ -502,7 +502,7 @@
     checkFlightText(ctx);
     raf = requestAnimationFrame((t) => tick(ctx, t));
   };
-  const start = (ctx = entryCtx) => { if (running || still || document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now(); raf = requestAnimationFrame((t) => tick(ctx, t)); };
+  const start = (ctx = entryCtx) => { if (running || still || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now(); raf = requestAnimationFrame((t) => tick(ctx, t)); };
   const stop = () => { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; };
   const reset = () => {
     timers.forEach(window.deckCancelLater); timers = [];
@@ -684,10 +684,9 @@
   window.deckRegisterScene?.([6], { enter: sceneEnter, exit: sceneExit, resize: sceneResize });
   const syncMotion = () => {
     if (motionOff() && slide.classList.contains('on')) { endUnfly(); stop(); begin(); }
-    else if (document.hidden || document.getElementById('overview')?.classList.contains('on')) { endUnfly(); stop(); }
+    else if (document.getElementById('overview')?.classList.contains('on')) { endUnfly(); stop(); }
     else if (slide.classList.contains('on') && ta > 0) start();
   };
-  document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
   root.addEventListener('click', (e) => e.stopPropagation());

@@ -500,7 +500,7 @@
     turnTo(target, 1100 + 650 * Math.min(2, Math.abs(target - angle) / STEP), turn ? speed : 0);
     if (!paused()) rest(DWELL * 1.5); // asked for: a give-up until its film starts, which then sets the pace
   };
-  const active = () => slide.classList.contains('on') && !document.hidden && !overviewOpen();
+  const active = () => slide.classList.contains('on') && !overviewOpen();
   const held = () => paused() || drag || arrival || slide.classList.contains('vc-dissolve') || opening();
   const wake = () => { if (!raf && active()) raf = requestAnimationFrame(frame); };
   const frame = (t) => {

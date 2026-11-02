@@ -627,7 +627,7 @@
     draw(); labels();
     raf = requestAnimationFrame((t) => tick(ctx, t));
   };
-  const start = (ctx = entryCtx) => { if (running || still || document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now(); raf = requestAnimationFrame((t) => tick(ctx, t)); };
+  const start = (ctx = entryCtx) => { if (running || still || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now(); raf = requestAnimationFrame((t) => tick(ctx, t)); };
   const stop = () => { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; };
   const reset = () => {
     retained = false; retainedSnapshot = null;
@@ -842,10 +842,9 @@
         finishEntry(ctx);
       }
     }
-    else if (document.hidden || document.getElementById('overview')?.classList.contains('on')) { paused ||= running; end7(); stop(); }
+    else if (document.getElementById('overview')?.classList.contains('on')) { paused ||= running; end7(); stop(); }
     else if (slide.classList.contains('on') && (paused || ta > 0 || (ta < 0 && entryDone?.ctx === entryCtx))) { paused = false; start(); }
   };
-  document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
   window.deckOnResize(() => { retained = false; retainedSnapshot = null; });
