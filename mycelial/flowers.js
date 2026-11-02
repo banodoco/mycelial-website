@@ -878,6 +878,7 @@
       end7();
       const snap = retained && retainedSnapshot;
       if (snap) {
+        timers.forEach(window.deckCancelLater); timers = [];
         retained = false; retainedSnapshot = null; handed = false; coreHeld = true; entryCtx = ctx;
         dots.forEach((d) => { delete d.handed; });
         canvas.style.transition = ''; canvas.style.opacity = '';

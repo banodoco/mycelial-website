@@ -434,8 +434,8 @@
   html.deck-overview-open .fw-cards, html.deck-overview-open .fw-cards *,
   html.deck-motion-off .slide, html.deck-motion-off .slide *, html.deck-motion-off .slide *::before, html.deck-motion-off .slide *::after,
   html.deck-motion-off .fw-cards, html.deck-motion-off .fw-cards * { animation-play-state: paused !important; }
-  html.deck-motion-off:not(.deck-reduced) .slide, html.deck-motion-off:not(.deck-reduced) .slide *, html.deck-motion-off:not(.deck-reduced) .slide *::before, html.deck-motion-off:not(.deck-reduced) .slide *::after,
-  html.deck-motion-off:not(.deck-reduced) .fw-cards, html.deck-motion-off:not(.deck-reduced) .fw-cards * { transition-duration: 0s !important; transition-delay: 0s !important; }
+  html.deck-motion-off .slide, html.deck-motion-off .slide *, html.deck-motion-off .slide *::before, html.deck-motion-off .slide *::after,
+  html.deck-motion-off .fw-cards, html.deck-motion-off .fw-cards * { transition-duration: 0s !important; transition-delay: 0s !important; }
   /* Version F, slide 4: Astrid as an abstract picture (core.js). Text centred at the bottom; above it two overlapping
      rings, agent and interface, whose lens is the core; extensions hang below each; the community orbits it all. */
   html[data-ver="f"] .ac-host { justify-content: flex-end; padding-bottom: max(70px, 8.5vh); text-align: center; }
@@ -2077,9 +2077,19 @@
   };
   const finishTurn = () => {
     if (transactionDepth || !turn || !turn.network || !turn.entry || !turn.textReady) return;
-    clearTimeout(turn.watchdog);
     const context = turn.context;
-    networkScene.finish(context);
+    context.close();
+    let copyFinished = false;
+    try { copyFinished = networkScene.finish(context) !== false; }
+    catch (error) { console.error('Deck copy finalization failed', error); }
+    if (!copyFinished) {
+      // Do not publish a settled slide until the network renderer confirms clear copy.
+      turn.recovering = false;
+      clearTimeout(turn.watchdog);
+      turn.watchdog = watchTurn(context, 1000);
+      return;
+    }
+    clearTimeout(turn.watchdog);
     retirePresentation(turn.context);
     slides[turn.to]?.setAttribute('data-settled', '');
     turn = null;
@@ -2137,6 +2147,13 @@
     networkScene = scene;
   };
   const scenePair = (context) => [...new Set([scenes.get(context.from), scenes.get(context.to)])].filter(Boolean);
+  const requestRecovery = (context, label, error) => {
+    if (!context.isCurrent() || turn?.context !== context) return;
+    console.error(`Deck ${label} failed`, error);
+    queueMicrotask(() => {
+      if (turn?.context === context && context.isCurrent() && !turn.recovering) window.deckTransaction('recover', context);
+    });
+  };
   const dispatchScenes = (context) => {
     const source = scenes.get(context.from), target = scenes.get(context.to);
     const work = [];
@@ -2147,17 +2164,26 @@
     transactionDepth++;
     try {
       for (const { scene, hook } of work) {
-        Promise.resolve(scene[hook](context)).then((result) => {
-          if (!context.isCurrent() || turn?.context !== context || result === 'cancelled') return;
+        let pending;
+        try { pending = scene[hook](context); }
+        catch (error) { requestRecovery(context, `scene ${hook}`, error); continue; }
+        Promise.resolve(pending).then((result) => {
+          if (!context.isCurrent() || turn?.context !== context) return;
+          if (result === 'cancelled') { requestRecovery(context, `scene ${hook}`, new Error('participant cancelled while its visit was current')); return; }
           if (hook === 'enter') turn.entryRequested = true;
           turn.scenePending--;
           if (!turn.scenePending && turn.entryRequested) completePhase('entry', slides[context.to], context);
-        });
+        }, (error) => requestRecovery(context, `scene ${hook}`, error));
       }
       context.sealText();
-      Promise.resolve(networkScene.enter(context)).then((result) => {
+      let networkEntry;
+      try { networkEntry = networkScene.enter(context); }
+      catch (error) { requestRecovery(context, 'network entry', error); return; }
+      Promise.resolve(networkEntry).then((result) => {
+        if (!context.isCurrent() || turn?.context !== context) return;
         if (result === 'completed') window.deckTurnDone(slides[context.to], context);
-      });
+        else requestRecovery(context, 'network entry', new Error(`participant returned ${String(result)}`));
+      }, (error) => requestRecovery(context, 'network entry', error));
     } finally {
       transactionDepth--;
       finishTurn();
@@ -2181,7 +2207,7 @@
     net.style.maskSize = net.style.webkitMaskSize = size;
   };
   window.deckSetNetMask = (context, owner, value) => {
-    if (!context?.isCurrent()) return;
+    if (!context?.isCurrent() || context.terminal) return;
     netMask = { context, owner };
     paintNetMask(value);
   };
@@ -2191,6 +2217,10 @@
   };
   window.deckTransaction = (reason, context = window.deckNav) => {
     if (!context?.isCurrent()) return false;
+    if (reason === 'recover' && turn?.context === context) {
+      if (turn.recovering) return true;
+      turn.recovering = true;
+    }
     transactionDepth++;
     try {
       if (reason === 'abort') {
@@ -2198,10 +2228,27 @@
         turnController.abort();
         netMask = null; paintNetMask('');
       } else {
-        resizeSubscribers.forEach((fn) => fn(context, reason));
-        networkScene?.resize(context);
-        scenePair(context).forEach((scene) => scene.resize?.(context));
-        settleSubscribers.forEach((fn) => fn(context, reason));
+        const run = (label, fn) => {
+          if (!fn) return;
+          try { fn(); }
+          catch (error) {
+            if (reason === 'recover') console.error(`Deck recovery ${label} failed`, error);
+            else requestRecovery(context, `${label} resize`, error);
+          }
+        };
+        resizeSubscribers.forEach((fn) => run('resize subscriber', () => fn(context, reason)));
+        run('network', () => networkScene?.resize(context));
+        scenePair(context).forEach((scene) => run('scene', () => scene.resize?.(context)));
+        settleSubscribers.forEach((fn) => run('settle subscriber', () => fn(context, reason)));
+        if (reason === 'recover' && turn?.context === context && context.isCurrent()) {
+          // Attempt every picture owner first; a failing owner cannot strand copy or navigation.
+          context.recoverText();
+          turn.network = true;
+          turn.entry = true;
+          turn.entryRequested = true;
+          turn.scenePending = 0;
+          turn.textReady = true;
+        }
       }
     } finally {
       retirePresentation(context);
@@ -2214,13 +2261,21 @@
     }
     return true;
   };
-  const watchTurn = (context, delay) => setTimeout(() => {
-    if (!context.isCurrent() || turn?.context !== context) return;
-    if (timelinePaused) { turn.watchdog = watchTurn(context, 1000); return; }
+  const recoverExpiredTurn = (context) => {
+    if (document.hidden || !context.isCurrent() || turn?.context !== context) return;
     dispatchEvent(new CustomEvent('deck-watchdog', { detail: { generation: context.generation } }));
     console.warn('Deck navigation recovery', context.generation);
     window.deckTransaction('recover', context);
-  }, delay);
+  };
+  const checkWatchdog = () => {
+    if (!document.hidden && turn?.watchdogDeadline && Date.now() >= turn.watchdogDeadline) recoverExpiredTurn(turn.context);
+  };
+  document.addEventListener('visibilitychange', checkWatchdog);
+  window.addEventListener('pageshow', checkWatchdog);
+  const watchTurn = (context, delay) => {
+    if (turn) turn.watchdogDeadline = Date.now() + delay;
+    return setTimeout(() => recoverExpiredTurn(context), delay);
+  };
   // Safari, and Chrome on a phone, report a resize while the page loads with nothing changed; only a real
   // change lays out again (one that lands during the opening would cut it short).
   const viewSize = () => `${innerWidth}x${innerHeight} ${Math.round(window.visualViewport?.width || 0)}x${Math.round(window.visualViewport?.height || 0)}`;
@@ -2261,6 +2316,7 @@
     const textHolds = new Set();
     let textSealed = false, textDone = false, resolveText;
     const textReady = new Promise((resolve) => { resolveText = resolve; });
+    let terminal = false;
     const completeText = (result) => {
       if (textDone) return;
       textDone = true;
@@ -2273,10 +2329,12 @@
       intro: from === null && to === 0 && !location.hash && !motionOff,
       rest: motionOff || (dir < 0 && !reversePair), back, signal: turnController.signal,
       now: window.deckNow, isCurrent: () => window.deckNav === context && !context.signal.aborted,
+      get terminal() { return terminal; },
+      close() { terminal = true; },
       arrived, textReady, superseded,
       copyRects: () => networkScene.copyRects(context),
       holdText(onDeadline, deadlineMs) {
-        if (textSealed || textDone || !context.isCurrent()) throw new Error('Text holds must be declared synchronously during scene entry');
+        if (textSealed || textDone || terminal || !context.isCurrent()) throw new Error('Text holds must be declared synchronously during scene entry');
         let live = true;
         const release = () => {
           if (!live) return;
@@ -2294,9 +2352,15 @@
         textSealed = true;
         if (!textHolds.size) completeText('completed');
       },
+      recoverText() {
+        textSealed = true;
+        for (const release of [...textHolds]) release();
+        completeText('completed');
+        arrive('completed');
+      },
       present(slide, add = '', remove = '') {
         const state = presentations.get(context);
-        if (!context.isCurrent() || !state.open) return;
+        if (!context.isCurrent() || terminal || !state.open) return;
         if (slide !== slides[from] && slide !== slides[to]) throw new Error('Presentation belongs to this navigation’s source or target');
         const additions = add.split(/\s+/).filter(Boolean), removals = remove.split(/\s+/).filter(Boolean);
         if ([...additions, ...removals].some((name) => !handoffClasses.has(name))) throw new Error('Unknown handoff presentation class');
@@ -2332,7 +2396,7 @@
     window.deckNav = context;
     const basePace = motionOff && !reduced ? STILL_PACE : stepPace || 1;
     turn = { context, arrive, to, dir: stepped ? dir : 0, basePace, network: false, entry: false, textReady: false,
-      entryRequested: reduced && !scenes.has(to), scenePending: 0, watchdog: null, started: window.deckNow(), rewinding: false,
+      entryRequested: reduced && !scenes.has(to), scenePending: 0, watchdog: null, watchdogDeadline: 0, recovering: false, started: window.deckNow(), rewinding: false,
       budget: from === null ? 6500 : turnBudgets[to] };
     textReady.then((result) => {
       if (result !== 'completed' || turn?.context !== context || !context.isCurrent()) return;
@@ -2356,7 +2420,9 @@
     if (historyMode !== 'none' || location.hash || history.state?.deckSlide !== i + 1) {
       history.replaceState({ ...history.state, deckSlide: i + 1 }, '', url);
     }
-    turn.watchdog = watchTurn(context, from === null ? 18000 : 12000);
+    // Preserve extra time for the intro and shared wheel; use scene budgets elsewhere.
+    const recoveryMs = from === null ? 18000 : to >= 8 && to <= 10 ? 3000 : Math.max(5000, turn.budget + 1000);
+    turn.watchdog = watchTurn(context, recoveryMs);
     dispatchScenes(context);
   };
   const go = (n, historyMode = 'push') => {

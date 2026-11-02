@@ -727,7 +727,7 @@
   };
   const seep = (k) => 0.5 - 0.5 * Math.cos(Math.PI * k); // gentle in, gentle out
   const easeIn = (k) => k * k * (3 - 2 * k) * k;
-  const textTweens = new Set();
+  const textTweens = new Set(), textTweensByContext = new Map();
   const tween = (duration, ease, step, delay = 0, context = window.deckNav) => {
     let raf = 0, stopped = false, resolve;
     const p = new Promise((r) => { resolve = r; });
@@ -736,7 +736,7 @@
     const tick = () => {
       raf = 0;
       if (stopped || blocked()) return;
-      if (!context.isCurrent()) { p.stop(); return; }
+      if (!context.isCurrent() || context.terminal) { p.stop(); return; }
       const elapsed = context.now() - started - delay;
       const k = clamp(elapsed / duration);
       if (elapsed >= 0) step(ease(k));
@@ -752,15 +752,24 @@
     window.addEventListener('deck-overview', syncMotion);
     p.then(() => {
       textTweens.delete(p);
+      const owned = textTweensByContext.get(context);
+      owned?.delete(p);
+      if (owned && !owned.size) textTweensByContext.delete(context);
       document.removeEventListener('visibilitychange', syncMotion);
       window.removeEventListener('deck-overview', syncMotion);
     });
     syncMotion();
     p.stop = () => { if (stopped) return; stopped = true; cancelAnimationFrame(raf); resolve('cancelled'); };
     textTweens.add(p);
+    if (!textTweensByContext.has(context)) textTweensByContext.set(context, new Set());
+    textTweensByContext.get(context).add(p);
     const release = context.defer(p.stop);
     p.then(release);
     return p;
+  };
+  const stopText = (context) => {
+    const owned = context ? textTweensByContext.get(context) : textTweens;
+    [...(owned || [])].forEach((tw) => tw.stop());
   };
 
   // Astrid's first mention (.dt-flash, on slide 5) warms to her own orange as the reveal reaches it, then cools back
@@ -790,6 +799,7 @@
   // Threads run from the node down into the text, and the words appear where
   // they reach. The circle's edge keeps pace with the threads' tips.
   const reveal = (s, at, delay = 0, context = window.deckNav) => {
+    if (context.terminal) return [];
     context.present(s, '', 'dt-entering');
     const tw = [];
     for (const el of textOf(s)) {
@@ -810,7 +820,7 @@
         mask(el, at, k * far);
         for (const f of lit) if (!f.lit && k >= f.from) { f.lit = true; flash(f); }
       }, delay, context);
-      run.then((result) => { if (result === 'completed' && context.isCurrent()) { if (s.classList.contains('on')) unmask(el); else hideText(s); } });
+      run.then((result) => { if (result === 'completed' && context.isCurrent() && !context.terminal) { if (s.classList.contains('on')) unmask(el); else hideText(s); } });
       tw.push(run);
     }
     return tw;
@@ -1025,7 +1035,7 @@
     mark = { x: c.x, y: c.y, t: gate ? 1.6 : 0, size, shrink: 0, trail: null, shed: 0 };
     markCv.getAnimations().forEach((an) => an.cancel());
     wake();
-    opening = { timers: [], trail: null };
+    opening = { context, timers: [], trail: null };
     name.classList.remove('is-home');
     name.tabIndex = -1;
     name.setAttribute('aria-hidden', 'true');
@@ -1041,7 +1051,7 @@
       html.style.background = '';
     }
     const land = () => {
-      if (!context.isCurrent()) return;
+      if (!context.isCurrent() || context.terminal) return;
       opening = null;
       mark = null;
       html.classList.add('dt-unveil'); // fade in from here on, never out
@@ -1090,13 +1100,15 @@
   };
   // wipe: start the network afresh (first load, switching version); otherwise the ground stays (a resize, a jump).
   const settle = (grow, wipe, context = window.deckNav, announce = true) => {
-    if (turning) turning.cancel();
-    textTweens.forEach((tw) => tw.stop());
+    const targetSlide = Number.isInteger(context?.to) ? slides[context.to] : current;
+    if (targetSlide) current = targetSlide;
+    if (turning?.context === context) turning.cancel();
+    stopText(context);
     if (active()) adopt(); else restore();
     [slides[context.from], slides[context.to]].filter(Boolean).forEach((sl) => context.present(sl, '', 'dt-leaving dt-release dt-entering'));
-    slides.forEach((sl) => sl === current ? clearText(sl) : hideText(sl));
+    slides.forEach((sl) => sl === targetSlide ? clearText(sl) : hideText(sl));
     trail = { x: 0, y: 0 };
-    anchor = current ? anchorOf(current) : null;
+    anchor = targetSlide ? anchorOf(targetSlide) : null;
     const on = active() && !!anchor;
     dot.classList.toggle('is-on', on);
     net.classList.toggle('is-on', on);
@@ -1106,26 +1118,26 @@
     nameRest();
     const ch = zone(chromeEls());
     chrome = ch && Object.assign(ch, { a: 1 });
-    const z = on && zone(lines(current));
+    const z = on && zone(lines(targetSlide));
     zones = z ? [Object.assign(z, { a: 1 })] : [];
     draw();
     if (!on) return;
     place(anchor);
     if (announce) {
       window.deckArrived(context);
-      if (current === slides[0]) window.deckEntryDone?.(current, context);
+      if (targetSlide === slides[0]) window.deckEntryDone?.(targetSlide, context);
       if (still) finishNetwork(context);
     }
     if (still || (context.direct && !context.intro)) { // direct loads also need the network at this slide's full reach
-      sprawl(levelOf(current), anchor);
+      sprawl(levelOf(targetSlide), anchor);
       ripen();
-      if (current === lastSlide()) crown(anchor, true);
+      if (targetSlide === lastSlide()) crown(anchor, true);
       draw();
       return;
     }
     bloom(anchor);
     if (!grow) { hyphae.forEach((h) => { h.age = 0; h.grown = h.total; h.done = true; h.after = 5; h.glow = target(h); }); blooms = []; }
-    if (current === lastSlide()) crown(anchor, !grow);
+    if (targetSlide === lastSlide()) crown(anchor, !grow);
     draw();
   };
 
@@ -1136,6 +1148,7 @@
     let done = false, landed;
     const finish = () => { if (!done) { done = true; turning = null; } };
     const transition = {
+      context,
       cancel() {
         // A completed reveal can still have an outgoing retirement pending.
         // The next visit owns copy initialization and presentation retirement.
@@ -1178,19 +1191,19 @@
     // and the node has arrived.
     const reached = new Promise((r) => { landed = r; });
     const grow = () => {
-      if (done) return;
+      if (done || context.terminal || !context.isCurrent()) return;
       const z = zone(lines(next));
       if (z) zones.push(z);
       const shown = reveal(next, to, 0, context);
       tweens.push(...shown);
       Promise.all([...shown, reached]).then((results) => {
-        if (done || !context.isCurrent() || results.some((result) => result !== 'completed')) return;
+        if (done || context.terminal || !context.isCurrent() || results.some((result) => result !== 'completed')) return;
         finish(); finishNetwork(context);
       });
     };
     // 3. Arrival: the node blooms (or, on the last slide, becomes the mark).
     const arrive = () => {
-      if (done) return;
+      if (done || context.terminal || !context.isCurrent()) return;
       place(to);
       dot.classList.remove('is-moving'); anims.push(pulse(1.8)); bloom(to);
       if (next === lastSlide()) crown(to);
@@ -1207,7 +1220,7 @@
 
     // 2. The network grows across to the next node, or simply re-blooms in place.
     const travel = () => {
-      if (done) return;
+      if (done || context.terminal || !context.isCurrent()) return;
       release();
       sprawl(levelOf(next), from);
       const far = Math.hypot(to.x - from.x, to.y - from.y) > 6;
@@ -1225,13 +1238,13 @@
     // One clock owns both milestones. If the main thread wakes late, begin
     // already-due travel before starting text work in this same task.
     const advanceTurn = () => {
-      if (done || !context.isCurrent()) return;
+      if (done || context.terminal || !context.isCurrent()) return;
       let elapsed = context.now() - started;
       if (travelDue && elapsed >= 340) { travelDue = false; travel(); }
       elapsed = context.now() - started;
       if (textDue && elapsed >= early) {
         textDue = false;
-        context.textReady.then((result) => { if (result === 'completed' && context.isCurrent()) grow(); });
+        context.textReady.then((result) => { if (result === 'completed' && context.isCurrent() && !context.terminal) grow(); });
       }
       if (travelDue || textDue) {
         const nextAt = Math.min(travelDue ? 340 : Infinity, textDue ? early : Infinity);
@@ -1292,18 +1305,20 @@
   // A resize keeps the network (see size), growing it at once over ground a new shape of screen leaves bare;
   // the node, its tuft and the text's softening find their places.
   const resize = (context) => {
+    const targetSlide = slides[context.to];
+    if (targetSlide) current = targetSlide;
     const busy = turning || opening, tuft = busy ? [] : hyphae.filter((h) => h.keep);
     endOpening();
     window.deckArrived(context);
     keepGround();
     const was = anchor;
-    anchor = current ? anchorOf(current) : null;
-    if (size(was, anchor) && anchor && active()) { sprawl(levelOf(current), anchor); ripen(); }
+    anchor = targetSlide ? anchorOf(targetSlide) : null;
+    if (size(was, anchor) && anchor && active()) { sprawl(levelOf(targetSlide), anchor); ripen(); }
     // A viewport change retires text work as well as node travel, including a
     // rest reveal that has no `turning` object. Completion belongs to this visit.
     if (busy || textTweens.size) {
       settle(false, false, context);
-      if (current) finishNetwork(context);
+      if (targetSlide) finishNetwork(context);
       return;
     }
     if (was && anchor) for (const h of tuft) for (const p of h.pts) { p[0] += anchor.x - was.x; p[1] += anchor.y - was.y; }
@@ -1313,12 +1328,12 @@
     nameRest();
     const ch = zone(chromeEls());
     chrome = ch && Object.assign(ch, { a: 1 });
-    const z = active() && current && zone(lines(current));
+    const z = active() && targetSlide && zone(lines(targetSlide));
     zones = z ? [Object.assign(z, { a: 1 })] : [];
-    if (anchor && current === lastSlide()) crown(anchor, true);
+    if (anchor && targetSlide === lastSlide()) crown(anchor, true);
     draw();
-    if (current === slides[0]) window.deckEntryDone?.(current, context);
-    if (current) finishNetwork(context);
+    if (targetSlide === slides[0]) window.deckEntryDone?.(targetSlide, context);
+    if (targetSlide) finishNetwork(context);
   };
   // First navigation starts only after every scene has registered.
   const startOpening = (firstContext) => {
@@ -1373,9 +1388,24 @@
     }
   };
   const finishText = (context) => {
-    if (!context.isCurrent()) return;
-    textTweens.forEach((tw) => tw.stop());
-    clearText(slides[context.to]);
+    if (!context.isCurrent()) return false;
+    // Recovery may complete textReady while the reveal's continuation is queued.
+    // Stop its owner before clearing copy; every destination element is still
+    // attempted if cancellation or another element's cleanup throws.
+    const attempt = (fn) => { try { fn(); } catch (error) { console.error('Deck text finalization failed', error); } };
+    if (turning?.context === context) attempt(() => turning.cancel());
+    if (opening?.context === context) attempt(endOpening);
+    attempt(() => stopText(context));
+    const destination = slides[context.to];
+    if (!destination) return false;
+    put.x = NaN;
+    let complete = true;
+    for (const el of textOf(destination)) {
+      try { el.style.transform = ''; el.style.visibility = ''; unmask(el); }
+      catch (error) { complete = false; console.error('Deck copy clear failed', error); }
+    }
+    if (complete) finishNetwork(context);
+    return complete;
   };
   window.deckRegisterNetwork({ enter, resize, finish: finishText, copyRects });
 })();
