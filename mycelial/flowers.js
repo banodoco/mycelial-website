@@ -894,12 +894,12 @@
       } else { reset(); begin(ctx); }
       preparedReturn = ctx;
       ctx.defer(() => { if (preparedReturn === ctx) preparedReturn = null; });
-      return snap || this.snapshot();
+      return snap || this.snapshot(ctx);
     },
-    snapshot() {
+    snapshot(ctx) {
       if (!canSnapshot()) return null;
       tc = ta - off;
-      const b = root.getBoundingClientRect(), v = (x, y) => ({ x: b.left + x, y: b.top + y });
+      const b = ctx?.geometry?.flowers || root.getBoundingClientRect(), v = (x, y) => ({ x: b.left + x, y: b.top + y });
       const recent = apps.length ? apps[Math.max(0, apps.length - 12)].i : 0, fresh = [], rest = [];
       for (const d of dots) {
         if (!d.lights.length || tc < d.firstLit + 0.2 || tc < d.t0 + 0.3) continue;
@@ -911,11 +911,12 @@
       const people = chosen.map(([d, app]) => { d.handed = true; const [x, y] = pos(d); return { ...v(x, y), r: d.r * 1.45, bright: d.bright, app }; });
       return { core: { ...v(core.x, core.y), w: core.w, h: core.h, cell }, mink: v(core.x + inLens(cell).x, core.y + inLens(cell).y), apps: apps.filter((a) => tc >= a.T).slice(-12).map((a) => ({ ...v(a.x, a.y), r: a.r })), people, k, lw: LW };
     },
+    retain(snap) { retained = true; retainedSnapshot = snap; },
     // Slide 9 brings the core back on a step back: this picture leaves it out until it has landed, then takes it
     // back in the same frame, so only one mink is ever on screen.
     holdCore(on) { coreHeld = on; if (!on && core && slide.classList.contains('on')) { draw(); start(entryCtx); } },
-    hide(ctx, snap) { // fade out as the next slide's picture takes over; its people are drawn there from now on
-      retained = true; retainedSnapshot = snap; handed = true; coreHeld = true; draw(); // the core goes at once: slide 9 draws it from this frame, in the same place
+    hide(ctx) { // fade out as the next slide's picture takes over; its people are drawn there from now on
+      handed = true; coreHeld = true; draw(); // the core goes at once: slide 9 draws it from this frame, in the same place
       canvas.style.transition = 'opacity .5s ease'; canvas.style.opacity = '0';
       pool.forEach((p) => { p.el.style.transition = 'opacity .4s ease'; p.el.style.opacity = '0'; p.o = 0; });
       coreLabel.style.opacity = '0'; count.style.opacity = '0';

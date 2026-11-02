@@ -2344,6 +2344,9 @@
     if (ov.classList.contains('on')) toggleOv(false);
     const from = initialized ? i : null;
     const dir = from === null ? 0 : Math.sign(to - from);
+    // Read handoff geometry before changing slide classes or scene styles.
+    const handoffGeometry = stepped && ((from === 7 && to === 8) || (from === 8 && to === 7))
+      ? networkScene.geometry(from, to) : null;
     if (turnController) window.deckTransaction('abort');
     turnController = new AbortController();
     // Slides 9–11 are one picture moving between them: its own motion plays both ways.
@@ -2375,7 +2378,8 @@
       close() { terminal = true; },
       arrived, textReady, superseded,
       get textDeadline() { return textDeadline; },
-      copyRects: () => networkScene.copyRects(context),
+      geometry: handoffGeometry,
+      copyRects: () => handoffGeometry?.rects || networkScene.copyRects(context),
       holdText(onDeadline, deadlineMs) {
         if (textSealed || textDone || terminal || !context.isCurrent()) throw new Error('Text holds must be declared synchronously during scene entry');
         let live = true;

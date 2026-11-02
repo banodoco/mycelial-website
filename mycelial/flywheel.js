@@ -179,7 +179,7 @@
       if (!running && begun) frame();
     },
   });
-  const setVisible = (on) => { root.classList.toggle('is-on', on); cardsRoot.classList.toggle('is-on', on); };
+  const setVisible = (on, cards = on) => { root.classList.toggle('is-on', on); cardsRoot.classList.toggle('is-on', cards); };
 
   // A soft light, stamped wherever something glows.
   const glow = document.createElement('canvas');
@@ -789,6 +789,21 @@
     for (let n = el; n && n !== card; n = n.offsetParent) { x += n.offsetLeft + (n.offsetParent ? n.offsetParent.clientLeft : 0); y += n.offsetTop + (n.offsetParent ? n.offsetParent.clientTop : 0); }
     return [x, y];
   };
+  const measureCards = (w) => {
+    const ws = `${w.toFixed(1)}px`, fs = `${cardFont(w).toFixed(2)}px`, compact = !tall && w < 176;
+    chips.forEach((el, i) => { // 1. sizing
+      if (el.style.width !== ws) { el.style.width = ws; el.style.fontSize = fs; dirty[i] = true; }
+      if (el.classList.contains('is-compact') !== compact) { el.classList.toggle('is-compact', compact); dirty[i] = true; }
+    });
+    chips.forEach((el, i) => { // 2. measuring, where the sizing changed
+      if (!dirty[i]) return;
+      dirty[i] = false;
+      cardH[i] = el.offsetHeight; mediaH[i] = media[i].offsetHeight || w * 0.54;
+      const f = CARDS[i].focus && el.querySelector(CARDS[i].focus); // an icon centred on a part of its picture
+      if (f) { const mr = media[i].getBoundingClientRect(), fr = f.getBoundingClientRect(); if (mr.width && fr.width) CARDS[i].crop = [(fr.left + fr.width / 2 - mr.left) / mr.width, (fr.top + fr.height / 2 - mr.top) / mr.height, Math.min(1, (fr.width * 1.15) / mr.height)]; }
+      if (i === 1) seatIn = inCard(seat, el);
+    });
+  };
   const place = () => {
     const key = [W, H, m, k01(T.labels, 0.6), cardOut(), openBase(), ...chips.map((_, i) => chipQ(i)), ...gro, root.classList.contains('is-on')].join('|');
     if (key === lastPlaceKey) return;
@@ -808,6 +823,14 @@
     put(labels.equip, cur.equip[0], cur.equip[1], 0.5, 0.5);
     const pa = nine();
     for (const key in labels) setOp(labels[key], key === 'astrid' ? smooth(k01(T.lens + 0.6, 0.5)) * lensA() : ql * pa);
+    // Stage 9 has no cards or flying mink. Retire their layer even if a
+    // reverse morph reaches its endpoint between two rendered frames.
+    if (m === 0 && !morph) {
+      cardsRoot.classList.remove('is-on', 'is-live');
+      if (!cardsRoot.inert) cardsRoot.inert = true;
+      if (fly.style.opacity !== '0') fly.style.opacity = '0';
+      return;
+    }
     // The cards: sized from the picture's scale, coming out of the ring on the way from 9; on 11 (and on a
     // phone) each is clipped down to an icon of its picture, opening back into the whole card when asked.
     const out = m < 1 ? cardOut() : 1, ob = openBase(), S = iconR() * 2;
@@ -816,19 +839,8 @@
     const cw = cur.cw;
     if (morph && morph.to === 1 && morph.from < 1) layW = stages[1].cw;
     else if (!morph || Math.abs(cw - layW) > cw * 0.06) layW = cw;
-    const w = layW, ls = cw / w, ws = `${w.toFixed(1)}px`, fs = `${cardFont(w).toFixed(2)}px`, compact = !tall && w < 176;
-    chips.forEach((el, i) => { // 1. sizing
-      if (el.style.width !== ws) { el.style.width = ws; el.style.fontSize = fs; dirty[i] = true; }
-      if (el.classList.contains('is-compact') !== compact) { el.classList.toggle('is-compact', compact); dirty[i] = true; }
-    });
-    chips.forEach((el, i) => { // 2. measuring, where the sizing changed
-      if (!dirty[i]) return;
-      dirty[i] = false;
-      cardH[i] = el.offsetHeight; mediaH[i] = media[i].offsetHeight || w * 0.54;
-      const f = CARDS[i].focus && el.querySelector(CARDS[i].focus); // an icon centred on a part of its picture
-      if (f) { const mr = media[i].getBoundingClientRect(), fr = f.getBoundingClientRect(); if (mr.width && fr.width) CARDS[i].crop = [(fr.left + fr.width / 2 - mr.left) / mr.width, (fr.top + fr.height / 2 - mr.top) / mr.height, Math.min(1, (fr.width * 1.15) / mr.height)]; }
-      if (i === 1) seatIn = inCard(seat, el);
-    });
+    const w = layW, ls = cw / w;
+    measureCards(w);
     let live = root.classList.contains('is-on');
     const fq = flightQ(), arrive = smooth(clamp((fq - 0.9) / 0.1)); // she becomes her icon's logo only as she gets there
     cur.cards.forEach(([x, y], i) => { // 3. placing
@@ -1141,7 +1153,6 @@
     vids.forEach((v) => v && !v.paused && v.pause()); cardsRoot.inert = true; cardsRoot.classList.remove('is-live'); fly.style.opacity = '0';
     T = T_FRESH; hand = null; minkAt = null;
     flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], plug: chips.map(() => 0) };
-    if (g) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height); }
     for (const key in labels) labels[key].style.opacity = '0';
     chips.forEach((c) => { c.style.opacity = '0'; });
   };
@@ -1168,7 +1179,11 @@
 
   let prepared = false;
   // Prepare the next picture while slide 7 is settled, before reaching Flowers.
-  const prepare = () => { if (!prepared) { buildFulls(); prepared = layout(); if (prepared) placeFulls(); } };
+  const prepare = () => {
+    if (prepared || activeStage >= 0 || running) return;
+    buildFulls(); prepared = layout();
+    if (prepared) { layW = stages[0].cw; measureCards(layW); placeFulls(); }
+  };
   const flHost = document.querySelector('[data-astrid-flowers]'), flSlide = flHost && flHost.closest('.slide');
   const paysSlide = document.querySelector('[data-astrid-pays]')?.closest('.slide');
   const warmWheel = new MutationObserver(() => {
@@ -1179,16 +1194,35 @@
 
   // Slide 8 hands its core and communities on after its layout has settled.
   const minkIn = (snap) => (snap.mink ? { x: snap.mink.x - snap.core.x, y: snap.mink.y - snap.core.y } : { x: 3 * snap.k, y: 6 * snap.k });
+  let cancelHandoffFrame = null;
   const handoff = (snap, ctx) => {
     entryCtx = ctx;
     begun = true; T = T_HAND; ta = 0; nextMote = T.motes; lastM = -1;
-    hand = { snapshot: snap, core: snap.core, k: snap.k, mo: minkIn(snap), dots: [], done: false };
-    settleCur();
+    hand = { snapshot: snap, core: snap.core, k: snap.k, mo: minkIn(snap), dots: [], done: false, painted: false };
     hand.dots = assign(snap.people, snap.core.x);
-    window.AstridFlowers.hide(ctx, snap);
-    root.style.transition = 'none'; setVisible(true); void root.offsetWidth; root.style.transition = '';
-    frame();
-    start(ctx);
+    window.AstridFlowers.retain(snap);
+    // Keep Flowers painted until the wheel is ready to take over in one frame.
+    const started = ctx.now();
+    root.style.transition = 'none';
+    let pendingFrame = requestAnimationFrame(() => {
+      if (!ctx.isCurrent() || ctx.terminal) return;
+      ta = Math.min(HAND_END, Math.max(0, (ctx.now() - started) / 1000));
+      frame();
+      setVisible(true, false);
+      hand.painted = true;
+      window.AstridFlowers.hide(ctx);
+      start(ctx);
+      pendingFrame = requestAnimationFrame(() => {
+        if (ctx.isCurrent() && !ctx.terminal) root.style.transition = '';
+        cancelHandoffFrame = null;
+      });
+    });
+    const cancel = () => {
+      cancelAnimationFrame(pendingFrame); root.style.transition = '';
+      if (cancelHandoffFrame === cancel) cancelHandoffFrame = null;
+    };
+    cancelHandoffFrame = cancel;
+    ctx.defer(cancel);
   };
 
   // The reverse 9→8 hand-off returns the shared core and crowd to Flowers in the same picture.
@@ -1251,8 +1285,7 @@
       reset();
       activeStage = target;
       if (!prepared) layout(); prepared = false; m = target; settleCur();
-      const snap = !ctx.direct && target === 0 && ctx.from === 7 && !motionOff() && window.AstridFlowers?.snapshot?.();
-      setVisible(true);
+      const snap = !ctx.direct && target === 0 && ctx.from === 7 && !motionOff() && window.AstridFlowers?.snapshot?.(ctx);
       if (snap) {
         handoff(snap, ctx);
         const rects = ctx.copyRects();
@@ -1262,7 +1295,7 @@
           textClear = { ctx, target, release, hand: true, clearAt: crossings.last };
         }
       }
-      else { draw(); begin(ctx, target); }
+      else { setVisible(true); draw(); begin(ctx, target); }
       return done;
     }
     setVisible(true);
@@ -1291,6 +1324,12 @@
     if (ctx.to === 7 && ctx.back && !motionOff() && activeStage === 0 && begun && !morph && m === 0 && window.AstridFlowers) {
       const snap = window.AstridFlowers.prepareReturn(ctx);
       if (!snap) { activeStage = -1; setVisible(false); stop(); finishOperation(ctx); return done; }
+      if (hand?.snapshot === snap && !hand.painted) {
+        window.AstridFlowers.holdCore(false);
+        activeStage = -1; setVisible(false); html.classList.remove('fw-quiet');
+        stop(); cardsRoot.inert = true; finishOperation(ctx);
+        return done;
+      }
       if (hand?.snapshot === snap) hand.done = false;
       else hand = { snapshot: snap, core: snap.core, k: snap.k, mo: minkIn(snap), dots: assign(snap.people, snap.core.x), done: false };
       const crossings = handCrossings(ctx.copyRects());
@@ -1315,6 +1354,7 @@
     return done;
   };
   const resize = (ctx) => {
+    cancelHandoffFrame?.();
     prepared = false;
     entryCtx = ctx;
     if (ctx.to < 8 || ctx.to > 10) {
@@ -1345,6 +1385,7 @@
     if (m >= 1) { attach = { dir: 1, t0: ta - T.chips - 1 }; boost = 1; relay = { start: ta, arrivals: 6, next: 0, launch: ta + 1, attacks: chips.map(() => 0) }; }
     lastM = -1; minkAt = null; flyCell = 0;
     frame();
+    setVisible(true, target !== 0);
     releaseText(ctx);
     finishOperation(ctx);
     start(ctx);
