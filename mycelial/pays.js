@@ -446,7 +446,7 @@
     const f = fly, h = ta - f.t0, u0 = f.c, u1 = cell;
     const end = inLens(); // her centre in the lens, as paintMink draws her
     const T1 = FLY.charge, T2 = T1 + FLY.travel;
-    if (f.back) window.deckStackFlight?.draw(h / FLY.charge);
+    if (f.back) f.flight?.draw(h / FLY.charge);
     if (h < T1) { // Hold at the perch while the stack unfolds on the reverse journey.
       paintMinkAt(f.x, f.y, u0, 0);
       return;
@@ -561,10 +561,10 @@
   // the builders' threads and machines) back to the lens around the mink; she lights up, lifts out of it as the lens
   // untraces, flies back along her arc to her perch on the stack, and the stack unfolds around her.
   let unflying = null;
-  const unfly = () => {
+  const unfly = (ctx) => {
     const el = stackSlide.querySelector('.st-mink'), r = el.getBoundingClientRect(), u0 = Math.round(r.width / 23);
     if (!r.width || !u0) return false;
-    reverseCtx = window.deckNav;
+    reverseCtx = ctx;
     stop();
     timers.forEach(window.deckCancelLater); timers = [];
     pulses = []; waves = []; glintAt = -9;
@@ -573,17 +573,17 @@
     fly = { t0, x, y, c: u0, landed: t0 + FLY.charge + FLY.travel, back: true };
     ta = Math.min(ta, END);
     takeStackMink(el, reverseCtx); // she is drawn here until she is back on her perch
-    window.deckStackFlight?.hold(reverseCtx, r);
-    window.deckStackFlight?.draw(1);
+    fly.flight = window.deckStackFlight?.hold(ctx, r);
+    fly.flight?.draw(1);
     reverseCtx.present(slide, 'dt-rewind dt-over'); // over the stack, which waits for her
     reverseCtx.present(stackSlide, 'dt-return');
-    unflying = { last: window.deckNow?.() ?? performance.now(), raf: 0 };
-    unflying.raf = requestAnimationFrame(unstep);
+    unflying = { ctx, flight: fly.flight, last: window.deckNow?.() ?? performance.now(), raf: 0 };
+    const u = unflying;
+    u.raf = requestAnimationFrame((now) => unstep(u, now));
     return true;
   };
-  const unstep = (now) => {
-    const u = unflying;
-    if (!u) return;
+  const unstep = (u, now) => {
+    if (unflying !== u || !u.ctx.isCurrent() || u.ctx.terminal) return;
     u.raf = 0;
     const clock = window.deckNow?.() ?? now;
     const dt = Math.max(0, (clock - (u.last || clock)) / 1000);
@@ -597,22 +597,22 @@
     if (hn <= 0) { endUnfly(); return; }
     draw();
     checkFlightText(reverseCtx);
-    u.raf = requestAnimationFrame(unstep);
+    u.raf = requestAnimationFrame((now) => unstep(u, now));
   };
-  const endUnfly = () => {
+  const endUnfly = (owner = unflying?.ctx) => {
     const u = unflying;
-    if (!u) return;
+    if (!u || u.ctx !== owner) return;
     unflying = null;
     if (u.raf) cancelAnimationFrame(u.raf);
     fly = null;
-    window.deckStackFlight?.release();
+    u.flight?.release();
     showStackMink();
-    reverseCtx.present(slide, 'dt-rewound', 'dt-rewind dt-over');
-    reverseCtx.present(stackSlide, '', 'dt-return dt-await');
+    u.ctx.present(slide, 'dt-rewound', 'dt-rewind dt-over');
+    u.ctx.present(stackSlide, '', 'dt-return dt-await');
     document.documentElement.classList.remove('pa-quiet');
     if (!slide.classList.contains('on')) reset();
     releaseFlightText();
-    reverseFinish?.(reverseCtx, 'completed');
+    reverseFinish?.(u.ctx, 'completed');
   };
 
   const completion = (ctx, assign, cleanup) => {
@@ -649,19 +649,19 @@
   };
   const sceneExit = (ctx) => {
     if (ctx.to === 5 && ctx.back && !motionOff() && !fly && lens && ta >= END) {
-      const promise = completion(ctx, (fn) => { reverseFinish = fn; }, () => endUnfly());
+      const promise = completion(ctx, (fn) => { reverseFinish = fn; }, () => endUnfly(ctx));
       const path = flightGeometry();
       if (path && flightCrossesCopy(ctx, path, 0, 1)) {
         // Unfly accelerates the ungrowing portion by 0.7, then reverses the flight at normal speed.
         const flightEnd = FLY.charge + FLY.travel + FLY.land;
         const duration = (END - FLIGHT_START - flightEnd) * 0.7 + flightEnd;
-        flightTextRelease = ctx.holdText(() => endUnfly(), (duration + 0.3) * 1000);
+        flightTextRelease = ctx.holdText(() => endUnfly(ctx), (duration + 0.3) * 1000);
         ctx.defer(releaseFlightText);
       }
-      queueMicrotask(() => { if (ctx.isCurrent() && !unfly()) { releaseFlightText(); reverseFinish?.(ctx, 'completed'); } });
+      queueMicrotask(() => { if (ctx.isCurrent() && !unfly(ctx)) { releaseFlightText(); reverseFinish?.(ctx, 'completed'); } });
       return promise;
     }
-    stop(); fly = null; window.deckStackFlight?.release(); showStackMink(); slide.classList.remove('pa-arrive');
+    stop(); fly = null; showStackMink(); slide.classList.remove('pa-arrive');
     document.documentElement.classList.remove('pa-quiet');
     timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) reset(); }, 700, ctx));
     return undefined;
