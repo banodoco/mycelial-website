@@ -391,7 +391,34 @@
   // Under the text the network is softened, never removed: a soft-edged shape of the text's lines, cut from the
   // drawn network at CUT strength. Slides that soften the network themselves (an inline mask) keep theirs.
   const CUT = 0.72;
-  const zone = (els) => {
+  let zones = [], chrome = null;
+  const zoneCanvases = new Map(), discCanvases = new Map(), chromeKey = {};
+  const scratch = (cache, key, w, h) => {
+    let cv = cache.get(key);
+    if (cv && (cv.width !== w || cv.height !== h)) {
+      // A fading zone may still hold the old surface on a rapid return.
+      zones = zones.filter((z) => z.cv !== cv);
+      cv.width = cv.height = 0;
+      cache.delete(key);
+      cv = null;
+    }
+    if (!cv) {
+      cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      cache.set(key, cv);
+    } else {
+      // A slide can be revisited before its preceding zone has faded out.
+      zones = zones.filter((z) => z.cv !== cv);
+    }
+    const c = cv.getContext('2d');
+    if (!c) return null;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, cv.width, cv.height);
+    c.shadowColor = 'rgba(0,0,0,0)'; c.shadowBlur = 0; c.shadowOffsetX = 0; c.shadowOffsetY = 0;
+    if ('filter' in c) c.filter = 'none';
+    return { cv, c };
+  };
+  const zone = (els, key) => {
     const rs = [];
     const range = document.createRange();
     for (const el of els) {
@@ -403,9 +430,9 @@
     const P = 18;
     const x0 = Math.min(...rs.map((r) => r.left)) - 2 * P, y0 = Math.min(...rs.map((r) => r.top)) - 2 * P;
     const w = Math.max(...rs.map((r) => r.right)) + 2 * P - x0, h = Math.max(...rs.map((r) => r.bottom)) + 2 * P - y0;
-    const cv = document.createElement('canvas');
-    cv.width = Math.ceil(w * dpr); cv.height = Math.ceil(h * dpr);
-    const c = cv.getContext('2d');
+    const surface = scratch(zoneCanvases, key, Math.ceil(w * dpr), Math.ceil(h * dpr));
+    if (!surface) return null;
+    const { cv, c } = surface;
     c.scale(dpr, dpr);
     // Safari has no canvas filter: the same blur, as the shadow of the shapes drawn just off the canvas
     // (shadowBlur is twice the blur's deviation, and like the filter it ignores the scale).
@@ -423,10 +450,12 @@
     return { cv, x: x0, y: y0, w, h, a: 0, to: 1 };
   };
   // A soft disc, under the crown, so the mark reads cleanly over a full network.
-  const disc = (x, y, r) => {
-    const R = r * 1.5, cv = document.createElement('canvas');
-    cv.width = cv.height = Math.ceil(2 * R * dpr);
-    const c = cv.getContext('2d'), grad = c.createRadialGradient(R * dpr, R * dpr, 0, R * dpr, R * dpr, R * dpr);
+  const disc = (x, y, r, key) => {
+    const R = r * 1.5, size = Math.ceil(2 * R * dpr);
+    const surface = scratch(discCanvases, key, size, size);
+    if (!surface) return null;
+    const { cv, c } = surface;
+    const grad = c.createRadialGradient(R * dpr, R * dpr, 0, R * dpr, R * dpr, R * dpr);
     grad.addColorStop(0, '#000');
     grad.addColorStop(0.6, '#000');
     grad.addColorStop(1, 'rgba(0,0,0,0)');
@@ -434,7 +463,8 @@
     c.fillRect(0, 0, cv.width, cv.height);
     return { cv, x: x - R, y: y - R, w: 2 * R, h: 2 * R, a: 0, to: 1 };
   };
-  let zones = [], chrome = null;
+  // Decoration must never hold up copy or transition completion.
+  const safeZone = (elements, key) => { try { return zone(elements(), key); } catch { return null; } };
   // The text block of a slide: its column, the label included.
   const lines = (s) => textOf(s).flatMap((col) => [...col.children]);
   // The deck's own chrome: the wordmark, the counter and its buttons.
@@ -965,7 +995,10 @@
     if (!now && !glow && mark && mark.crown && mark.folding === undefined) return; // already growing out of the glow
     const c = crownAt() || { x: at.x, y: at.y, size: 54 };
     mark = { x: c.x, y: c.y, t: now ? 2 : -0.2, size: c.size, shrink: 0, trail: null, shed: 0, crown: true, faint: 0.75 };
-    zones.push(Object.assign(disc(mark.x, mark.y, c.size * 0.42), { crown: true, a: now ? 1 : 0 }));
+    try {
+      const z = disc(mark.x, mark.y, c.size * 0.42, lastSlide());
+      if (z) zones.push(Object.assign(z, { crown: true, a: now ? 1 : 0 }));
+    } catch { /* The mark still works without its softening disc. */ }
     markCv.getAnimations().forEach((a) => a.cancel());
     markCv.style.transform = markCv.style.opacity = markCv.style.transition = '';
     following = glow ? { glow, back: false } : null;
@@ -1116,9 +1149,9 @@
     dot.classList.remove('is-moving');
     if (wipe) clearNet(); else keepGround();
     nameRest();
-    const ch = zone(chromeEls());
+    const ch = safeZone(chromeEls, chromeKey);
     chrome = ch && Object.assign(ch, { a: 1 });
-    const z = on && zone(lines(targetSlide));
+    const z = on && safeZone(() => lines(targetSlide), targetSlide);
     zones = z ? [Object.assign(z, { a: 1 })] : [];
     draw();
     if (!on) return;
@@ -1192,14 +1225,16 @@
     const reached = new Promise((r) => { landed = r; });
     const grow = () => {
       if (done || context.terminal || !context.isCurrent()) return;
-      const z = zone(lines(next));
-      if (z) zones.push(z);
       const shown = reveal(next, to, 0, context);
       tweens.push(...shown);
       Promise.all([...shown, reached]).then((results) => {
         if (done || context.terminal || !context.isCurrent() || results.some((result) => result !== 'completed')) return;
         finish(); finishNetwork(context);
       });
+      try {
+        const z = zone(lines(next), next);
+        if (z) zones.push(z);
+      } catch { /* Copy reveal continues if softening cannot be drawn. */ }
     };
     // 3. Arrival: the node blooms (or, on the last slide, becomes the mark).
     const arrive = () => {
@@ -1326,9 +1361,9 @@
     if (tuft.length) wake();
     if (anchor) place(anchor);
     nameRest();
-    const ch = zone(chromeEls());
+    const ch = safeZone(chromeEls, chromeKey);
     chrome = ch && Object.assign(ch, { a: 1 });
-    const z = active() && targetSlide && zone(lines(targetSlide));
+    const z = active() && targetSlide && safeZone(() => lines(targetSlide), targetSlide);
     zones = z ? [Object.assign(z, { a: 1 })] : [];
     if (anchor && targetSlide === lastSlide()) crown(anchor, true);
     draw();
