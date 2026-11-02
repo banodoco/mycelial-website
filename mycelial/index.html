@@ -371,6 +371,8 @@
   .dt-dot.is-moving i { opacity: 0; }
   html[data-ver="f"]:has(.fw-raise.on) .dt-dot i { opacity: 0; } /* the closing mark takes the node’s place */
   .fw-raise .num { min-height: 54px; visibility: hidden; } /* reserve the label’s place for the mark */
+  .dt-copy-hidden { visibility: hidden !important; opacity: 0 !important; }
+  .dt-copy-overlay { visibility: visible !important; opacity: 1 !important; pointer-events: none !important; transition: none !important; }
   .slide.dt-leaving:not(.dt-release) { opacity: 1; transition: none; }
   .slide.dt-leaving > :not(.num):not(.split):not(.fw-stat), .slide.dt-leaving > .split > :not(:first-child) { opacity: 0; transition: opacity .45s ease; }
   /* A step back: the slide being left holds its picture on screen while it plays its hand-off in reverse (dt-rewind,
@@ -2782,7 +2784,7 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
         rafPerSecond: frames.filter(t => t >= now - 1000).length, rafAgeMs: Math.round(now - lastFrame) },
       controller: c, slide: slide ? { classes: [...slide.classList].filter(x => x === 'on' || x.startsWith('dt-') || x.endsWith('-host')),
         settled: slide.hasAttribute('data-settled'), present: slide.hasAttribute('data-deck-present') } : null,
-      copy: { column: copyState(copyColumn(slide)),
+      copy: { liveCloneCount: window.deckCopy?.liveCloneCount ?? 0, column: copyState(copyColumn(slide)),
         stat: copyState(slide?.querySelector(':scope > .fw-stat')), h1: copyState(slide?.querySelector('h1')) },
       network: debug.network || null, ...cap };
     lastNow = c.now;
@@ -2795,7 +2797,7 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
       `turn:${t.generation} ${t.from}→${t.to} dir:${t.dir} back/rest/direct/super:${t.back}/${t.rest}/${t.direct}/${t.superseded} terminal:${t.terminal}\n` +
       `net/entry/text:${t.network}/${t.entry}/${t.textReady} scene:${t.scenePending} rewind:${t.rewinding} recover:${t.recovering} wall/deck:${Math.round(t.wallMs || 0)}/${Math.round(t.deckMs || 0)} watchdog:${t.watchdogMs} queue:${c.pending} starts:${c.turnsStarted} wd:${cap.watchdogs}\n` +
       `slide:${c.index + 1} ${snapshot.slide?.classes.join(' ')} settled:${snapshot.slide?.settled} present:${snapshot.slide?.present}\n` +
-      `column ${shortCopy(snapshot.copy.column)}\nstat ${shortCopy(snapshot.copy.stat)}\nh1 ${shortCopy(snapshot.copy.h1)}\n` +
+      `copy clones:${snapshot.copy.liveCloneCount}\ncolumn ${shortCopy(snapshot.copy.column)}\nstat ${shortCopy(snapshot.copy.stat)}\nh1 ${shortCopy(snapshot.copy.h1)}\n` +
       `network current:${n.current} turning:${n.turning} visit:${n.visit} tweens:${n.textTweens} zones/hyphae/baked:${n.zones}/${n.hyphae}/${n.baked} canvas:${n.canvas}\n` +
       `canvas created:${cap.canvas.created} bytes~:${cap.canvas.bytes} nulls:${cap.canvas.nulls}\n` +
       `errors:${errors || '-'}\nevents:${events || '-'}\nrepaint taps:${repaints.slice(-3).join(',') || '-'} canvases:${canvasesHidden ? 'hidden' : 'shown'} taps:${taps.slice(-4).join(',') || '-'}\non top of h1: ${hitsAt(document.querySelector('.slide.on h1'))}\nh1 paint: ${paintOf(document.querySelector('.slide.on h1'))}\nfonts:${document.fonts.status} ${[...document.fonts].filter((f) => f.status !== 'loaded').map((f) => f.style + f.weight + ':' + f.status).slice(0, 4).join(' ') || 'all loaded'}`;
