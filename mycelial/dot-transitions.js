@@ -731,21 +731,69 @@
   // circle reveals it from the node outward, shrinking it draws it back in.
   const SOFT = 150;
   const masks = new WeakMap();
-  const mask = (el, at, r) => {
-    masks.set(el, { at: { ...at }, r });
-    const b = el.getBoundingClientRect();
-    const x = at.x - b.left, y = at.y - b.top;
-    const v = r <= 0 ? 'linear-gradient(transparent, transparent)'
-      : `radial-gradient(circle at ${x.toFixed(1)}px ${y.toFixed(1)}px, #000 ${Math.max(0, r - SOFT).toFixed(1)}px, transparent ${r.toFixed(1)}px)`;
-    el.style.webkitMaskImage = v;
-    el.style.maskImage = v;
+  // All copy mask and visibility writes pass through this one function.
+  const paintCopy = (el, at, r, hidden = false) => {
+    let value = '';
+    if (at) {
+      masks.set(el, { at: { ...at }, r });
+      const b = el.getBoundingClientRect();
+      const x = at.x - b.left, y = at.y - b.top;
+      value = r <= 0 ? 'linear-gradient(transparent, transparent)'
+        : `radial-gradient(circle at ${x.toFixed(1)}px ${y.toFixed(1)}px, #000 ${Math.max(0, r - SOFT).toFixed(1)}px, transparent ${r.toFixed(1)}px)`;
+    } else masks.delete(el);
+    el.style.webkitMaskImage = el.style.maskImage = value;
+    el.style.visibility = hidden ? 'hidden' : '';
   };
-  const unmask = (el) => { masks.delete(el); el.style.webkitMaskImage = ''; el.style.maskImage = ''; };
+  const copyStates = new WeakMap();
+  const copy = {
+    hide(slide, context, at = anchorOf(slide), deadline = 0) {
+      const old = copyStates.get(slide);
+      if (old?.timer) window.deckCancelLater(old.timer);
+      const reuse = old?.context === context && old.phase !== 'shown';
+      if (!reuse) old?.resolve?.('cancelled');
+      let resolve;
+      const state = reuse ? old : { context, phase: 'hidden', timer: null, done: new Promise((r) => { resolve = r; }) };
+      if (!reuse) state.resolve = resolve;
+      copyStates.set(slide, state);
+      if (deadline && context) state.timer = window.deckLater(() => {
+        if (copyStates.get(slide) !== state || !context.isCurrent()) return;
+        stopText(context);
+        copy.show(slide);
+      }, deadline, context);
+      textOf(slide).forEach((el) => paintCopy(el, at, 0, !at));
+      return state;
+    },
+    pending(slide, context) {
+      const state = copyStates.get(slide);
+      return state?.context === context && state.phase !== 'shown';
+    },
+    completion(slide) { return copyStates.get(slide)?.done || Promise.resolve('completed'); },
+    show(slide) {
+      if (!slide) return false;
+      const state = copyStates.get(slide);
+      if (state?.timer) window.deckCancelLater(state.timer);
+      copyStates.set(slide, { phase: 'shown' });
+      put.x = NaN;
+      textOf(slide).forEach((el) => { el.style.transform = ''; paintCopy(el, null, 0); });
+      state?.resolve?.('completed');
+      return true;
+    },
+    retire(slide) {
+      if (!slide) return;
+      const state = copyStates.get(slide);
+      if (state?.timer) window.deckCancelLater(state.timer);
+      state?.resolve?.('cancelled');
+      copyStates.set(slide, { phase: 'retired' });
+      textOf(slide).forEach((el) => paintCopy(el, null, 0, true));
+    },
+    paint(el, at, r) { paintCopy(el, at, r); },
+  };
   const reach = (el, at) => {
     const b = el.getBoundingClientRect();
     return Math.max(...[[b.left, b.top], [b.right, b.top], [b.left, b.bottom], [b.right, b.bottom]]
       .map(([x, y]) => Math.hypot(x - at.x, y - at.y))) + SOFT;
   };
+  const revealDuration = (slide, at) => Math.max(0, ...textOf(slide).map((el) => clamp(reach(el, at) / 0.62, 1100, 1600)));
   // Points spread through a text block, for threads to run to or from.
   const spots = (el, n) => {
     const b = el.getBoundingClientRect();
@@ -827,11 +875,11 @@
   // they reach. The circle's edge keeps pace with the threads' tips.
   const reveal = (s, at, delay = 0, context = window.deckNav) => {
     if (context.terminal) return [];
-    context.present(s, '', 'dt-entering');
+    const state = copy.hide(s, context, at, delay + revealDuration(s, at) + 400);
+    if (state) state.phase = 'revealing';
     const tw = [];
     for (const el of textOf(s)) {
-      el.style.visibility = '';
-      mask(el, at, 0);
+      copy.paint(el, at, 0);
       const far = reach(el, at);
       const duration = clamp(far / 0.62, 1100, 1600);
       if (!still) {
@@ -844,27 +892,40 @@
       const lit = flashes(el, at, far, duration);
       const run = tween(duration, seep, (k) => {
         if (!s.classList.contains('on')) return;
-        mask(el, at, k * far);
+        if (copyStates.get(s) !== state) return;
+        copy.paint(el, at, k * far);
         for (const f of lit) if (!f.lit && k >= f.from) { f.lit = true; flash(f); }
       }, delay, context);
-      run.then((result) => { if (result === 'completed' && context.isCurrent() && !context.terminal) { if (s.classList.contains('on')) unmask(el); else hideText(s); } });
       tw.push(run);
     }
+    Promise.all(tw).then((results) => {
+      if (copyStates.get(s) === state && results.every((result) => result === 'completed') && context.isCurrent() && !context.terminal) copy.show(s);
+    });
     return tw;
   };
+  copy.reveal = reveal;
   // Threads reach across the text and draw it back into the node.
   const GATHER = 400;
   const gather = (s, at, context) => {
     const tw = [];
+    const old = copyStates.get(s);
+    if (old?.timer) window.deckCancelLater(old.timer);
+    old?.resolve?.('cancelled');
+    const state = { context, phase: 'gathering' };
+    copyStates.set(s, state);
     for (const el of textOf(s)) {
       const saved = masks.get(el), centre = saved?.at || at, far = saved?.r ?? reach(el, at);
       for (const p of spots(el, 6)) {
         hypha(wander(p, at), { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38, owner: context });
       }
-      const run = tween(GATHER, easeIn, (k) => { if (!s.classList.contains('on')) mask(el, centre, (1 - k) * far); }, 0, context);
-      run.then((result) => { if (result === 'completed' && context.isCurrent() && !s.classList.contains('on')) hideText(s); });
+      const run = tween(GATHER, easeIn, (k) => {
+        if (copyStates.get(s) === state && !s.classList.contains('on')) copy.paint(el, centre, (1 - k) * far);
+      }, 0, context);
       tw.push(run);
     }
+    Promise.all(tw).then((results) => {
+      if (copyStates.get(s) === state && results.every((result) => result === 'completed') && context.isCurrent() && !s.classList.contains('on')) copy.retire(s);
+    });
     return tw;
   };
   // How far into the gather (ms) the new text starts growing from its node: OVERLAP of the way, so its first words
@@ -899,10 +960,6 @@
   };
   let drift = { x: 0, y: 0 }, trail = { x: 0, y: 0 }, t = 0, last = 0;
   const put = { x: NaN, y: NaN }; // where the idle text was last put (none since it was last cleared)
-  const clearText = (s) => { put.x = NaN; return s && textOf(s).forEach((el) => { el.style.transform = ''; el.style.visibility = ''; unmask(el); }); };
-  // A retired heading stays hidden independently of its slide's fade/reverse picture.
-  // Only that slide's next clear/reveal restores it; a paced timer must never unmask it.
-  const hideText = (s) => s && textOf(s).forEach((el) => { el.style.visibility = 'hidden'; mask(el, anchorOf(s), 0); });
 
   // Idle: the node wanders a pixel or two; the text follows a beat behind.
   let idleRaf = 0;
@@ -1065,7 +1122,7 @@
     const size = placed ? gate.size : Math.min(innerWidth, innerHeight) * 0.2;
     html.classList.add('dt-intro');
     dot.classList.add('is-moving');
-    textOf(current).forEach((el) => mask(el, anchor, 0));
+    copy.hide(current, context, anchor, 5000);
     clearNet();
     mark = { x: c.x, y: c.y, t: gate ? 1.6 : 0, size, shrink: 0, trail: null, shed: 0 };
     markCv.getAnimations().forEach((an) => an.cancel());
@@ -1097,9 +1154,8 @@
       if (current === lastSlide()) crown(anchor);
       window.deckArrived(context);
       if (target === slides[0]) window.deckEntryDone?.(target, context); // slide 1 has no separate picture build
-      Promise.all(reveal(target, anchor, 60, context)).then((results) => {
-        if (results.every((result) => result === 'completed')) finishNetwork(context);
-      });
+      if (copy.pending(target, context)) copy.reveal(target, anchor, 60, context);
+      copy.completion(target).then((result) => { if (result === 'completed') finishNetwork(context); });
       sprawl(levelOf(current), anchor, 0.15);
     };
     opening.timers.push(window.deckLater(() => {
@@ -1140,8 +1196,8 @@
     if (turning?.context === context) turning.cancel();
     stopText(context);
     if (active()) adopt(); else restore();
-    [slides[context.from], slides[context.to]].filter(Boolean).forEach((sl) => context.present(sl, '', 'dt-leaving dt-release dt-entering'));
-    slides.forEach((sl) => sl === targetSlide ? clearText(sl) : hideText(sl));
+    [slides[context.from], slides[context.to]].filter(Boolean).forEach((sl) => context.present(sl, '', 'dt-leaving dt-release'));
+    slides.forEach((sl) => sl === targetSlide ? copy.show(sl) : copy.retire(sl));
     trail = { x: 0, y: 0 };
     anchor = targetSlide ? anchorOf(targetSlide) : null;
     const on = active() && !!anchor;
@@ -1192,6 +1248,7 @@
         done = true;
         landed?.('cancelled');
         tweens.forEach((tw) => tw.stop());
+        if (!prev.classList.contains('on')) copy.retire(prev);
         anims.forEach((a) => a.cancel());
         // Retire only this interrupted turn's transient drawing, not ambient growth.
         hyphae = hyphae.filter((h) => h.owner !== context);
@@ -1211,12 +1268,16 @@
 
     // 1. Threads reach across the old text and draw it back into its node.
     context.present(prev, 'dt-leaving');
+    // Start the outgoing clock before measuring and initializing the next
+    // slide, so expensive layout work counts towards the gather.
     tweens.push(...gather(prev, from, context));
-    context.present(next, 'dt-entering');
-    clearText(next);
     current = next;
     const to = anchorOf(next) || from;
-    textOf(next).forEach((el) => mask(el, to, 0));
+    const early = overlap(prev, from, to);
+    // A hold's declared deadline is on the same clock; the reveal can begin
+    // only after both that hold and the overlap milestone have passed.
+    const revealAt = Math.max(started + early, context.textDeadline);
+    const copyVisit = copy.hide(next, context, to, Math.max(0, revealAt - context.now()) + revealDuration(next, to) + 400);
     anchor = to;
     drift = { x: 0, y: 0 }; trail = { x: 0, y: 0 };
     // The closing mark grows only when the travelling node reaches its destination (arrive below).
@@ -1225,14 +1286,14 @@
     // its place has cleared, the node's travel running alongside; the turn is done once the text is whole
     // and the node has arrived.
     const reached = new Promise((r) => { landed = r; });
+    Promise.all([copyVisit.done, reached]).then((results) => {
+      if (done || context.terminal || !context.isCurrent() || results.some((result) => result !== 'completed')) return;
+      finish(); finishNetwork(context);
+    });
     const grow = () => {
-      if (done || context.terminal || !context.isCurrent()) return;
-      const shown = reveal(next, to, 0, context);
+      if (done || context.terminal || !context.isCurrent() || !copy.pending(next, context)) return;
+      const shown = copy.reveal(next, to, 0, context);
       tweens.push(...shown);
-      Promise.all([...shown, reached]).then((results) => {
-        if (done || context.terminal || !context.isCurrent() || results.some((result) => result !== 'completed')) return;
-        finish(); finishNetwork(context);
-      });
       try {
         const z = zone(lines(next), next);
         if (z) zones.push(z);
@@ -1250,7 +1311,7 @@
       timers.push(window.deckLater(() => {
         if (prev.classList.contains('on')) return;
         context.present(prev, '', 'dt-leaving dt-release');
-        hideText(prev);
+        copy.retire(prev);
       }, 700));
       landed('completed');
     };
@@ -1270,7 +1331,6 @@
       hypha(pts, { width: 1.05, alpha: 0.55, duration: clamp(total / 950, 0.45, 1.05), onDone: arrive, owner: context, ...(way ? { rest: 0, fade: 2.4 } : { branches: plan(total, 0) }) });
       if (!way && (window.deckNav?.dir || 0) > 0) trails.set(next, { prev, pts });
     };
-    const early = overlap(prev, from, to);
     let travelDue = true, textDue = true;
     // One clock owns both milestones. If the main thread wakes late, begin
     // already-due travel before starting text work in this same task.
@@ -1318,9 +1378,8 @@
     if (!active() || still || (context.rest && !context.back) || !prev || prev.classList.contains('out')) {
       settle(true, false, context);
       if (active() && anchor && !still) {
-        Promise.all(reveal(next, anchor, 200, context)).then((results) => {
-          if (results.every((result) => result === 'completed')) finishNetwork(context);
-        });
+        copy.reveal(next, anchor, 200, context);
+        copy.completion(next).then((result) => { if (result === 'completed') finishNetwork(context); });
         if (!context.rest) sprawl(levelOf(current), anchor, 0.2);
       } else finishNetwork(context);
     } else turn(prev, next, context);
@@ -1336,7 +1395,7 @@
     endOpening();
     settle(true, true);
     syncIdle();
-    if (now && current && anchor && !still) { reveal(current, anchor, 250); sprawl(levelOf(current), anchor, 0.25); }
+    if (now && current && anchor && !still) { copy.reveal(current, anchor, 250); sprawl(levelOf(current), anchor, 0.25); }
   }).observe(html, { attributes: true, attributeFilter: ['data-ver'] });
 
   // A resize keeps the network (see size), growing it at once over ground a new shape of screen leaves bare;
@@ -1397,9 +1456,8 @@
         window.deckArrived(firstContext);
         if (current === slides[0]) window.deckEntryDone?.(current, firstContext);
         if (active() && current && anchor && !still) {
-          Promise.all(reveal(current, anchor, 350, firstContext)).then((results) => {
-            if (results.every((result) => result === 'completed')) finishNetwork(firstContext);
-          });
+          copy.reveal(current, anchor, 350, firstContext);
+          copy.completion(current).then((result) => { if (result === 'completed') finishNetwork(firstContext); });
           sprawl(levelOf(current), anchor, 0.3);
         } else finishNetwork(firstContext);
       }
@@ -1435,14 +1493,14 @@
     attempt(() => stopText(context));
     const destination = slides[context.to];
     if (!destination) return false;
-    put.x = NaN;
-    let complete = true;
-    for (const el of textOf(destination)) {
-      try { el.style.transform = ''; el.style.visibility = ''; unmask(el); }
-      catch (error) { complete = false; console.error('Deck copy clear failed', error); }
-    }
+    const source = slides[context.from];
+    if (source && source !== destination) attempt(() => copy.retire(source));
+    let complete = false;
+    attempt(() => { complete = copy.show(destination); });
     if (complete) finishNetwork(context);
     return complete;
   };
+  window.deckCopy = copy;
+
   window.deckRegisterNetwork({ enter, resize, finish: finishText, copyRects });
 })();

@@ -91,13 +91,10 @@
       // A script that fails partway through may have masked the text already.
       document.querySelectorAll('.slide').forEach((slide, index) => {
         slide.classList.toggle('on', index === 0);
-        slide.classList.remove('dt-entering', 'dt-leaving', 'dt-release');
+        slide.classList.remove('dt-leaving', 'dt-release');
         slide.inert = index !== 0;
       });
-      document.querySelectorAll('.slide:first-child .split > :first-child').forEach(el => {
-        el.style.webkitMaskImage = el.style.maskImage = '';
-        el.style.transform = '';
-      });
+      window.deckCopy?.show(document.querySelector('.slide:first-child'));
     }
   };
   try {
@@ -376,7 +373,6 @@
   .fw-raise .num { min-height: 54px; visibility: hidden; } /* reserve the label’s place for the mark */
   .slide.dt-leaving:not(.dt-release) { opacity: 1; transition: none; }
   .slide.dt-leaving > :not(.num):not(.split):not(.fw-stat), .slide.dt-leaving > .split > :not(:first-child) { opacity: 0; transition: opacity .45s ease; }
-  .slide.dt-entering > .split > :first-child { opacity: 0; }
   /* A step back: the slide being left holds its picture on screen while it plays its hand-off in reverse (dt-rewind,
      granted by the navigation context, then swapped for dt-rewound to let the slide fade); its text, drawn in as usual, stays
      out of sight until the slide next comes on. The earlier slide's picture can wait, hidden, for that motion to come
@@ -1117,8 +1113,15 @@
     border: 1px solid var(--ask-line); border-radius: 999px; background: var(--ask-fill); box-shadow: var(--ask-glow);
     opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s linear .3s; }
   .slide.on[data-settled] .fw-asks, html.deck-motion-off .slide.on .fw-asks { opacity: 1; visibility: visible; transition: opacity 1.1s ease .45s, visibility 0s linear .45s; }
+  /* Settled copy is always fully visible, even if a reveal was interrupted. */
+  .slide.on[data-settled] > .split > :first-child,
+  .slide.fw-raise.on[data-settled] > .split,
+  .slide.on[data-settled] > .fw-stat { mask-image: none !important; -webkit-mask-image: none !important; visibility: visible !important; }
+  .slide.on[data-settled]:not(.fw-raise) > .split > :first-child,
+  .slide.fw-raise.on[data-settled]:not(:has(.fw-ask.is-open)) > .split > :first-child,
+  .slide.fw-raise.on[data-settled] > .split,
+  .slide.on[data-settled] > .fw-stat { opacity: 1 !important; }
   .slide.fw-raise.on .fw-asks { opacity: 1; visibility: visible; transition: none; } /* revealed with the complete text block */
-  .slide.fw-raise.dt-entering .fw-asks { opacity: 0; visibility: hidden; } /* wait for that shared reveal to begin */
   .fw-ask { position: relative; }
   .fw-ask + .fw-ask { border-left: 1px solid #f0c87726; }
   .fw-ask-q { all: unset; position: relative; display: flex; align-items: center; gap: .9em; padding: 1.15em 1.35em 1.1em 1.45em; cursor: pointer;
@@ -2101,7 +2104,7 @@
     toldTimer = setTimeout(() => motionBtn.classList.remove('is-told'), 1800);
   });
   let transactionDepth = 0;
-  const handoffClasses = new Set(['dt-rewind', 'dt-rewound', 'dt-return', 'dt-await', 'dt-leaving', 'dt-release', 'dt-over', 'dt-entering']);
+  const handoffClasses = new Set(['dt-rewind', 'dt-rewound', 'dt-return', 'dt-await', 'dt-leaving', 'dt-release', 'dt-over']);
   const presentations = new WeakMap();
   const retirePresentation = (context) => {
     const state = presentations.get(context);
@@ -2366,7 +2369,7 @@
     // Scene hooks can synchronously hold text until their picture clears it.
     // The deadline shares the animation clock, including its pauses and pace.
     const textHolds = new Set();
-    let textSealed = false, textDone = false, resolveText;
+    let textSealed = false, textDone = false, resolveText, textDeadline = 0;
     const textReady = new Promise((resolve) => { resolveText = resolve; });
     let terminal = false;
     const completeText = (result) => {
@@ -2384,6 +2387,7 @@
       get terminal() { return terminal; },
       close() { terminal = true; },
       arrived, textReady, superseded,
+      get textDeadline() { return textDeadline; },
       copyRects: () => networkScene.copyRects(context),
       holdText(onDeadline, deadlineMs) {
         if (textSealed || textDone || terminal || !context.isCurrent()) throw new Error('Text holds must be declared synchronously during scene entry');
@@ -2394,6 +2398,7 @@
           if (textSealed && !textHolds.size) completeText('completed');
         };
         textHolds.add(release);
+        textDeadline = Math.max(textDeadline, context.now() + deadlineMs);
         const timer = window.deckLater(() => {
           if (!live || !context.isCurrent()) return;
           try { onDeadline?.(); } finally { release(); }
