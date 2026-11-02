@@ -708,7 +708,7 @@
   };
 
   const start = (arriving, ctx = window.deckNav) => {
-    if (running || !slide.classList.contains('on') || document.hidden || document.getElementById('overview')?.classList.contains('on')) return;
+    if (running || !slide.classList.contains('on') || document.getElementById('overview')?.classList.contains('on')) return;
     entryCtx = ctx;
     resize();
     running = true; last = window.deckNow?.() ?? performance.now();
@@ -749,10 +749,9 @@
   }
   const syncMotion = () => {
     if (motionOff() && slide.classList.contains('on')) { stop(); start(false); }
-    else if (document.hidden || document.getElementById('overview')?.classList.contains('on')) stop();
+    else if (document.getElementById('overview')?.classList.contains('on')) stop();
     else if (slide.classList.contains('on')) { running = false; start(false); }
   };
-  document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
 

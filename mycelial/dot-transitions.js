@@ -563,7 +563,7 @@
     || hyphae.some((h) => h.age < 0 || !h.done || Math.abs(h.glow - target(h)) > 0.004 || !(h.keep || h.rest || h.after >= h.fade));
   const tick = (now) => {
     netRaf = 0;
-    if (document.hidden || document.getElementById('overview')?.classList.contains('on')) { netOn = false; netLast = 0; return; }
+    if (document.getElementById('overview')?.classList.contains('on')) { netOn = false; netLast = 0; return; }
     now = window.deckNow();
     const dt = Math.max(0, (now - (netLast || now)) / 1000);
     netLast = now;
@@ -573,16 +573,15 @@
     else { netOn = false; netLast = 0; }
   };
   function wake() {
-    if (document.hidden || document.getElementById('overview')?.classList.contains('on')) return;
+    if (document.getElementById('overview')?.classList.contains('on')) return;
     if (!netOn) { netOn = true; netLast = window.deckNow(); netRaf = requestAnimationFrame(tick); }
   }
   const syncNetMotion = () => {
-    if (document.hidden || document.getElementById('overview')?.classList.contains('on')) {
+    if (document.getElementById('overview')?.classList.contains('on')) {
       if (netRaf) cancelAnimationFrame(netRaf);
       netRaf = 0; netOn = false; netLast = 0;
     } else if (moving()) wake();
   };
-  document.addEventListener('visibilitychange', syncNetMotion);
   window.addEventListener('deck-overview', syncNetMotion);
   const clearNet = () => {
     hyphae = []; nodes = []; blooms = []; mark = null;
@@ -732,7 +731,7 @@
     let raf = 0, stopped = false, resolve;
     const p = new Promise((r) => { resolve = r; });
     const started = context.now();
-    const blocked = () => document.hidden || document.getElementById('overview')?.classList.contains('on');
+    const blocked = () => document.getElementById('overview')?.classList.contains('on');
     const tick = () => {
       raf = 0;
       if (stopped || blocked()) return;
@@ -748,14 +747,12 @@
       if (blocked()) { cancelAnimationFrame(raf); raf = 0; }
       else if (!raf) raf = requestAnimationFrame(tick);
     };
-    document.addEventListener('visibilitychange', syncMotion);
     window.addEventListener('deck-overview', syncMotion);
     p.then(() => {
       textTweens.delete(p);
       const owned = textTweensByContext.get(context);
       owned?.delete(p);
       if (owned && !owned.size) textTweensByContext.delete(context);
-      document.removeEventListener('visibilitychange', syncMotion);
       window.removeEventListener('deck-overview', syncMotion);
     });
     syncMotion();
@@ -873,7 +870,7 @@
 
   // Idle: the node wanders a pixel or two; the text follows a beat behind.
   let idleRaf = 0;
-  const canDrift = () => active() && !document.hidden && !document.getElementById('overview')?.classList.contains('on') && !still;
+  const canDrift = () => active() && !document.getElementById('overview')?.classList.contains('on') && !still;
   const syncIdle = () => {
     if (!canDrift()) { if (idleRaf) cancelAnimationFrame(idleRaf); idleRaf = 0; last = 0; return; }
     if (!idleRaf) { last = 0; idleRaf = requestAnimationFrame(idle); }
@@ -899,7 +896,6 @@
       textOf(current).forEach((el) => { el.style.transform = `translate(${trail.x.toFixed(2)}px, ${trail.y.toFixed(2)}px)`; });
     }
   };
-  document.addEventListener('visibilitychange', syncIdle);
   window.addEventListener('deck-overview', syncIdle);
   window.addEventListener('deck-motion', () => {
     still = window.deckStill();
