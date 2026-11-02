@@ -874,6 +874,8 @@
     if (!current(ctx) || ctx.to !== 5) return Promise.resolve('cancelled');
     const promise = makeCompletion(ctx, (fn) => { entryCompletion = fn; }, () => stop(ctx, true));
     activeCtx = ctx;
+    if (stackFlight?.ctx !== ctx) stackFlight?.release();
+    if (!stackFlight) resetStackFlight();
     entryFinished = false;
     if (document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingCtx = ctx; return promise; }
     launch(ctx);
@@ -889,6 +891,7 @@
     softenNet(ctx, true);
     flags.forEach((f) => { f.tabIndex = 0; });
     if (motionOff() || ctx.rest || ctx.direct) {
+      if (!stackFlight) resetStackFlight();
       settleAll(); stepHead();
       if (view.mobile) show(0);
       entryFinished = true; entryCompletion?.(ctx, 'completed');
@@ -1033,24 +1036,30 @@
   const sceneEnter = (ctx) => start(ctx);
   // Stack owns its geometry and temporary styles in both directions.
   let stackFlight = null, collapseSource = null;
-  const releaseStackFlight = () => { const release = stackFlight?.release; stackFlight = null; release?.(); };
+  const resetStackFlight = () => {
+    root.style.transform = ''; root.style.transformOrigin = ''; root.style.opacity = '';
+  };
   const holdStackFlight = (ctx, rect) => {
-    releaseStackFlight();
+    if (!ctx.isCurrent() || ctx.terminal) return null;
+    stackFlight?.release();
+    resetStackFlight();
     const box = root.getBoundingClientRect();
-    if (!box.width || !box.height) return false;
-    const old = { transform: root.style.transform, origin: root.style.transformOrigin, opacity: root.style.opacity };
+    if (!box.width || !box.height) return null;
+    const flight = { ctx, draw(q) {
+      if (stackFlight !== flight || !ctx.isCurrent() || ctx.terminal) return;
+      q = clamp(q);
+      root.style.transform = `scale(${Math.max(0.001, 1 - q ** 3)})`;
+      root.style.opacity = String(q < 0.98 ? 1 : (1 - q) / 0.02);
+    } };
+    stackFlight = flight;
     root.style.transformOrigin = `${(rect.left + rect.width / 2 - box.left) * root.offsetWidth / box.width}px ${(rect.top + rect.height / 2 - box.top) * root.offsetHeight / box.height}px`;
-    const release = ctx.defer(() => { root.style.transform = old.transform; root.style.transformOrigin = old.origin; root.style.opacity = old.opacity; });
-    stackFlight = { ctx, release };
-    return true;
+    flight.release = ctx.defer(() => {
+      if (stackFlight !== flight) return;
+      stackFlight = null; resetStackFlight();
+    });
+    return flight;
   };
-  const drawStackFlight = (q) => {
-    if (!stackFlight) return;
-    q = clamp(q);
-    root.style.transform = `scale(${Math.max(0.001, 1 - q ** 3)})`;
-    root.style.opacity = String(q < 0.98 ? 1 : (1 - q) / 0.02);
-  };
-  window.deckStackFlight = { hold: holdStackFlight, draw: drawStackFlight, release: releaseStackFlight,
+  window.deckStackFlight = { hold: holdStackFlight,
     source: (ctx) => collapseSource?.ctx === ctx ? collapseSource.rect : null,
     collapsed: (ctx) => collapseSource?.ctx === ctx ? collapseSource.completed : Promise.resolve('completed'),
     ready: (ctx) => { if (collapseSource?.ctx === ctx) collapseSource.copy.remove(); },
@@ -1083,19 +1092,20 @@
       document.body.appendChild(copy);
       const visibility = minkCv.style.visibility;
       minkCv.style.visibility = 'hidden';
-      if (!holdStackFlight(ctx, rect)) { copy.remove(); minkCv.style.visibility = visibility; return undefined; }
+      const flight = holdStackFlight(ctx, rect);
+      if (!flight) { copy.remove(); minkCv.style.visibility = visibility; return undefined; }
       let finish, notifyCollapse, frame = 0, started = null, smallFrame = false;
       const completed = new Promise((resolve) => { finish = resolve; });
       const collapsed = new Promise((resolve) => { notifyCollapse = resolve; });
       const settle = (result, arrival = result) => { cancelAnimationFrame(frame); notifyCollapse(arrival); finish(result); };
-      collapseSource = { ctx, rect, copy, completed: collapsed, settle };
+      collapseSource = { ctx, rect, copy, flight, completed: collapsed, settle };
       const stepCollapse = () => {
         if (!current(ctx)) return;
         if (started === null) started = now();
         let q = clamp((now() - started) / 500);
         // A delayed frame must still show the stack small before it disappears.
         if (q === 1 && !smallFrame) q = Math.cbrt(0.8);
-        drawStackFlight(q);
+        flight.draw(q);
         if (q < 1) {
           if (1 - q ** 3 <= 0.2 + 1e-9) smallFrame = true;
           frame = requestAnimationFrame(stepCollapse);
@@ -1105,7 +1115,7 @@
       ctx.defer(() => {
         copy.remove(); settle('cancelled');
         minkCv.style.visibility = visibility;
-        releaseStackFlight();
+        flight.release();
         if (collapseSource?.ctx === ctx) collapseSource = null;
       });
       return completed;
@@ -1126,7 +1136,8 @@
     return promise;
   };
   const sceneResize = (ctx) => {
-    if (collapseSource?.ctx === ctx) { collapseSource.settle('completed', 'cancelled'); collapseSource.copy.remove(); releaseStackFlight(); }
+    if (collapseSource?.ctx === ctx) { collapseSource.settle('completed', 'cancelled'); collapseSource.copy.remove(); collapseSource.flight.release(); }
+    if (!stackFlight) resetStackFlight();
     if (build?.back && build.ctx === ctx) { endFold(); return; }
     if (slide.classList.contains('on') && activeCtx === ctx) {
       running = false; paused = false;
