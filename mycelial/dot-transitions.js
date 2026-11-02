@@ -855,6 +855,12 @@
     if (visit?.context === context && context.isCurrent()) visit.resolve('completed');
   };
   let anchor = null, turning = null;
+  if (window.__deckDebug) Object.defineProperty(window.__deckDebug, 'network', { get: () => ({
+    current: current ? slides.indexOf(current) : null,
+    turning: turning?.context?.generation ?? null, visit: visit?.context?.generation ?? null,
+    textTweens: textTweens.size, zones: zones.length, hyphae: hyphae.length, baked: baked.length,
+    canvas: [net.width, net.height],
+  }) });
   // The thread each slide's node was reached by, from the slide before: a step back runs back along it.
   const trails = new Map();
   const trailBack = (prev, next, from, to) => {
