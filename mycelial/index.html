@@ -626,8 +626,10 @@
     html[data-ver="f"] .as-host { padding-top: 52px; }
     html[data-ver="f"] .as-host h1 { font-size: clamp(1.4rem, 5.8vw, 1.8rem); max-width: 22ch; }
     .as { margin: 12px 0 0; } /* the slide's own 90 px foot already clears the footer */
-    .as-stage { width: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, .75fr) minmax(0, 1.5fr); }
+    .as-stage { width: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, .82fr) minmax(0, 1.5fr); } /* chat and editor share the seat's old space */
     .as-chat { grid-column: 1; grid-row: 1; } .as-edit { grid-column: 1; grid-row: 2; padding: 6px; gap: 6px; }
+    .as-msgs { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14px); mask-image: linear-gradient(to bottom, transparent, #000 14px); } /* an older message slides out under a soft edge */
+    .as-msgs > :not(:nth-last-child(-n+2)) { display: none; } /* the latest two messages, never a clipped third */
     .as-tl { --as-hcol: 78px; } .as-th { gap: 5px; padding-right: 6px; padding-left: 6px; } .as-th span { display: none; } .as-th em { display: block; overflow: hidden; }
     .as-msg, .as-step { font-size: 10px; } .as-composer { display: none; }
     /* Three compact rows keep the 14-second scene, frames and output visible together. */
@@ -639,7 +641,7 @@
   /* A phone with its browser's bars showing: the headline in fewer, longer lines, so the editor keeps its preview. */
   @media (max-width: 760px) and (orientation: portrait) and (max-height: 740px) {
     html[data-ver="f"] .as-host h1 { max-width: none; font-size: 1.3rem; }
-    .as-stage { grid-template-rows: minmax(0, .5fr) minmax(0, 1.6fr); }
+    .as-stage { grid-template-rows: minmax(0, .7fr) minmax(0, 1.6fr); }
     .as-edit { padding: 4px; gap: 3px; }
     .as-player { --as-pad: 3px; }
     .as-timeline { padding-bottom: 2px; }
@@ -656,7 +658,6 @@
     .as-chat-head { gap: 6px; padding: 5px 8px; font-size: 10.5px; }
     .as-avatar { width: 26px; height: 26px; }
     .as-msgs { gap: 3px; padding: 4px 8px; }
-    .as-msgs > :not(:last-child) { display: none; }
     .as-msg, .as-step { padding: 4px 7px; font-size: 9px; line-height: 1.3; }
     .as-step { column-gap: 6px; }
     .as-step code { font-size: 8.5px; }
