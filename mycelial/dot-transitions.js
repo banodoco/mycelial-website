@@ -995,7 +995,6 @@
     if (still && active()) {
       endOpening();
       settle(true);
-      if (current === slides[0]) window.deckEntryDone?.(current, window.deckNav);
     }
     syncIdle();
   });
@@ -1153,7 +1152,6 @@
       dot.classList.remove('is-moving'); pulse(1.8); bloom(anchor);
       if (current === lastSlide()) crown(anchor);
       window.deckArrived(context);
-      if (target === slides[0]) window.deckEntryDone?.(target, context); // slide 1 has no separate picture build
       if (copy.pending(target, context)) copy.reveal(target, anchor, 60, context);
       copy.completion(target).then((result) => { if (result === 'completed') finishNetwork(context); });
       sprawl(levelOf(current), anchor, 0.15);
@@ -1216,7 +1214,6 @@
     place(anchor);
     if (announce) {
       window.deckArrived(context);
-      if (targetSlide === slides[0]) window.deckEntryDone?.(targetSlide, context);
       if (still) finishNetwork(context);
     }
     if (still || (context.direct && !context.intro)) { // direct loads also need the network at this slide's full reach
@@ -1306,7 +1303,6 @@
       dot.classList.remove('is-moving'); anims.push(pulse(1.8)); bloom(to);
       if (next === lastSlide()) crown(to);
       window.deckArrived(context);
-      if (next === slides[0]) window.deckEntryDone?.(next, context);
       context.present(prev, 'dt-release'); // the old slide may fade now; its parts stay hidden
       timers.push(window.deckLater(() => {
         if (prev.classList.contains('on')) return;
@@ -1428,7 +1424,6 @@
     zones = z ? [Object.assign(z, { a: 1 })] : [];
     if (anchor && targetSlide === lastSlide()) crown(anchor, true);
     draw();
-    if (targetSlide === slides[0]) window.deckEntryDone?.(targetSlide, context);
     if (targetSlide) finishNetwork(context);
   };
   // First navigation starts only after every scene has registered.
@@ -1454,7 +1449,6 @@
         window.__deckIntro?.showChrome();
         html.classList.remove('dt-intro'); // hidden before first paint, but there is no opening to play
         window.deckArrived(firstContext);
-        if (current === slides[0]) window.deckEntryDone?.(current, firstContext);
         if (active() && current && anchor && !still) {
           copy.reveal(current, anchor, 350, firstContext);
           copy.completion(current).then((result) => { if (result === 'completed') finishNetwork(firstContext); });
