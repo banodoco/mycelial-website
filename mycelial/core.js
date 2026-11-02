@@ -382,7 +382,7 @@
 
   const advance = (dt, ctx = entryCtx) => {
     ta += ta < T.end ? dt / pace : dt;
-    if (ta >= T.end) window.deckEntryDone?.(slide, ctx);
+    if (ta >= T.end) entryFinish?.(ctx, 'completed');
     flare *= Math.exp(-dt / 0.9);
     if (labelled < 1 && ta >= 0.8) { labelled = 1; root.classList.add('is-labelled'); }
     if (labelled < 2 && ta >= T.orbit + 0.3) { labelled = 2; root.classList.add('is-community'); }
@@ -728,7 +728,7 @@
   };
   const start = (ctx = entryCtx) => {
     if (document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return;
-    if (running || still || waiting || document.hidden || !slide.classList.contains('on') || !rings.length) return;
+    if (running || still || document.hidden || !slide.classList.contains('on') || !rings.length) return;
     running = true; last = window.deckNow?.() ?? performance.now();
     frameLoop(++loop, ctx);
   };
@@ -740,7 +740,6 @@
   };
   // From slide 3: the empty ring lifts off the chart and flies up to become the core's bright node.
   const FLIGHT = 1.1;
-  let launchAt = 0;
   const launch = () => {
     if (!ring) return false;
     const r = ring.getBoundingClientRect(), b = root.getBoundingClientRect();
@@ -753,7 +752,6 @@
     seedEl.setAttribute('aria-hidden', 'true');
     seedEl.innerHTML = '<i></i><em>?</em><b></b>';
     document.body.appendChild(seedEl);
-    launchAt = window.deckNow?.() ?? performance.now();
     ring.style.visibility = 'hidden';
     const steps = 24;
     seedEl.animate(Array.from({ length: steps + 1 }, (_, i) => {
@@ -801,68 +799,41 @@
     root.classList.add('is-labelled', 'is-community');
   };
 
-  let waiting = null, armed = false, settledCtx = null, arriveListener = null;
-  const prepare = (fromGap, ctx = entryCtx) => {
+  let entryFinish = null, reverseFinish = null;
+  const completion = (ctx, assign, cleanup) => {
+    let resolve, done = false;
+    const promise = new Promise((r) => { resolve = r; });
+    const finish = (owner, result) => {
+      if (owner !== ctx || done) return;
+      done = true; assign(null); resolve(result);
+    };
+    assign(finish);
+    ctx.defer(() => { finish(ctx, 'cancelled'); cleanup(); });
+    return promise;
+  };
+  const prepare = (fromGap, ctx) => {
     entryCtx = ctx;
     reset();
-    if (!layout()) return false;
+    if (!layout()) { entryFinish?.(ctx, 'completed'); return; }
     visits++;
-    if (motionOff() || ctx?.rest || ctx?.direct) { ta = 0; settle(); draw(); window.deckEntryDone?.(slide, ctx); if (!motionOff()) { html.classList.add('ac-quiet'); start(ctx); } return false; }
+    if (motionOff() || ctx.rest || ctx.direct) {
+      ta = 0; settle(); draw(); entryFinish?.(ctx, 'completed');
+      if (!motionOff()) { html.classList.add('ac-quiet'); start(ctx); }
+      return;
+    }
     pace = visits > 1 ? 0.7 : 1;
-    ta = -9; // dark until the network arrives
-    if (fromGap && launch()) pace = 1;
-    draw();
-    armed = true;
-    if (!fromGap && (window.deckNow?.() ?? performance.now()) - lastArrive < 400) { arrive(ctx); return true; } // the network got here first (a jump)
-    // If the network never says it has arrived (e.g. it was interrupted), grow anyway.
-    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) arrive(ctx); }, fromGap ? 1700 : 1500));
-    return true;
-  };
-  const arrive = (ctx = entryCtx) => {
-    if (!armed || !slide.classList.contains('on')) return;
-    armed = false;
-    const seedAge = seedEl?.getAnimations()[0]?.currentTime;
-    ta = seedEl ? -Math.max(0.15, FLIGHT - (typeof seedAge === 'number' ? seedAge : ((window.deckNow?.() ?? performance.now()) - launchAt)) / 1000) : -0.3; // the seed lands on the eye at 0
+    const flying = fromGap && launch();
+    if (flying) pace = 1;
+    ta = flying ? -FLIGHT : -0.3;
     nextGift = AMBIENT + 0.2; nextUse = AMBIENT + PLAN.length * GAP + 4; plan = 0;
-    // The network that brought us here steps back so the picture reads.
-    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && slide.classList.contains('on')) html.classList.add('ac-quiet'); }, 150));
-    start();
-  };
-  let lastArrive = -1e9;
-  const bindArrival = (ctx) => {
-    if (arriveListener) slide.removeEventListener('dt-arrive', arriveListener);
-    arriveListener = () => { if (!ctx?.isCurrent?.()) return; lastArrive = window.deckNow?.() ?? performance.now(); arrive(ctx); };
-    slide.addEventListener('dt-arrive', arriveListener);
-  };
-  const enter = (fromGap, ctx = window.deckNav) => {
-    entryCtx = ctx;
-    settledCtx = null;
-    bindArrival(ctx);
-    if (ctx?.direct || ctx?.rest) { prepare(false, ctx); return; }
-    // On a first load the Mycelial mark plays first; grow once it has landed.
-    if (html.classList.contains('dt-intro')) {
-      if (waiting) return;
-      waiting = new MutationObserver(() => {
-        if (html.classList.contains('dt-intro')) return;
-        waiting.disconnect(); waiting = null;
-        if (slide.classList.contains('on') && ctx?.isCurrent?.() && prepare(false, ctx)) arrive(ctx);
-      });
-      waiting.observe(html, { attributes: true, attributeFilter: ['class'] });
-      return;
-    }
-    // Labels and the text are measured, so lay out once the fonts are in (the ring cannot wait).
-    if (document.fonts && document.fonts.status !== 'loaded' && !fromGap) {
-      document.fonts.ready.then(() => { if (ctx?.isCurrent?.() && ctx !== settledCtx && slide.classList.contains('on') && !running && prepare(false, ctx)) arrive(ctx); });
-      return;
-    }
-    prepare(fromGap, ctx);
+    draw();
+    timers.push(window.deckLater(() => { if (ctx.isCurrent() && slide.classList.contains('on')) html.classList.add('ac-quiet'); }, 150, ctx));
+    start(ctx);
   };
   const leave = () => {
     stop();
-    armed = false;
     html.classList.remove('ac-quiet');
     dropSeed();
-    if (waiting) { waiting.disconnect(); waiting = null; }
     hot = pinned = null;
     card.classList.remove('is-on');
     slide.style.cursor = '';
@@ -875,15 +846,11 @@
   // panels and the constellation, the outline, the rings) down to the bright node in the lens; then the node lifts
   // off as the empty ring and flies back to its corner of the chart, which fades back in to meet it.
   let unbuilding = null;
-  const unbuild = () => {
-    const ctx = window.deckNav;
+  const unbuild = (ctx) => {
     reverseCtx = ctx;
     entryCtx = ctx;
-    const signal = ctx?.signal;
     stop();
     timers.forEach(window.deckCancelLater); timers = [];
-    armed = false;
-    if (waiting) { waiting.disconnect(); waiting = null; }
     gifts = []; pend = []; pulses = []; flare = 0; plan = PLAN.length;
     hot = pinned = null; card.classList.remove('is-on'); slide.style.cursor = '';
     // Whatever the community added since goes back the way the first places came: in order, from the middle out.
@@ -892,9 +859,7 @@
     ta = Math.min(ta, T.orbit + 0.85); // the last of the orbit is in by here
     ctx.present(slide, 'dt-rewind');
     ctx.present(gapSlide, 'dt-return dt-await');
-    window.deckRewinding?.(gapSlide, ctx);
     unbuilding = { last: window.deckNow?.() ?? performance.now(), raf: 0, seeded: false, shown: false, at: 0 };
-    signal?.addEventListener('abort', endUnbuild, { once: true });
     unbuilding.raf = requestAnimationFrame(unstep);
   };
   const unstep = (now) => {
@@ -932,30 +897,26 @@
     html.classList.remove('ac-quiet');
     dropSeed();
     if (!slide.classList.contains('on')) reset();
-    window.deckRewound?.(gapSlide, reverseCtx);
+    reverseFinish?.(reverseCtx, 'completed');
   };
 
   const idleSoon = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 100));
-  let wasOn = false;
-  const watch = new MutationObserver((records) => {
-    const on = slide.classList.contains('on');
-    if (on === wasOn) return;
-    wasOn = on;
-    if (unbuilding) endUnbuild();
-    if (!on) {
-      const toGap = gapSlide && gapSlide.classList.contains('on') && ring && window.deckNav?.back && !motionOff() && running && rings.length && ta >= T.end;
-      if (toGap) { unbuild(); return; }
-      leave();
-      return;
+  const sceneEnter = (ctx) => {
+    const promise = completion(ctx, (fn) => { entryFinish = fn; }, () => { stop(); dropSeed(); });
+    prepare(ctx.from === 2 && !ctx.rest && !ctx.direct && !motionOff(), ctx);
+    return promise;
+  };
+  const sceneExit = (ctx) => {
+    if (ctx.to === 2 && ctx.back && ring && !motionOff() && rings.length && ta >= T.end) {
+      const promise = completion(ctx, (fn) => { reverseFinish = fn; }, () => endUnbuild());
+      unbuild(ctx);
+      return promise;
     }
-    const fromGap = !motionOff() && gapSlide && !gapSlide.classList.contains('on') && records.some((r) => r.target === gapSlide);
-    entryCtx = window.deckNav;
-    enter(!!fromGap, entryCtx);
-  });
-  watch.observe(slide, { attributes: true, attributeFilter: ['class'] });
-  if (gapSlide) watch.observe(gapSlide, { attributes: true, attributeFilter: ['class'] });
+    leave();
+    return undefined;
+  };
   const syncMotion = () => {
-    if (motionOff() && slide.classList.contains('on')) { stop(); settle(); draw(); window.deckEntryDone?.(slide, entryCtx); }
+    if (motionOff() && slide.classList.contains('on')) { stop(); settle(); draw(); entryFinish?.(entryCtx, 'completed'); }
     else if (document.hidden || document.getElementById('overview')?.classList.contains('on')) stop();
     else if (slide.classList.contains('on')) start();
   };
@@ -963,21 +924,20 @@
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
 
-  window.deckOnSettle?.((ctx) => {
+  const sceneResize = (ctx) => {
     if (unbuilding) endUnbuild();
     if (!slide.classList.contains('on')) return;
-    if (!rings.length && !layout()) return;
+    if (!rings.length && !layout()) { entryFinish?.(ctx, 'completed'); return; }
     entryCtx = ctx;
-    settledCtx = ctx;
     stop();
     timers.forEach(window.deckCancelLater); timers = [];
-    const interrupted = armed || ta < T.end || !!seedEl;
+    const interrupted = ta < T.end || !!seedEl;
     const state = sides.map((sd) => sd.slots.map((x) => ({ state: x.state, shown: x.shown, filledAt: x.filledAt, flash: x.flash })));
     // A contribution in flight lands at its own socket; the rest of the
     // community keeps its existing clock and filled slots.
     for (const gift of gifts) Object.assign(state[gift.x.side][gift.x.i], { state: 'full', filledAt: ta - 2 });
     dropSeed();
-    if (!layout()) return;
+    if (!layout()) { entryFinish?.(ctx, 'completed'); return; }
     sides.forEach((sd, i) => sd.slots.forEach((x, j) => Object.assign(x, state[i][j])));
     gifts = []; pend = []; pulses = [];
     sides.forEach((sd) => {
@@ -987,17 +947,15 @@
     });
     if (interrupted) {
       settle(state.map((sd) => sd.map((x) => x.state)));
-      armed = false;
       timers.forEach(window.deckCancelLater); timers = [];
     }
     hot = pinned = null;
     card.classList.remove('is-on');
     draw();
-    if (waiting) { waiting.disconnect(); waiting = null; }
-    armed = false;
-    window.deckEntryDone?.(slide, ctx);
+    entryFinish?.(ctx, 'completed');
     start(ctx);
-  });
+  };
+  window.deckRegisterScene?.([3], { enter: sceneEnter, exit: sceneExit, resize: sceneResize });
 
   // ---- Hovering ---------------------------------------------------------------------
   const local = (e) => { const b = root.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; };
@@ -1110,5 +1068,4 @@
   const keep = new MutationObserver(keepLayers);
   [slide, demoSlide].filter(Boolean).forEach((s) => keep.observe(s, { attributes: true, attributeFilter: ['class'] }));
   keepLayers();
-  if (slide.classList.contains('on')) { wasOn = true; enter(false, window.deckNav); }
 })();

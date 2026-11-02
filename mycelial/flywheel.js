@@ -550,7 +550,7 @@
     for (const t of tg) {
       const [tx, ty] = target(t);
       let best = null, bd = Infinity;
-      for (const p of pool) { if (p.tgt || (!tall && p.side !== t.side)) continue; const d = Math.hypot(p.x - tx, p.y - ty); if (d < bd) { bd = d; best = p; } }
+      for (const p of pool) { if (p.tgt || (!tall && p.side !== t.side)) continue; const d = (p.x - tx) ** 2 + (p.y - ty) ** 2; if (d < bd) { bd = d; best = p; } }
       if (best) best.tgt = t;
     }
     return pool.map((p) => ({ x: p.x, y: p.y, r: p.r, bright: p.bright, tgt: p.tgt, d: 0.1 + Math.random() * 0.35, swing: (Math.random() - 0.5) * 60 }));
@@ -606,6 +606,15 @@
     g.stroke();
   };
 
+  const handDot = (d, time, dest = d.tgt && target(d.tgt)) => {
+    const q = easeIO(clamp((time - d.d) / 1.1));
+    if (!d.tgt) return { x: d.x, y: d.y - 14 * k * q, a: (d.bright ? 0.9 : 0.6) * (1 - smooth(clamp((time - 0.1) / 0.7))) };
+    const [tx, ty] = dest, sw = Math.sin(Math.PI * q) * d.swing * k;
+    const len = Math.hypot(tx - d.x, ty - d.y) || 1;
+    return { x: lerp(d.x, tx, q) - sw * (ty - d.y) / len,
+      y: lerp(d.y, ty, q) + sw * (tx - d.x) / len,
+      a: (d.bright ? 1 : 0.75) * (1 - smooth(clamp((time - d.d - 1.1) / 0.4))) };
+  };
   const draw = () => {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
@@ -710,14 +719,7 @@
     if (hand && !hand.done) {
       let live = 0;
       for (const d of hand.dots) {
-        const q = easeIO(clamp((ta - d.d) / 1.1));
-        let x, y, a;
-        if (d.tgt) {
-          const [tx, ty] = target(d.tgt), sw = Math.sin(Math.PI * q) * d.swing * k;
-          x = lerp(d.x, tx, q) - sw * (ty - d.y) / (Math.hypot(tx - d.x, ty - d.y) || 1);
-          y = lerp(d.y, ty, q) + sw * (tx - d.x) / (Math.hypot(tx - d.x, ty - d.y) || 1);
-          a = (d.bright ? 1 : 0.75) * (1 - smooth(clamp((ta - d.d - 1.1) / 0.4)));
-        } else { x = d.x; y = d.y - 14 * k * q; a = (d.bright ? 0.9 : 0.6) * (1 - smooth(clamp((ta - 0.1) / 0.7))); }
+        const { x, y, a } = handDot(d, ta);
         if (a <= 0.003) continue;
         live++;
         if (d.bright) halo(x, y, 6 * Math.max(0.6, k), 0.3 * a);
@@ -774,7 +776,7 @@
   // A face that arrives late changes the type's size: measure again then.
   document.fonts?.addEventListener?.('loadingdone', () => {
     for (const key in labels) lsz.set(labels[key], [labels[key].offsetWidth, labels[key].offsetHeight]);
-    dirty.fill(true); fullW = 0; lastPlaceKey = null;
+    dirty.fill(true); fullW = 0; lastPlaceKey = null; prepared = false;
     if (!running && begun && cur) frame();
   });
   const inCard = (el, card) => { // an element's middle in its card's own coordinates (borders included, transforms not)
@@ -962,7 +964,7 @@
     mo.dur = clamp(len / ((150 + 70 * boost) * Math.max(0.5, k)), 1.4, 7);
     motes.push(mo);
   };
-  let operation = null, resizedCtx = null, textClear = null;
+  let operation = null, textClear = null;
   const finishOperation = (ctx, result = 'completed') => {
     if (!operation || operation.ctx !== ctx) return;
     const resolve = operation.resolve;
@@ -1035,12 +1037,9 @@
     // On a return to 9 those elements grow back outside the ring; let the
     // complete picture reach its fitted position before checking its clearance.
     if (target === 0 && morph) return true;
-    const copy = hosts[target].querySelectorAll(':scope > .num, :scope > .fw-stat, :scope > .split > :first-child > *, :scope > .split > .fw-asks');
+    const copy = textClear.ctx.copyRects();
     const [cx, cy, rx, ry] = cur.ring, pad = 8;
-    return [...copy].some((el) => {
-      // Slide 11 reserves the label's box for the mark but hides the label itself.
-      if (target === 2 && el.classList.contains('num')) return false;
-      const r = el.getBoundingClientRect();
+    return copy.some((r) => {
       if (!r.width || !r.height) return false;
       const left = r.left - pad, right = r.right + pad, top = r.top - pad, bottom = r.bottom + pad;
       const nearX = Math.max(left, Math.min(cx, right)), nearY = Math.max(top, Math.min(cy, bottom));
@@ -1053,6 +1052,45 @@
       return vis.some((v, i) => v && chipQ(i) > 0.01 && v.x + v.w / 2 > left && v.x - v.w / 2 < right && v.y + v.h / 2 > top && v.y - v.h / 2 < bottom);
     });
   };
+  const intersects = (rects, x, y, rx, ry = rx) => rects.some((r) =>
+    x + rx > r.left && x - rx < r.right && y + ry > r.top && y - ry < r.bottom);
+  const releaseText = (ctx) => {
+    if (textClear?.ctx !== ctx) return;
+    const release = textClear.release; textClear = null; release();
+  };
+  // Bound each trajectory first, then inspect only paths that can meet copy.
+  // A speed allowance covers motion between samples, including the swing.
+  const handCrossings = (rects) => {
+    let first = Infinity, last = -Infinity;
+    const step = 0.025, half = step / 2;
+    const record = (t) => { first = Math.min(first, Math.max(0, t - half)); last = Math.max(last, Math.min(HAND_END, t + half)); };
+    const c = hand.core, lens = cur.lens;
+    const lensSpeed = Math.max(Math.abs(lens[0] - c.x), Math.abs(lens[1] - c.y), Math.abs(lens[2] - c.w), Math.abs(lens[3] - c.h)) * 3 / 1.25 * half;
+    for (let i = 0; i <= HAND_END / step; i++) {
+      const t = i * step, q = easeIO(clamp(t / 1.25));
+      const x = lerp(c.x, lens[0], q), y = lerp(c.y, lens[1], q);
+      const w = lerp(c.w, lens[2], q), h = lerp(c.h, lens[3], q);
+      if (intersects(rects, x, y, Math.max(w / 2, h * 0.55) + lensSpeed, h * 0.55 + lensSpeed)) record(t);
+    }
+    for (const d of hand.dots) {
+      const dest = d.tgt && target(d.tgt), tx = dest ? dest[0] : d.x, ty = dest ? dest[1] : d.y - 14 * k;
+      const radius = Math.max(d.r, d.bright ? 6 * Math.max(0.6, k) : 0);
+      const swing = Math.abs(d.swing * k), dx = tx - d.x, dy = ty - d.y;
+      const pad = radius + (Math.hypot(dx, dy) + Math.PI * swing) * 3 / 1.1 * half;
+      const x0 = Math.min(d.x, tx) - swing - pad, x1 = Math.max(d.x, tx) + swing + pad;
+      const y0 = Math.min(d.y, ty) - swing - pad, y1 = Math.max(d.y, ty) + swing + pad;
+      if (!rects.some((r) => x1 > r.left && x0 < r.right && y1 > r.top && y0 < r.bottom)) continue;
+      const end = Math.min(HAND_END, (d.tgt ? d.d + 1.5 : 0.8) + half);
+      if (first === 0 && last >= end) continue;
+      for (let i = 0; i * step <= end; i++) {
+        const t = i * step;
+        if (t >= first && t <= last) continue;
+        const { x, y } = handDot(d, t, dest);
+        if (intersects(rects, x, y, pad)) record(t);
+      }
+    }
+    return first <= last ? { first, last } : null;
+  };
   const frame = () => {
     // A cleared stage on 10/11 includes all its cards, even when the morph or
     // its wall-time deadline arrives before their staggered introduction.
@@ -1064,11 +1102,11 @@
     place();
     if (m >= 1) window.AstridMark?.follow(Math.min(1, m - 1)); // the deck's mark grows with the halo on the way to 11 (and back)
     if (textClear) {
-      const blocked = copyBlocked(textClear.target);
+      const blocked = textClear.hand ? (textClear.reverse ? ta >= textClear.clearAt : ta <= textClear.clearAt) : copyBlocked(textClear.target);
       if (blocked) textClear.blocked = true;
       // If the initial picture was already clear, wait for the completed move:
       // it may still cross the incoming copy on its way to the destination.
-      if (!blocked && (textClear.blocked || !morph)) {
+      if (!blocked && (textClear.hand || textClear.blocked || !morph)) {
         const release = textClear.release; textClear = null; release();
       }
     }
@@ -1120,16 +1158,26 @@
     start(ctx);
   };
 
-  // Slide 8 hands its core and communities on after its layout has settled.
+  let prepared = false;
+  // Prepare the next picture while slide 7 is settled, before reaching Flowers.
+  const prepare = () => { if (!prepared) { buildFulls(); prepared = layout(); if (prepared) placeFulls(); } };
   const flHost = document.querySelector('[data-astrid-flowers]'), flSlide = flHost && flHost.closest('.slide');
+  const paysSlide = document.querySelector('[data-astrid-pays]')?.closest('.slide');
+  const warmWheel = new MutationObserver(() => {
+    if (paysSlide?.hasAttribute('data-settled') || flSlide.hasAttribute('data-settled')) prepare();
+  });
+  [paysSlide, flSlide].filter(Boolean).forEach((slide) => warmWheel.observe(slide, { attributes: true, attributeFilter: ['data-settled'] }));
+  window.deckOnResize(() => { prepared = false; if (paysSlide?.hasAttribute('data-settled') || flSlide.hasAttribute('data-settled')) prepare(); });
+
+  // Slide 8 hands its core and communities on after its layout has settled.
   const minkIn = (snap) => (snap.mink ? { x: snap.mink.x - snap.core.x, y: snap.mink.y - snap.core.y } : { x: 3 * snap.k, y: 6 * snap.k });
   const handoff = (snap, ctx) => {
     entryCtx = ctx;
     begun = true; T = T_HAND; ta = 0; nextMote = T.motes; lastM = -1;
-    hand = { core: snap.core, k: snap.k, mo: minkIn(snap), dots: [], done: false };
+    hand = { snapshot: snap, core: snap.core, k: snap.k, mo: minkIn(snap), dots: [], done: false };
     settleCur();
     hand.dots = assign(snap.people, snap.core.x);
-    window.AstridFlowers.hide(ctx);
+    window.AstridFlowers.hide(ctx, snap);
     root.style.transition = 'none'; setVisible(true); void root.offsetWidth; root.style.transition = '';
     frame();
     start(ctx);
@@ -1149,16 +1197,11 @@
     cardsRoot.inert = true;
     html.classList.remove('fw-quiet');
     stop();
+    releaseText(reverseCtx);
     finishOperation(reverseCtx, result);
   };
   const unstep = (dt, elapsed) => {
     const u = unhanding;
-    if (!u.snapped) {
-      const snap = window.AstridFlowers.snapshot();
-      if (!snap) { endUnhand(); return false; }
-      u.snapped = true;
-      hand = { core: snap.core, k: snap.k, mo: minkIn(snap), dots: assign(snap.people, snap.core.x), done: false };
-    }
     ta -= elapsed;
     spin += dt * 0.08;
     setOp(labels.astrid, smooth(k01(T.lens + 0.6, 0.5)));
@@ -1166,7 +1209,7 @@
     if (ta <= 0) { endUnhand(); return false; }
     return true;
   };
-  const enter = async (ctx) => {
+  const enter = (ctx) => {
     questions.enter(ctx);
     let resolve;
     const done = new Promise((r) => { resolve = r; });
@@ -1174,12 +1217,11 @@
     ctx.defer(() => {
       stop();
       clearFullCards();
-      if (textClear?.ctx === ctx) textClear = null;
+      releaseText(ctx);
       if (unhanding) endUnhand('cancelled');
       finishOperation(ctx, 'cancelled');
     });
-    // The shared wheel already owns its rendered geometry across 9–11. It
-    // can begin moving immediately; only an external handoff waits for arrival.
+    // The shared wheel continues from its rendered geometry across 9–11.
     const withinWheel = ctx.from >= 8 && ctx.from <= 10 && activeStage >= 0 && begun;
     const target = ctx.to - 8;
     const clearing = withinWheel && !ctx.direct && !motionOff();
@@ -1189,12 +1231,9 @@
         if (!ctx.isCurrent()) return;
         m = target; morph = null; lastM = -1; frame();
         finishOperation(ctx);
-      }, duration * 1000 + 500);
+      }, duration * 1000 + 300);
       textClear = { ctx, target, release, blocked: false };
     }
-    const arrived = ctx.direct || withinWheel ? 'completed' : await ctx.arrived;
-    if (arrived !== 'completed' || !ctx.isCurrent()) return 'cancelled';
-    if (resizedCtx === ctx) return 'completed';
     const previous = activeStage;
     activeStage = target;
     html.classList.toggle('fw-quiet', target < 2);
@@ -1203,10 +1242,18 @@
     if (previous < 0 || !begun || ctx.direct) {
       reset();
       activeStage = target;
-      layout(); m = target; settleCur();
+      if (!prepared) layout(); prepared = false; m = target; settleCur();
       const snap = !ctx.direct && target === 0 && ctx.from === 7 && !motionOff() && window.AstridFlowers?.snapshot?.();
       setVisible(true);
-      if (snap) handoff(snap, ctx);
+      if (snap) {
+        handoff(snap, ctx);
+        const rects = ctx.copyRects();
+        const crossings = handCrossings(rects);
+        if (crossings) {
+          const release = ctx.holdText(() => { ta = HAND_END; hand.done = true; frame(); finishOperation(ctx); }, HAND_END * 1000 + 300);
+          textClear = { ctx, target, release, hand: true, clearAt: crossings.last };
+        }
+      }
       else { draw(); begin(ctx, target); }
       return done;
     }
@@ -1222,21 +1269,28 @@
     stop(); entryCtx = ctx; start(ctx);
     return done;
   };
-  const exit = async (ctx) => {
+  const exit = (ctx) => {
     reverseCtx = ctx;
     let resolve;
     const done = new Promise((r) => { resolve = r; });
     operation = { ctx, resolve };
     ctx.defer(() => {
       stop();
+      releaseText(ctx);
       if (unhanding) endUnhand('cancelled');
       finishOperation(ctx, 'cancelled');
     });
     if (ctx.to === 7 && ctx.back && !motionOff() && activeStage === 0 && begun && !morph && m === 0 && window.AstridFlowers) {
-      await Promise.resolve(); // Flowers prepares the target during its entry hook
-      if (!ctx.isCurrent()) return 'cancelled';
-      if (resizedCtx === ctx) return 'completed';
-      unhanding = { snapped: false, shown: false, fade: 0 };
+      const snap = window.AstridFlowers.prepareReturn(ctx);
+      if (!snap) { activeStage = -1; setVisible(false); stop(); finishOperation(ctx); return done; }
+      if (hand?.snapshot === snap) hand.done = false;
+      else hand = { snapshot: snap, core: snap.core, k: snap.k, mo: minkIn(snap), dots: assign(snap.people, snap.core.x), done: false };
+      const crossings = handCrossings(ctx.copyRects());
+      if (crossings) {
+        const release = ctx.holdText(() => endUnhand(), HAND_END * 1000 + 300);
+        textClear = { ctx, release, hand: true, reverse: true, clearAt: crossings.first };
+      }
+      unhanding = { shown: false };
       activeStage = -1;
       window.AstridFlowers.holdCore?.(true);
       ctx.present(flSlide, 'dt-return dt-await');
@@ -1253,7 +1307,7 @@
     return done;
   };
   const resize = (ctx) => {
-    resizedCtx = ctx;
+    prepared = false;
     entryCtx = ctx;
     if (ctx.to < 8 || ctx.to > 10) {
       activeStage = -1;
@@ -1263,6 +1317,7 @@
         root.classList.remove('is-on'); cardsRoot.classList.remove('is-on');
         html.classList.remove('fw-quiet'); cardsRoot.inert = true;
         window.AstridFlowers?.holdCore?.(false);
+        releaseText(ctx);
         finishOperation(ctx);
       }
       return 'completed';
@@ -1276,15 +1331,13 @@
       html.classList.toggle('fw-quiet', target < 2);
       setVisible(true);
     }
-    if (!layout()) { finishOperation(ctx); return 'completed'; }
+    if (!layout()) { setVisible(false); releaseText(ctx); finishOperation(ctx); return 'completed'; }
     stop();
     begun = true; morph = null; hand = null; m = activeStage; ta = Math.max(ta, T.chips + 1);
     if (m >= 1) { attach = { dir: 1, t0: ta - T.chips - 1 }; boost = 1; relay = { start: ta, arrivals: 6, next: 0, launch: ta + 1, attacks: chips.map(() => 0) }; }
     lastM = -1; minkAt = null; flyCell = 0;
     frame();
-    if (textClear?.ctx === ctx) {
-      const release = textClear.release; textClear = null; release();
-    }
+    releaseText(ctx);
     finishOperation(ctx);
     start(ctx);
     return 'completed';

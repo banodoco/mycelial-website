@@ -24,7 +24,7 @@
   const ease = (k) => 1 - Math.pow(1 - k, 3);
   const easeIO = (q) => (q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2);
   const seep = (k) => 0.5 - 0.5 * Math.cos(Math.PI * k);
-  let paused = false, pendingStart = null, pendingCtx = null, pausedVideos = [];
+  let paused = false, pendingCtx = null, pausedVideos = [];
   const motionBlocked = () => document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.();
   const now = () => window.deckNow();
   const current = (ctx) => !!ctx && ctx.isCurrent();
@@ -559,7 +559,7 @@
     carry: [1.3, 1.9], mink: [0.15, 1.35], sh: [1.9, 2.9], lb: 2.05, lbGap: 0.1, lbDur: 0.55, rt: [2.0, 3.4], card: 1.2, wide: 2.0, open: 2.4, end: 3.4 };
   const QUICK = { rise: 0.12, dur: 0.75, mink: [1.0, 0.45], sh: [0.95, 1.75], lb: 1.05, lbGap: 0.07, lbDur: 0.45, rt: [1.0, 2.25], card: 0.9, wide: 1.6, open: 1.45, end: 2.25 };
   // Landing at rest on a wider screen, the words are drawn in as the stack lands: its first card waits this long (s).
-  const REST_WIDE = 1.7;
+  const REST_WIDE = 1.7, FOLD_SHOW = 0.3, FOLD_FADE = 0.65;
   const wide = () => view.right && !view.low; // a desktop or tablet, not a phone on its side
   const demo = document.querySelector('[data-astrid-demo]');
   const slide5 = demo && demo.closest('.slide');
@@ -830,14 +830,8 @@
     window.deckSetNetMask?.(ctx, 'stack', { image: mask, mode: 'luminance', size: '100% 100%' });
   };
 
-  let pendingBuild = false, entryCompletion = null, reverseCompletion = null, entryFinished = false;
-  const beginWhenReady = (ctx = activeCtx) => {
-    if (!current(ctx)) return;
-    if (!running || build || amb) return;
-    if (paused) { pendingBuild = true; return; }
-    pendingBuild = false;
-    begin(false, true); play(); wake();
-  };
+  let entryCompletion = null, reverseCompletion = null, entryFinished = false, foldTextRelease = null;
+  const releaseFoldText = () => { foldTextRelease?.(); foldTextRelease = null; };
   const makeCompletion = (ctx, setter, cleanup) => {
     let resolve, settled = false;
     const promise = new Promise((done) => { resolve = done; });
@@ -849,19 +843,19 @@
     ctx.defer(() => { finish(ctx, 'cancelled'); cleanup(); });
     return promise;
   };
-  const start = (from5, ctx) => {
+  const start = (ctx) => {
     if (!current(ctx) || ctx.to !== 5) return Promise.resolve('cancelled');
     const promise = makeCompletion(ctx, (fn) => { entryCompletion = fn; }, () => stop(ctx, true));
     activeCtx = ctx;
     entryFinished = false;
-    if (document.hidden || document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingStart = from5; pendingCtx = ctx; return promise; }
-    launch(from5, ctx);
+    if (document.hidden || document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingCtx = ctx; return promise; }
+    launch(ctx);
     return promise;
   };
-  const launch = (from5, ctx) => {
+  const launch = (ctx) => {
     if (!current(ctx) || activeCtx !== ctx) return;
     window.warmDeckMedia?.(slide);
-    pendingStart = null; pendingCtx = null;
+    pendingCtx = null;
     running = true;
     layout();
     slide.classList.remove('st-arrive');
@@ -875,25 +869,18 @@
       if (!motionOff()) { amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0)); play(); wake(); }
       return;
     }
-    if (from5) { // the product moves at once; the slide must not fade in under it
-      slide.classList.add('st-arrive');
-      window.deckLater(() => { if (current(ctx)) slide.classList.remove('st-arrive'); }, 900, ctx);
-      try { video.currentTime = 2; } catch { /* not loaded */ }
-      begin(true, true); play(); wake();
-      return;
-    }
-    hideAll();
-    Promise.resolve(ctx.arrived).then((result) => {
-      if (result === 'completed' && current(ctx)) beginWhenReady(ctx);
-    });
+    // The product moves at once; the slide must not fade in under it.
+    slide.classList.add('st-arrive');
+    window.deckLater(() => { if (current(ctx)) slide.classList.remove('st-arrive'); }, 900, ctx);
+    try { video.currentTime = 2; } catch { /* not loaded */ }
+    begin(true, true); play(); wake();
   };
   const stop = (ctx = activeCtx, preserveScene = false) => {
     if (ctx && activeCtx && activeCtx !== ctx) return;
     running = false;
-    paused = false; pendingStart = null; pendingCtx = null; pausedVideos = [];
+    paused = false; pendingCtx = null; pausedVideos = [];
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
-    pendingBuild = false;
     build = null;
     releaseMink();
     clearGhosts(); // transient editor snapshots must not outlive an interrupted hand-off
@@ -946,11 +933,12 @@
     if (!b.fresh && b.e <= 1.1) { b.fresh = true; repaintGhosts(); }
     b.e = Math.max(0, FROM5.end - 1e-3 - (t - b.startAt) / 1000);
     // Slide 5 fades in under the copies as they settle onto its panels; once it is whole, the copies go.
-    if (!b.shown && b.e <= 0.3) { b.shown = true; b.shownAt = t; b.ctx.present(slide5, '', 'dt-await'); }
-    if (b.e <= 0 && t - (b.shownAt ?? Infinity) >= 650) { endFold(); return false; }
+    if (!b.shown && b.e <= FOLD_SHOW) { b.shown = true; b.shownAt = t; b.ctx.present(slide5, '', 'dt-await'); }
+    if (b.e <= 0 && t - (b.shownAt ?? Infinity) >= FOLD_FADE * 1000) { endFold(); return false; }
     b.t0 = t - b.e * 1000;
     stepBuild(t);
     stepHead();
+    if (foldTextRelease && !foldCrossesCopy(b.ctx)) releaseFoldText();
     return true;
   };
   const repaintGhosts = () => Object.keys(SRC).forEach((i) => {
@@ -958,13 +946,14 @@
     from.forEach((cs, j) => { const c = to[j]; if (!c || c.dataset.carried || c.width !== cs.width || c.height !== cs.height) return; try { const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.drawImage(cs, 0, 0); } catch { /* empty */ } });
   });
   const abortFold = () => {
-    if (!build?.back) return;
+    if (!build?.back) { releaseFoldText(); return; }
     const ctx = build.ctx;
     build = null;
     clearGhosts();
     ctx.present(slide, '', 'dt-rewind dt-rewound');
     ctx.present(slide5, '', 'dt-return dt-await');
     stop(activeCtx);
+    releaseFoldText();
   };
   const endFold = () => {
     if (!build || !build.back) return;
@@ -975,10 +964,9 @@
     clearGhosts(); // slide 5's own panels stand exactly where their copies were
     ctx.present(slide, 'dt-rewound', 'dt-rewind');
     ctx.present(slide5, '', 'dt-return dt-await');
+    if (!slide.classList.contains('on')) { stop(); hideAll(); }
+    releaseFoldText();
     if (current(ctx)) reverseCompletion?.(ctx, 'completed');
-    if (slide.classList.contains('on')) return;
-    stop();
-    hideAll();
   };
 
   const syncMotion = () => {
@@ -986,7 +974,7 @@
     if (motionOff() && slide.classList.contains('on') && activeCtx) {
       const ctx = activeCtx;
       if (raf) cancelAnimationFrame(raf); raf = 0;
-      running = true; paused = false; pendingBuild = false; build = null; amb = null;
+      running = true; paused = false; build = null; amb = null;
       releaseMink(); clearGhosts(); layout(); softenNet(ctx, true); settleAll(); stepHead();
       flags.forEach((f) => { f.tabIndex = 0; });
       show(view.mobile ? 0 : -1);
@@ -1005,11 +993,10 @@
         return;
       }
       // An entry deferred behind the overview has no scene to resume yet.
-      if (pendingStart !== null) { const from5 = pendingStart, ctx = pendingCtx; pendingStart = null; pendingCtx = null; launch(from5, ctx); return; }
+      if (pendingCtx) { launch(pendingCtx); return; }
       if (!paused) return;
       paused = false;
       guide.last = 0;
-      if (pendingBuild) beginWhenReady();
       pausedVideos.forEach((v) => v.play().catch(() => {}));
       pausedVideos = [];
       if (!still) wake();
@@ -1018,7 +1005,7 @@
   document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
-  const sceneEnter = (ctx) => start(ctx.from === 4 && !motionOff(), ctx);
+  const sceneEnter = (ctx) => start(ctx);
   // Stack owns its geometry and temporary styles in both directions.
   let stackFlight = null, collapseSource = null;
   const releaseStackFlight = () => { const release = stackFlight?.release; stackFlight = null; release?.(); };
@@ -1042,6 +1029,15 @@
     source: (ctx) => collapseSource?.ctx === ctx ? collapseSource.rect : null,
     collapsed: (ctx) => collapseSource?.ctx === ctx ? collapseSource.completed : Promise.resolve('completed'),
     ready: (ctx) => { if (collapseSource?.ctx === ctx) collapseSource.copy.remove(); },
+  };
+  // Bound each folding panel's remaining travel by its current and editor rectangles.
+  const foldCrossesCopy = (ctx) => {
+    const copy = ctx.copyRects();
+    return Object.entries(SRC).some(([i, selector]) => {
+      const a = planes[i].getBoundingClientRect(), b = demo.querySelector(selector).getBoundingClientRect();
+      const swept = { left: Math.min(a.left, b.left), right: Math.max(a.right, b.right), top: Math.min(a.top, b.top), bottom: Math.max(a.bottom, b.bottom) };
+      return copy.some((r) => swept.left < r.right && swept.right > r.left && swept.top < r.bottom && swept.bottom > r.top);
+    });
   };
   const sceneExit = (ctx) => {
     if (ctx.from === 5 && ctx.to === 6 && !ctx.direct && !ctx.rest && !motionOff()) {
@@ -1092,6 +1088,10 @@
       return undefined;
     }
     const promise = makeCompletion(ctx, (fn) => { reverseCompletion = fn; }, () => abortFold());
+    if (foldCrossesCopy(ctx)) {
+      // Fold clock reaches zero, then any remaining editor fade completes.
+      foldTextRelease = ctx.holdText(() => endFold(), (FROM5.end + Math.max(0, FOLD_FADE - FOLD_SHOW) + 0.3) * 1000);
+    }
     fold(ctx);
     return promise;
   };
@@ -1099,7 +1099,7 @@
     if (collapseSource?.ctx === ctx) { collapseSource.settle('completed', 'cancelled'); collapseSource.copy.remove(); releaseStackFlight(); }
     if (build?.back && build.ctx === ctx) { endFold(); return; }
     if (slide.classList.contains('on') && activeCtx === ctx) {
-      running = false; paused = false; pendingBuild = false;
+      running = false; paused = false;
       if (raf) cancelAnimationFrame(raf); raf = 0;
       build = null; releaseMink(); clearGhosts();
       activeCtx = ctx; running = true;
@@ -1110,6 +1110,7 @@
       entryFinished = true; entryCompletion?.(ctx, 'completed');
       if (!document.hidden && !document.getElementById('overview')?.classList.contains('on') && !window.deckStill?.()) wake();
     }
+    releaseFoldText();
   };
   window.deckRegisterScene?.([5], { enter: sceneEnter, exit: sceneExit, resize: sceneResize });
   // Clicks on the stack stay here; they never turn the slide.

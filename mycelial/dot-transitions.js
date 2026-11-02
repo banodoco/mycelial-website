@@ -665,7 +665,18 @@
   });
   const restore = () => homes.forEach((s, num) => s.insertBefore(num, s.querySelector(':scope > .split')));
 
-  const textOf = (s) => [s.matches('.fw-raise') ? s.querySelector(':scope > .split') : columnOf(s)].filter(Boolean);
+  const textOf = (s) => [s.matches('.fw-raise') ? s.querySelector(':scope > .split') : columnOf(s), s.querySelector(':scope > .fw-stat')].filter(Boolean);
+  const copyRects = (context) => textOf(slides[context.to]).flatMap((el) => {
+    const items = el.matches('.fw-stat') ? [el] : el.matches('.split') ? [...el.children].flatMap((child, i) => i === 0 ? [...child.children] : [child]) : [...el.children];
+    return items.flatMap((item) => {
+      if (getComputedStyle(item).display === 'none' || (item.matches('.num') && item.closest('.fw-raise'))) return [];
+      if (item.matches('.fw-stat')) {
+        const range = document.createRange(); range.selectNodeContents(item);
+        return [...range.getClientRects()].filter((r) => r.width && r.height);
+      }
+      const r = item.getBoundingClientRect(); return r.width && r.height ? [r] : [];
+    });
+  });
   // The node sits just above the start of the label (its end when right-aligned, its middle when centred).
   const anchorOf = (s) => {
     const col = columnOf(s);
@@ -690,7 +701,9 @@
   // Text shows only inside a soft-edged circle around the node; growing the
   // circle reveals it from the node outward, shrinking it draws it back in.
   const SOFT = 150;
+  const masks = new WeakMap();
   const mask = (el, at, r) => {
+    masks.set(el, { at: { ...at }, r });
     const b = el.getBoundingClientRect();
     const x = at.x - b.left, y = at.y - b.top;
     const v = r <= 0 ? 'linear-gradient(transparent, transparent)'
@@ -698,7 +711,7 @@
     el.style.webkitMaskImage = v;
     el.style.maskImage = v;
   };
-  const unmask = (el) => { el.style.webkitMaskImage = ''; el.style.maskImage = ''; };
+  const unmask = (el) => { masks.delete(el); el.style.webkitMaskImage = ''; el.style.maskImage = ''; };
   const reach = (el, at) => {
     const b = el.getBoundingClientRect();
     return Math.max(...[[b.left, b.top], [b.right, b.top], [b.left, b.bottom], [b.right, b.bottom]]
@@ -807,11 +820,11 @@
   const gather = (s, at, context) => {
     const tw = [];
     for (const el of textOf(s)) {
-      const far = reach(el, at);
+      const saved = masks.get(el), centre = saved?.at || at, far = saved?.r ?? reach(el, at);
       for (const p of spots(el, 6)) {
         hypha(wander(p, at), { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38, owner: context });
       }
-      const run = tween(GATHER, easeIn, (k) => { if (!s.classList.contains('on')) mask(el, at, (1 - k) * far); }, 0, context);
+      const run = tween(GATHER, easeIn, (k) => { if (!s.classList.contains('on')) mask(el, centre, (1 - k) * far); }, 0, context);
       run.then((result) => { if (result === 'completed' && context.isCurrent() && !s.classList.contains('on')) hideText(s); });
       tw.push(run);
     }
@@ -827,20 +840,6 @@
     for (const el of textOf(s)) { const far = reach(el, from); while (k < 1 && (1 - easeIn(k)) * far > d) k += 0.02; }
     return Math.min(1, k) * GATHER;
   };
-  // On a few turns a picture is still moving across the new text's place after the press: a step back's picture
-  // coming back into its slide, a stage of the last slides' wheel, an upright phone's mink flying in. There the text
-  // starts once the picture has gone by, this far into the turn (ms at the turn's pace; measured, see FX7, S6 and S6b).
-  // Each turn not listed keeps overlap()'s start, and a step back with no picture coming back (dt-return) never waits.
-  const PASSING = {
-    wide: { '6-5': 2300, '8-7': 1500 },
-    upright: { '7-6': 1900, '8-7': 1150, '9-8': 1550, '6-7': 800 },
-  };
-  const passing = (prev, next) => {
-    if (window.deckNav?.back && !next.matches('.dt-return, .fw-host')) return 0;
-    const upright = innerWidth <= 760 && (innerHeight >= innerWidth || innerHeight > 500); // the slides' phone layout
-    return PASSING[upright ? 'upright' : 'wide'][`${levelOf(prev) + 1}-${levelOf(next) + 1}`] || 0;
-  };
-
   let current = null, visit = null;
   const finishNetwork = (context) => {
     if (visit?.context === context && context.isCurrent()) visit.resolve('completed');
@@ -1052,7 +1051,6 @@
       dot.classList.remove('is-moving'); pulse(1.8); bloom(anchor);
       if (current === lastSlide()) crown(anchor);
       window.deckArrived(context);
-      target.dispatchEvent(new CustomEvent('dt-arrive'));
       if (target === slides[0]) window.deckEntryDone?.(target, context); // slide 1 has no separate picture build
       Promise.all(reveal(target, anchor, 60, context)).then((results) => {
         if (results.every((result) => result === 'completed')) finishNetwork(context);
@@ -1115,7 +1113,6 @@
     place(anchor);
     if (announce) {
       window.deckArrived(context);
-      current.dispatchEvent(new CustomEvent('dt-arrive'));
       if (current === slides[0]) window.deckEntryDone?.(current, context);
       if (still) finishNetwork(context);
     }
@@ -1159,7 +1156,6 @@
     turning = transition;
     context.defer(() => transition.cancel());
     const from = { x: (anchor ? anchor.x : 0) + drift.x, y: (anchor ? anchor.y : 0) + drift.y };
-    clearText(prev);
     const glow = (s) => !still && window.AstridFlywheel?.glow(s); // slide 10's glow, between it and the last slide
     uncrown(prev === lastSlide() && next === deck().at(-2) && glow(1));
     zones.forEach((z) => { z.to = 0; z.wait = z.crown ? 0.2 : 0.45; }); // the old text's softening lifts once it is drawn in
@@ -1172,12 +1168,13 @@
     clearText(next);
     current = next;
     const to = anchorOf(next) || from;
+    textOf(next).forEach((el) => mask(el, to, 0));
     anchor = to;
     drift = { x: 0, y: 0 }; trail = { x: 0, y: 0 };
     // The closing mark grows only when the travelling node reaches its destination (arrive below).
 
     // The new text grows from its node while the old is still being drawn in (overlap), or once a picture crossing
-    // its place has gone by (passing), the node's travel running alongside; the turn is done once the text is whole
+    // its place has cleared, the node's travel running alongside; the turn is done once the text is whole
     // and the node has arrived.
     const reached = new Promise((r) => { landed = r; });
     const grow = () => {
@@ -1198,7 +1195,6 @@
       dot.classList.remove('is-moving'); anims.push(pulse(1.8)); bloom(to);
       if (next === lastSlide()) crown(to);
       window.deckArrived(context);
-      next.dispatchEvent(new CustomEvent('dt-arrive')); // for slides that start their own picture once the node is reached
       if (next === slides[0]) window.deckEntryDone?.(next, context);
       context.present(prev, 'dt-release'); // the old slide may fade now; its parts stay hidden
       timers.push(window.deckLater(() => {
@@ -1235,9 +1231,7 @@
       elapsed = context.now() - started;
       if (textDue && elapsed >= early) {
         textDue = false;
-        const wait = passing(prev, next) - (context.now() - started);
-        const whenClear = () => context.textReady.then((result) => { if (result === 'completed' && context.isCurrent()) grow(); });
-        if (wait > 0) timers.push(window.deckLater(whenClear, wait, context)); else whenClear();
+        context.textReady.then((result) => { if (result === 'completed' && context.isCurrent()) grow(); });
       }
       if (travelDue || textDue) {
         const nextAt = Math.min(travelDue ? 340 : Infinity, textDue ? early : Infinity);
@@ -1263,20 +1257,6 @@
     }
     endOpening();
     html.classList.remove('dt-font-wait');
-    if (context.superseded) {
-      // Retire the interrupted picture's text while its shared scene reaches
-      // a clear endpoint. Settle and draw before announcing node arrival.
-      if (prev) { context.present(prev, 'dt-leaving'); hideText(prev); }
-      context.present(next, 'dt-entering');
-      context.textReady.then((result) => {
-        if (result !== 'completed' || !context.isCurrent()) return;
-        settle(false, false, context, false);
-        window.deckArrived(context);
-        next.dispatchEvent(new CustomEvent('dt-arrive'));
-        finishNetwork(context);
-      });
-      return promise;
-    }
     if (context.direct) {
       settle(false, context.from === null, context);
       finishNetwork(context);
@@ -1397,5 +1377,5 @@
     textTweens.forEach((tw) => tw.stop());
     clearText(slides[context.to]);
   };
-  window.deckRegisterNetwork({ enter, resize, finish: finishText });
+  window.deckRegisterNetwork({ enter, resize, finish: finishText, copyRects });
 })();
