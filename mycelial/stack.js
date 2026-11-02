@@ -25,7 +25,7 @@
   const easeIO = (q) => (q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2);
   const seep = (k) => 0.5 - 0.5 * Math.cos(Math.PI * k);
   let paused = false, pendingCtx = null, pausedVideos = [];
-  const motionBlocked = () => document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.();
+  const motionBlocked = () => document.getElementById('overview')?.classList.contains('on') || window.deckStill?.();
   const now = () => window.deckNow();
   const current = (ctx) => !!ctx && ctx.isCurrent();
   const RAD = Math.PI / 180;
@@ -848,7 +848,7 @@
     const promise = makeCompletion(ctx, (fn) => { entryCompletion = fn; }, () => stop(ctx, true));
     activeCtx = ctx;
     entryFinished = false;
-    if (document.hidden || document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingCtx = ctx; return promise; }
+    if (document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingCtx = ctx; return promise; }
     launch(ctx);
     return promise;
   };
@@ -1002,7 +1002,6 @@
       if (!still) wake();
     }
   };
-  document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
   const sceneEnter = (ctx) => start(ctx);
@@ -1108,7 +1107,7 @@
       show(view.mobile ? 0 : -1);
       amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0));
       entryFinished = true; entryCompletion?.(ctx, 'completed');
-      if (!document.hidden && !document.getElementById('overview')?.classList.contains('on') && !window.deckStill?.()) wake();
+      if (!document.getElementById('overview')?.classList.contains('on') && !window.deckStill?.()) wake();
     }
     releaseFoldText();
   };

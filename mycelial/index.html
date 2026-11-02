@@ -2010,17 +2010,14 @@
   // One semantic timeline for timers and scene stages. Integrate before changing
   // pace or pause state: a delayed callback must never throw elapsed time away.
   let timeline = 0, timelineAt = performance.now();
-  let timelinePaused = document.hidden || ov.classList.contains('on');
+  const paused = () => document.hidden || ov.classList.contains('on');
   window.deckNow = () => {
     const at = performance.now();
-    if (!timelinePaused) timeline += Math.max(0, at - timelineAt) * pace;
+    if (!paused()) timeline += Math.max(0, at - timelineAt) * pace;
     timelineAt = at;
     return timeline;
   };
-  const syncTimeline = () => {
-    window.deckNow();
-    timelinePaused = document.hidden || ov.classList.contains('on');
-  };
+  const syncTimeline = () => { window.deckNow(); };
   document.addEventListener('visibilitychange', syncTimeline);
   window.addEventListener('deck-overview', syncTimeline);
   window.deckPace = () => pace;
@@ -2038,7 +2035,7 @@
     const tick = () => {
       if (handle.cancelled || signal?.aborted || (context && !context.isCurrent())) { window.deckCancelLater(handle); return; }
       handle.left = handle.deadline - window.deckNow();
-      if (handle.left <= 0 && !timelinePaused) { window.deckCancelLater(handle); fn(); }
+      if (handle.left <= 0 && !paused()) { window.deckCancelLater(handle); fn(); }
       else handle.id = setTimeout(tick, Math.min(32, Math.max(4, handle.left / pace)));
     };
     signal?.addEventListener('abort', handle.abort, { once: true });
@@ -2303,8 +2300,8 @@
     return true;
   };
   const recoverExpiredTurn = (context) => {
-    if (document.hidden || !context.isCurrent() || turn?.context !== context) return;
-    if (timelinePaused) { turn.watchdog = watchTurn(context, 1000); return; }
+    if (!context.isCurrent() || turn?.context !== context) return;
+    if (paused()) { turn.watchdog = watchTurn(context, 1000); return; }
     dispatchEvent(new CustomEvent('deck-watchdog', { detail: { generation: context.generation } }));
     console.warn('Deck navigation recovery', context.generation);
     window.deckTransaction('recover', context);
@@ -2507,6 +2504,7 @@
   };
   const toggleOv = (on = !ov.classList.contains('on')) => {
     if (on) { pendingTurns.length = 0; setPace(1); }
+    window.deckNow();
     ov.classList.toggle('on', on);
     document.documentElement.classList.toggle('deck-overview-open', on);
     dispatchEvent(new Event('deck-overview'));
