@@ -2686,7 +2686,22 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
     b.addEventListener('click', action); controls.appendChild(b);
   };
   const copyColumn = (slide) => slide?.querySelector(slide.matches('.fw-raise') ? ':scope > .split' : ':scope > .split > :first-child');
-  const repaints = [];
+  const repaints = [], taps = [];
+  // Paint-relevant computed style of an element and its ancestors up to the slide.
+  const paintOf = (el) => {
+    if (!el) return '-';
+    const cs = getComputedStyle(el), up = [];
+    for (let n = el; n && !n.matches('.slide'); n = n.parentElement) {
+      const c = getComputedStyle(n), bits = [];
+      if (c.transform !== 'none') bits.push('tf');
+      if (c.willChange !== 'auto') bits.push('wc:' + c.willChange);
+      if (c.filter !== 'none') bits.push('flt');
+      if (c.clipPath !== 'none') bits.push('clip');
+      if (c.isolation === 'isolate') bits.push('iso');
+      if (bits.length) up.push(n.tagName.toLowerCase() + '[' + bits.join(',') + ']');
+    }
+    return `color:${cs.color} fill:${cs.webkitTextFillColor} font:${cs.fontFamily.split(',')[0]} ${cs.fontWeight} ${cs.fontStyle} | layers:${up.join(' ') || '-'}`;
+  };
   let canvasesHidden = false;
   // What is painted on top of the heading's centre (pointer-events forced on for the hit test only).
   const hitsAt = (el) => {
@@ -2708,13 +2723,26 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
     canvasesHidden = !canvasesHidden;
     document.querySelectorAll('canvas').forEach((c) => { c.style.visibility = canvasesHidden ? 'hidden' : ''; });
   });
+  button('flat', () => {
+    // Drops every transform/will-change/filter between the slide and its copy: if the text appears, its compositing layer had failed.
+    const slide = document.querySelector('.slide.on'), col = copyColumn(slide);
+    for (let n = col; n && n !== document.body; n = n.parentElement) { n.style.transform = 'none'; n.style.willChange = 'auto'; n.style.filter = 'none'; }
+    slide?.querySelectorAll('h1, p, .num').forEach((n) => { n.style.transform = 'none'; n.style.willChange = 'auto'; });
+    taps.push('flat');
+  });
+  button('plain', () => {
+    // Paints the copy in a system font and red: if red text appears, the copy's own font or colour was the problem.
+    const col = copyColumn(document.querySelector('.slide.on'));
+    col?.querySelectorAll('*').forEach((n) => { n.style.setProperty('font-family', 'Georgia, serif', 'important'); n.style.setProperty('color', 'red', 'important'); n.style.setProperty('-webkit-text-fill-color', 'red', 'important'); });
+    taps.push('plain');
+  });
   button('repaint', () => {
     // Forces the copy to be laid out and painted from scratch: if the text appears, the browser had failed to repaint it.
     const slide = document.querySelector('.slide.on'), els = [copyColumn(slide), slide?.querySelector('.fw-stat')].filter(Boolean);
     els.forEach((el) => { el.dataset.dbgDisplay = el.style.display; el.style.display = 'none'; });
     void document.body.offsetHeight;
     requestAnimationFrame(() => els.forEach((el) => { el.style.display = el.dataset.dbgDisplay; delete el.dataset.dbgDisplay; }));
-    repaints.push(new Date().toTimeString().slice(0, 8));
+    repaints.push(new Date().toTimeString().slice(0, 8)); taps.push('repaint');
   });
   button('copy log', () => { navigator.clipboard?.writeText(JSON.stringify(snapshot, null, 2)).catch(() => {}); });
   panel.id = 'dbg-panel';
@@ -2770,7 +2798,7 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
       `column ${shortCopy(snapshot.copy.column)}\nstat ${shortCopy(snapshot.copy.stat)}\nh1 ${shortCopy(snapshot.copy.h1)}\n` +
       `network current:${n.current} turning:${n.turning} visit:${n.visit} tweens:${n.textTweens} zones/hyphae/baked:${n.zones}/${n.hyphae}/${n.baked} canvas:${n.canvas}\n` +
       `canvas created:${cap.canvas.created} bytes~:${cap.canvas.bytes} nulls:${cap.canvas.nulls}\n` +
-      `errors:${errors || '-'}\nevents:${events || '-'}\nrepaint taps:${repaints.slice(-3).join(',') || '-'} canvases:${canvasesHidden ? 'hidden' : 'shown'}\non top of h1: ${hitsAt(document.querySelector('.slide.on h1'))}`;
+      `errors:${errors || '-'}\nevents:${events || '-'}\nrepaint taps:${repaints.slice(-3).join(',') || '-'} canvases:${canvasesHidden ? 'hidden' : 'shown'} taps:${taps.slice(-4).join(',') || '-'}\non top of h1: ${hitsAt(document.querySelector('.slide.on h1'))}\nh1 paint: ${paintOf(document.querySelector('.slide.on h1'))}\nfonts:${document.fonts.status} ${[...document.fonts].filter((f) => f.status !== 'loaded').map((f) => f.style + f.weight + ':' + f.status).slice(0, 4).join(' ') || 'all loaded'}`;
   };
   tick(); setInterval(tick, 250);
 })();
