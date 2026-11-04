@@ -491,9 +491,16 @@
     clearGhosts();
     st.forEach((s, i) => Object.assign(s, settledOf(PL[i]), { o: 0 }));
     apply();
+    // A previous visit can leave the controls visible. Reset synchronously:
+    // their normal opacity transition would otherwise show stale flags while
+    // the new arrival is trying to hide them.
+    flags.forEach((flag) => { flag.style.transition = 'none'; });
     vis.sh = 0; vis.lb = PL.map(() => 0); vis.rt = 0;
     syncFlagVisibility();
     show(-1);
+    // Commit the hidden style before re-enabling the reveal's transitions.
+    void root.offsetWidth;
+    flags.forEach((flag) => { flag.style.transition = ''; });
     draw();
   };
   const settleAll = () => {

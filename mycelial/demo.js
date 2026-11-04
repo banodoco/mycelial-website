@@ -411,6 +411,16 @@
     });
     if (passed(RESET)) root.classList.add('is-resetting');
   };
+  // The compact chat has no composer, so its typing animation is invisible.
+  // Start with the first message sent instead of showing an empty chat.
+  const primeCompactChat = () => {
+    if (getComputedStyle(root.querySelector('.as-composer')).display !== 'none') return;
+    const sent = beatTimes(BEATS[0]).send;
+    advanceBeats(td, sent);
+    td = sent;
+    eventIndex = events.findIndex((event) => event.at > td);
+    if (eventIndex < 0) eventIndex = events.length;
+  };
   const stepBeats = (dt) => {
     if (td < 0) return false;
     if (wait > 0) { const used = Math.min(wait, dt); wait -= used; dt -= used; }
@@ -424,7 +434,8 @@
       if (event.at === LOOP) {
         const remaining = target - LOOP;
         clearAll(); td = 0; eventIndex = 0; videoGateSeeking = false; guideGateSeeking = false; imageGate = null; imageGateWait = 0;
-        target = remaining;
+        primeCompactChat();
+        target = td + remaining;
       }
     }
     // Stop just before a blocked event so it fires when readiness arrives.
@@ -698,10 +709,21 @@
     }
     clearAll();
     td = 0; wait = 0; eventIndex = 0; videoGateSeeking = false; guideGateSeeking = false; imageGate = null; imageGateWait = 0;
+    primeCompactChat();
     if (motionOff() || ctx?.rest || ctx?.direct) {
       entryCompletion?.(ctx, 'completed'); wake(); return;
     }
-    if (ctx.from === 3) startFlight(ctx, false);
+    if (ctx.from === 3) {
+      startFlight(ctx, false);
+      // Let the editor follow the chat and flying outline into place. The
+      // existing panel fade ends at about 1.2s; start this fade 0.5s later
+      // and finish it 1.5s later, without delaying the rest of the flight.
+      const editor = root.querySelector('.as-edit');
+      const arrival = editor.animate([{ opacity: 0 }, { opacity: 1 }], {
+        delay: 550, duration: 2150, easing: 'ease-in-out', fill: 'backwards',
+      });
+      ctx.defer(() => arrival.cancel());
+    }
     // The live editor stays mounted while the decorative flight runs.
     wait = 1.8;
     window.deckLater(() => { if (ctx?.isCurrent?.()) entryCompletion?.(ctx, 'completed'); }, 1800, ctx);
