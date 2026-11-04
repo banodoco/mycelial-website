@@ -257,7 +257,7 @@
   const rng = (seed) => () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const layout = () => {
     const W = innerWidth, H = innerHeight;
-    view.mobile = (W <= 760 && (H >= W || H > 500)) || (W <= 1100 && H > W); // phones and portrait tablets; landscape tablets keep the wide layout
+    view.mobile = (W <= 760 && (H >= W || H > 500)) || (W <= 1100 && (H > W || H >= 650)); // phones, portrait tablets and compact landscape windows with room for the stack
     // Which side the flags hang on: the right of the stack beside the text, or its left under the text on a phone.
     const right = view.right = !view.mobile, out = right ? 1 : -1;
     PO.x = right ? 1900 : 210; TURN = right ? 4.5 : -4.5;

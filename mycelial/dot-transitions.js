@@ -1176,6 +1176,8 @@
   const name = document.createElement('a');
   name.className = 'dt-name';
   name.href = '/';
+  name.target = '_blank';
+  name.rel = 'noopener';
   name.textContent = 'Mycelial';
   name.setAttribute('aria-label', 'Mycelial home');
   name.tabIndex = -1;

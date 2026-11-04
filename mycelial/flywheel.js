@@ -27,7 +27,13 @@
   const TAU = Math.PI * 2, RAD = Math.PI / 180;
   const communityCount = hosts[0].querySelector('.fw-stat b span');
   let countStarted = null, countPending = false;
-  const setCommunityCount = (value) => { if (communityCount) communityCount.textContent = Math.round(value).toLocaleString('en-US'); };
+  const setCommunityCount = (value) => {
+    const text = Math.round(value).toLocaleString('en-US');
+    if (communityCount) communityCount.textContent = text;
+    // During the copy reveal the visible stat is a temporary paint layer.
+    // Keep its number in step with the canonical, accessible text.
+    document.querySelectorAll('.fw-stat.dt-copy-overlay b span').forEach((span) => { span.textContent = text; });
+  };
 
   // ---- The layer -------------------------------------------------------------------------
   const root = document.createElement('div');
@@ -1146,9 +1152,11 @@
     raf = 0;
     if (!running || ctx !== entryCtx || !ctx?.isCurrent?.()) return;
     const clock = window.deckNow?.() ?? now;
-    // Wait until the copy's reveal is finished: while it is in flight the
-    // deck paints a snapshot of the text, so counting earlier would be hidden.
-    if (countPending && activeStage === 0 && hosts[0].hasAttribute('data-settled')) {
+    // Start with the text reveal, including its temporary paint layer, so the
+    // number is already moving as it comes into view.
+    const statPaint = countPending && document.querySelector('.fw-stat.dt-copy-overlay');
+    const revealingStat = statPaint && (statPaint.style.maskImage || statPaint.style.webkitMaskImage).startsWith('radial-gradient(');
+    if (countPending && activeStage === 0 && (countStarted !== null || revealingStat || hosts[0].hasAttribute('data-settled'))) {
       if (countStarted === null) countStarted = clock;
       const progress = clamp((clock - countStarted) / 2000);
       setCommunityCount(20332 + 3600 * ease(progress));
