@@ -842,8 +842,24 @@
       if (at) masks.set(el, { at: { ...at }, r });
       else masks.delete(el);
       const alpha = at ? String(clamp(r / reach(el, at, bounds))) : hidden ? '0' : '1';
+      if (el.matches('.gap-copy')) {
+        const spreading = Boolean(at);
+        content.classList.toggle('gap-spreading', spreading);
+        if (spreading) {
+          // Use the same viewport origin, radius and soft edge as the regular
+          // copy mask. A fixed background shares one circle across wrapped
+          // inline fragments while the canonical text stays visible in place.
+          content.style.setProperty('--gap-x', `${at.x.toFixed(1)}px`);
+          content.style.setProperty('--gap-y', `${at.y.toFixed(1)}px`);
+          content.style.setProperty('--gap-inner', `${Math.max(0, r - SOFT).toFixed(1)}px`);
+          content.style.setProperty('--gap-outer', `${Math.max(0.01, r).toFixed(1)}px`);
+        } else {
+          for (const property of ['--gap-x', '--gap-y', '--gap-inner', '--gap-outer']) content.style.removeProperty(property);
+        }
+      }
       const property = el.matches('.gap-copy') ? '--gap-copy-alpha' : '--as-copy-alpha';
-      if (content.style.getPropertyValue(property) !== alpha) content.style.setProperty(property, alpha);
+      const ink = el.matches('.gap-copy') && at ? '1' : alpha;
+      if (content.style.getPropertyValue(property) !== ink) content.style.setProperty(property, ink);
       return;
     }
     if (at) {
@@ -915,9 +931,12 @@
     return Math.max(...[[b.left, b.top], [b.right, b.top], [b.left, b.bottom], [b.right, b.bottom]]
       .map(([x, y]) => Math.hypot(x - at.x, y - at.y))) + SOFT;
   };
-  // These two forward arrivals keep their picture pace and let only the copy breathe.
-  const copyExtra = (context) => context?.dir > 0 && !context.direct && !context.rest
-    && ((context.from === 0 && context.to === 1) || (context.from === 3 && context.to === 4)) ? 500 : 0;
+  // These forward arrivals keep their picture pace and let only the copy breathe.
+  const copyExtra = (context) => {
+    if (!(context?.dir > 0) || context.direct || context.rest) return 0;
+    if (context.from === 0 && context.to === 1) return 1000;
+    return (context.from === 3 && context.to === 4) || (context.from === 4 && context.to === 5) ? 500 : 0;
+  };
   const revealDuration = (slide, at, context) => Math.max(0, ...textOf(slide).map((el) => clamp(reach(el, at, context?.geometry?.box(el)) / 0.62, 1100, 1600) + copyExtra(context)));
   // Points spread through a text block, for threads to run to or from.
   const spots = (el, n, bounds) => {
@@ -1009,8 +1028,13 @@
     const tw = [];
     for (const el of textOf(s)) {
       const bounds = context.geometry?.box(el);
-      copy.paint(el, at, 0, bounds);
-      const far = reach(el, at, bounds);
+      // The third slide's copy spreads from its upper right on every layout,
+      // even where the mobile label and the travelling node sit on the left.
+      const origin = el.matches('.gap-copy') && context.from === 1
+        ? { x: (bounds || el.getBoundingClientRect()).right, y: at.y }
+        : at;
+      copy.paint(el, origin, 0, bounds);
+      const far = reach(el, origin, bounds);
       const duration = clamp(far / 0.62, 1100, 1600) + copyExtra(context);
       if (!still) {
         for (const p of spots(el, 7, bounds)) {
@@ -1023,7 +1047,7 @@
       const run = tween(motion?.duration || duration, motion?.ease || seep, (k) => {
         if (!s.classList.contains('on')) return;
         if (copyStates.get(s) !== state) return;
-        copy.paint(el, at, k * far, context.geometry?.box(el));
+        copy.paint(el, origin, k * far, context.geometry?.box(el));
       }, delay, context);
       tw.push(run);
     }

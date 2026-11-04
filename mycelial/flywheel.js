@@ -25,6 +25,9 @@
   const lerp = (a, b, f) => a + (b - a) * f;
   const THREAD = '240,200,119', NODE = '255,217,145', CORE = '255,241,214';
   const TAU = Math.PI * 2, RAD = Math.PI / 180;
+  const communityCount = hosts[0].querySelector('.fw-stat b span');
+  let countStarted = null, countPending = false;
+  const setCommunityCount = (value) => { if (communityCount) communityCount.textContent = Math.round(value).toLocaleString('en-US'); };
 
   // ---- The layer -------------------------------------------------------------------------
   const root = document.createElement('div');
@@ -82,11 +85,11 @@
     // Banodoco: the homepage's card, its live Discord digest (the captured snapshot, assets/cards/discord/fallback.json);
     // its icon is the Banodoco logo, the site's own B (assets/brand/mark-b-mask-96.png, as in the header's .logo .mark).
     { short: 'Where the community hangs out', name: 'Banodoco', line: 'Banodoco is where the community actually lives, day to day.', href: 'https://discord.gg/NnFxGvx94b', label: 'Join →', crop: [0.17, 0.83, 0.42], focus: '.fw-dc-p .fw-avs',
-      media: `<span class="fw-dc"><span class="fw-dc-ch"># daily_summaries</span><span class="fw-dc-t">H3 Tooling Week: Timeline Director, Studio Node Pack, and a Training Adapter Land</span><span class="fw-dc-p"><span class="fw-avs">${AV('persoon')}${AV('loreweavr')}${AV('ashmotv')}</span><b>20,000+</b> people</span></span>`,
+      media: `<span class="fw-dc"><span class="fw-dc-ch"># daily_summaries</span><span class="fw-dc-t">H3 Tooling Week: Timeline Director, Studio Node Pack, and a Training Adapter Land</span><span class="fw-dc-p"><span class="fw-avs">${AV('persoon')}${AV('loreweavr')}${AV('ashmotv')}</span><b>23,932</b> people</span></span>`,
       face: '<span class="fw-face fw-face-b"><i></i></span>',
       full: { name: 'Banodoco', line: 'Banodoco is where the community actually lives, day to day. Artists, engineers, and knowledge sharers, in one room — it is where the work gets shown, argued over, and picked up by someone else.',
         door: 'Join the Discord →', href: 'https://discord.gg/NnFxGvx94b',
-        stage: `<span class="fw-dc fw-dc-full"><span class="fw-dc-ch"># daily_summaries · 2026-08-17</span><span class="fw-dc-t">H3 Tooling Week: Timeline Director, Studio Node Pack, and a Training Adapter Land</span><span class="fw-dc-x">seesee75-commits dropped ComfyUI-MiniMaxH3-Director, a proper timeline editor for MiniMax H3 inside ComfyUI — storyboard prompts, first/last keyframes, image/video/audio references, joint audio, live sampling preview, retakes, and shot chaining.</span><span class="fw-dc-p"><span class="fw-avs">${AV('persoon')}${AV('loreweavr')}${AV('ashmotv')}</span><b>20,000+</b> people</span></span>` } },
+        stage: `<span class="fw-dc fw-dc-full"><span class="fw-dc-ch"># daily_summaries · 2026-08-17</span><span class="fw-dc-t">H3 Tooling Week: Timeline Director, Studio Node Pack, and a Training Adapter Land</span><span class="fw-dc-x">seesee75-commits dropped ComfyUI-MiniMaxH3-Director, a proper timeline editor for MiniMax H3 inside ComfyUI — storyboard prompts, first/last keyframes, image/video/audio references, joint audio, live sampling preview, retakes, and shot chaining.</span><span class="fw-dc-p"><span class="fw-avs">${AV('persoon')}${AV('loreweavr')}${AV('ashmotv')}</span><b>23,932</b> people</span></span>` } },
     // ADOS: its icon keeps its poster, with the events' own wordmark (Pilowlava, ados.events) over it.
     { short: 'Real-world events for the community', name: 'ADOS', line: 'ADOS events bring the community together in the real world.', href: 'https://ados.events/', crop: [0.6, 0.5, 1],
       media: '<img data-src="../assets/cards/ados/la-2025-thumb.jpg" alt="">', face: '<span class="fw-face fw-face-ados"><b>ADOS</b></span>',
@@ -929,7 +932,13 @@
       // and grows to the whole card where it fits. Transform and opacity only, so a grow repaints nothing.
       const a0 = icon ? fullSH[i] / 2 : (v.h / s0) / 2, s = lerp(s0, s1, g);
       const hw = (fullW * s1) / 2, hh = (FH * s1) / 2;
-      const tx = tall ? W / 2 : clamp(v.x, m_ + hw, W - m_ - hw), ty = clamp(v.y, top_ + hh, bottom - hh);
+      const tx = tall ? W / 2 : clamp(v.x, m_ + hw, W - m_ - hw);
+      // On the closing slide, mirror the lower icons' placement across the
+      // screen for the upper icons, including the same edge clearance.
+      const upperClosingIcon = activeStage === 2 && (i === 0 || i === 1 || i === 4);
+      const ty = upperClosingIcon
+        ? H - clamp(H - v.y, top_ + hh, bottom - hh)
+        : clamp(v.y, top_ + hh, bottom - hh);
       const cx = lerp(v.x, tx, g), cy = lerp(v.y, ty, g), ax = fullW / 2, ay = lerp(a0, FH / 2, g);
       if (el.style.visibility) el.style.visibility = '';
       el.style.pointerEvents = grT[i] ? 'auto' : 'none';
@@ -1137,6 +1146,14 @@
     raf = 0;
     if (!running || ctx !== entryCtx || !ctx?.isCurrent?.()) return;
     const clock = window.deckNow?.() ?? now;
+    // Wait until the copy's reveal is finished: while it is in flight the
+    // deck paints a snapshot of the text, so counting earlier would be hidden.
+    if (countPending && activeStage === 0 && hosts[0].hasAttribute('data-settled')) {
+      if (countStarted === null) countStarted = clock;
+      const progress = clamp((clock - countStarted) / 2000);
+      setCommunityCount(20332 + 3600 * ease(progress));
+      if (progress === 1) countPending = false;
+    }
     const stretch = ctx.from === 7 && ctx.to === 8 && !ctx.direct && !ctx.rest && hand && ta < HAND_END ? FLOWERS_HANDOFF_STRETCH : 1;
     const elapsed = Math.max(0, (clock - (last || clock)) / 1000) / stretch, dt = Math.min(0.05, elapsed);
     last = clock;
@@ -1255,6 +1272,11 @@
   };
   const enter = (ctx) => {
     questions.enter(ctx);
+    if (ctx.to === 8) {
+      countStarted = null;
+      countPending = !motionOff() && !ctx.direct && !ctx.rest;
+      setCommunityCount(countPending ? 20332 : 23932);
+    } else countPending = false;
     let resolve;
     const done = new Promise((r) => { resolve = r; });
     operation = { ctx, resolve };
@@ -1411,6 +1433,7 @@
 
   const syncMotion = () => {
     if (motionOff() && activeStage >= 0) {
+      if (countPending) { countPending = false; setCommunityCount(23932); }
       if (unhanding) endUnhand();
       stop();
       begun = false;

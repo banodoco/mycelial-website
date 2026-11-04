@@ -418,6 +418,22 @@
   .gap-copy-content h1 em { background-image: linear-gradient(176deg,
     rgb(251 231 189 / var(--gap-copy-alpha)) 0%, rgb(240 198 126 / var(--gap-copy-alpha)) 38%,
     rgb(217 154 74 / var(--gap-copy-alpha)) 70%, rgb(185 119 47 / var(--gap-copy-alpha)) 100%); }
+  /* The ink itself follows the same soft radial spread as the other slides. */
+  .gap-copy-content.gap-spreading .num,
+  .gap-copy-content.gap-spreading .num .act,
+  .gap-copy-content.gap-spreading .gap-plain,
+  .gap-copy-content.gap-spreading h1 em,
+  .gap-copy-content.gap-spreading .body {
+    color: transparent; -webkit-background-clip: text; background-clip: text;
+    background-attachment: fixed;
+    background-image: radial-gradient(circle at var(--gap-x, 100%) var(--gap-y, 0%),
+      rgb(var(--gap-ink)) var(--gap-inner, 0px), transparent var(--gap-outer, 0px));
+  }
+  .gap-copy-content.gap-spreading .num { --gap-ink: 224 171 94; }
+  .gap-copy-content.gap-spreading .num .act { --gap-ink: 184 169 143; }
+  .gap-copy-content.gap-spreading .gap-plain { --gap-ink: 239 230 214; }
+  .gap-copy-content.gap-spreading h1 em { --gap-ink: 240 198 126; }
+  .gap-copy-content.gap-spreading .body { --gap-ink: 184 169 143; }
   .gap-host .split > :first-child h1, .gap-host .split > :first-child .body { margin-left: auto; }
   .gp { position: relative; width: min(100%, 64vh); aspect-ratio: 1; margin: 0 auto; }
   .gp-axes { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
@@ -1694,7 +1710,7 @@
     <div class="split">
       <div class="gap-copy">
         <div class="gap-copy-content">
-          <h1>What's missing isn't another model, technical tool or hub. It's <em>an accessible place to create with all of it.</em></h1>
+          <h1><span class="gap-plain">What's missing isn't another model, technical tool or hub. It's </span><em>an accessible place to create with all of it.</em></h1>
           <div class="body">Hubs host the models; node graphs wire them together — both built for engineers. Closed tools are easy but limited. Nothing gives artists the power of open source without the nerd hole.</div>
         </div>
       </div>
@@ -1831,7 +1847,7 @@
 
     <section class="slide fw-host" data-v="f">
     <div class="fw-alt" role="img" aria-label="The community’s flywheel: artists on one side, model trainers, workflow and infrastructure builders and toolmakers on the other, joined by a ring turning round Astrid; the artists inspire everyone, and everyone equips the artists and each other"></div>
-    <p class="fw-stat"><b>20,000+</b> people · Banodoco Discord · <a href="https://discord.gg/NnFxGvx94b" target="_blank" rel="noopener">Join →</a></p>
+    <p class="fw-stat"><b aria-label="23,932"><span aria-hidden="true">23,932</span></b> people · Banodoco Discord · <a href="https://discord.gg/NnFxGvx94b" target="_blank" rel="noopener">Join →</a></p>
     <div class="num">09<span class="act">The community</span></div>
     <div class="split">
       <div>
@@ -1859,7 +1875,7 @@
   </section>
 
   <section class="slide fw-host fw-top" data-v="f">
-    <div class="fw-alt" role="img" aria-label="The flywheel grown wider round a glowing core, with six cards round it, each plugging energy into the ring: above, Arca Gidan, an open source AI art competition, ArtCompute, micro-grants for open AI work, and Astrid, a new kind of video editor; below, Banodoco, the community’s home with 20,000+ people, 2RP, a publication coming soon, and ADOS, events that bring the community together"></div>
+    <div class="fw-alt" role="img" aria-label="The flywheel grown wider round a glowing core, with six cards round it, each plugging energy into the ring: above, Arca Gidan, an open source AI art competition, ArtCompute, micro-grants for open AI work, and Astrid, a new kind of video editor; below, Banodoco, the community’s home with 23,932 people, 2RP, a publication coming soon, and ADOS, events that bring the community together"></div>
     <div class="num">10<span class="act">How we accelerate it</span></div>
 <div class="split">
       <div>

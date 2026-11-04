@@ -233,7 +233,10 @@
   let coreOwner = null;
   let coreHeld = false; // slide 8 is drawing the core (on its way out, or on its way back here): this picture leaves it out
   let pulses = [], waves = [], nextPulse = 0, lastFrom = -1, glintAt = -9;
-  const k01 = (t0, d) => clamp((ta - t0) / d);
+  // Advance the picture growth independently of the avatar's flight on 6 → 7.
+  // Its scene clock is stretched, so compensate to lead by half a real second.
+  let growthLead = 0;
+  const k01 = (t0, d) => clamp((ta + growthLead - t0) / d);
 
   // ---- Drawing ---------------------------------------------------------------------------
   const lensPts = (side, n, inset) => { // a vesica edge: side -1 left, +1 right
@@ -503,7 +506,7 @@
   const stop = () => { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; };
   const reset = () => {
     timers.forEach(window.deckCancelLater); timers = [];
-    pulses = []; waves = []; ta = 0; fly = null; glintAt = -9; coreHeld = false; coreOwner = null;
+    pulses = []; waves = []; ta = 0; fly = null; growthLead = 0; glintAt = -9; coreHeld = false; coreOwner = null;
     root.classList.remove('is-labelled');
     canvas.style.transition = ''; canvas.style.opacity = ''; Object.values(labels).forEach((el) => { el.style.opacity = ''; });
     if (g) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height); }
@@ -532,6 +535,7 @@
     if (!layout()) return false;
     const b = root.getBoundingClientRect(), x = r.left - b.left, y = r.top - b.top;
     ta = FLIGHT_START; // the lens finishes tracing as she reaches it
+    growthLead = 0.5 / STACK_ARRIVAL_STRETCH;
     fly = { t0: ta - FLY.charge, x, y, c: u0, landed: ta + FLY.travel };
     // The stack scene owns source visibility for this forward transfer.
     draw(); // Paint the travelling mink before releasing the source-owned copy.
