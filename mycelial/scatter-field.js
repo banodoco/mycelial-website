@@ -181,7 +181,6 @@
     if (rewind) endRewind(); // its motes were placed for the old screen
     if (!slide.classList.contains('on')) return;
     entryCtx = ctx;
-    stop();
     const oldW = w, oldH = h;
     resize();
     if (oldW && oldH) {
@@ -198,8 +197,10 @@
       slide.classList.remove('sf-arrive');
     }
     aim();
-    entryFinish?.(ctx, 'completed');
-    start(false, ctx);
+    if (!w || !h) return false;
+    if (!running) start(false, ctx);
+    else if (motionOff()) frame(performance.now(), ctx);
+    return true;
   };
 
   // E: the field opens in the right half beside the text. F: below the text, full width.
@@ -477,12 +478,12 @@
       y: (Math.min(...boxes.map((r) => r.top)) + Math.max(...boxes.map((r) => r.bottom))) / 2 - base.top,
     } : { x: cx, y: cy };
   };
-  const dissolve = () => {
+  const dissolve = (ctx) => {
     collageSlide.classList.add('vc-dissolve'); // both slides hold still while they cross
     slide.classList.add('sf-arrive');
     const clear = () => { collageSlide.classList.remove('vc-dissolve'); slide.classList.remove('sf-arrive'); };
-    const timer = window.deckLater(clear, 900);
-    window.deckNav?.signal?.addEventListener('abort', () => { window.deckCancelLater(timer); clear(); }, { once: true });
+    const cancel = ctx.transitionLater(clear, 900);
+    ctx.transitionDefer(() => { cancel(); clear(); });
     resize(); aim();
     const base = stage.getBoundingClientRect();
     // The collage's centre, which the picture bursts outward from.
@@ -744,7 +745,7 @@
     if (running) stop();
     steerX = steerY = leadX = leadY = camX = camY = 0;
     pointer = null; resting = true; restAt = null;
-    if (ctx.from === 0 && !motionOff() && !ctx.rest && !ctx.direct) dissolve();
+    if (ctx.from === 0 && !motionOff() && !ctx.rest && !ctx.direct) dissolve(ctx);
     start(!ctx.rest, ctx);
     return promise;
   };
@@ -759,7 +760,19 @@
     if (ctx.to === 2 && !ctx.direct && !ctx.rest && !motionOff()) ctx.present(slide, 'dt-leaving');
     stop();
   };
-  window.deckRegisterScene?.([1], { enter: sceneEnter, exit: sceneExit, resize: sceneResize });
+  const sceneRestore = (ctx) => {
+    if (rewind) endRewind();
+    if (ctx.to !== 1) return true;
+    if (motes.length || slide.classList.contains('sf-arrive')) {
+      motes = []; glide = 0; boost = 0; since = 9; settled = 1;
+      shift = { x: 0, y: 0, age: 9 };
+    }
+    collageSlide?.classList.remove('vc-dissolve');
+    slide.classList.remove('sf-arrive');
+    aim();
+    return true;
+  };
+  window.deckRegisterScene?.([1], { enter: sceneEnter, exit: sceneExit, restore: sceneRestore, resize: sceneResize });
   if (collageSlide) {
     new MutationObserver(() => { if (collageSlide.classList.contains('on')) setTimeout(() => whenIdle(readStills), 6500); })
       .observe(collageSlide, { attributes: true, attributeFilter: ['class'] });

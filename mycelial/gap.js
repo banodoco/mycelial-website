@@ -186,8 +186,8 @@
       flights.push({ el, ...p, x0: p.x1, y0: p.y1, cx: p.x1, cy: p.y1, r0: 1, c0: tint(el), c1: tint(el),
         delay: lead + 0.45 + i * 0.03, dur: 0.42, dot: true });
     });
-    later(150, () => { if (ctx?.isCurrent?.()) root.classList.add('is-drawn'); });
-    later(900 + lead * 1000, () => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); });
+    later(150, () => { if (ctx?.isTransitionCurrent?.()) root.classList.add('is-drawn'); });
+    later(900 + lead * 1000, () => { if (ctx?.isTransitionCurrent?.()) root.classList.add('is-labelled'); });
     fire(ctx);
   };
 
@@ -227,8 +227,8 @@
         r0: 1.1, r1: 1.1, c0: rgb(d.color), c1: [224, 171, 94], delay: rnd() * 0.25, dur: 0.75 + rnd() * 0.35, dot: false,
       });
     });
-    later(950, () => { if (ctx?.isCurrent?.()) root.classList.add('is-drawn'); });
-    later(1500, () => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); });
+    later(950, () => { if (ctx?.isTransitionCurrent?.()) root.classList.add('is-drawn'); });
+    later(1500, () => { if (ctx?.isTransitionCurrent?.()) root.classList.add('is-labelled'); });
     fire(ctx);
   };
 
@@ -256,7 +256,7 @@
     return { x, y, r, c };
   };
   const fly = (now, ctx = visitCtx, generation = forwardGeneration) => {
-    if (generation !== forwardGeneration || ctx !== visitCtx || !ctx?.isCurrent?.()) return;
+    if (generation !== forwardGeneration || ctx !== visitCtx || !ctx?.isTransitionCurrent?.()) return;
     forwardRaf = 0;
     const clock = window.deckNow?.() ?? now;
     flightTime += Math.max(0, (clock - (flightLast || clock)) / 1000);
@@ -337,7 +337,7 @@
     // Once the field has drawn a frame, its dots are where they will be met.
     departRaf = requestAnimationFrame(() => {
       departRaf = 0;
-      if (signal?.aborted || slide.classList.contains('on') || !fieldSlide.classList.contains('on')) return;
+      if (signal?.aborted || !ctx?.isTransitionCurrent?.() || slide.classList.contains('on') || !fieldSlide.classList.contains('on')) return;
       const snap = field.snapshot();
       size();
       const targets = snap.named.slice().sort((a, b) => b.p - a.p), spare = snap.dust.slice();
@@ -402,7 +402,9 @@
       return promise;
     }
     retireForward();
-    later(700, () => { if (!slide.classList.contains('on')) reset(); });
+    // A direct navigation can settle before this departure tail has elapsed.
+    // Keep the cleanup visit-owned, just like the motion it retires.
+    timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) reset(); }, 700, ctx));
   };
   // On a first load the Mycelial mark plays first (dot-transitions.js): the tools bloom once it has landed.
   const html = document.documentElement;
@@ -422,20 +424,23 @@
   keep.observe(slide, { attributes: true, attributeFilter: ['class'] });
   if (fieldSlide) keep.observe(fieldSlide, { attributes: true, attributeFilter: ['class'] });
   window.addEventListener('deck-motion', () => { if (motionOff() && slide.classList.contains('on')) enter(0, visitCtx); });
-  const sceneResize = (ctx) => {
+  const sceneRestore = (ctx) => {
     if (backs.length || backRaf || departRaf) endDepart();
     if (waiting) { waiting.disconnect(); waiting = null; }
     retireForward(Boolean(backs.length || backRaf || departRaf));
     timers.forEach(window.deckCancelLater); timers = [];
-    if (near()) size();
-    if (!slide.classList.contains('on')) return;
+    if (ctx.to !== 2) { reset(); return true; }
     // Flight endpoints were measured in the old viewport. Finish at the new
     // chart instead of leaving old pixel coordinates suspended over it.
     show(false);
     g?.clearRect(0, 0, innerWidth, innerHeight);
     root.classList.add('is-drawn', 'is-labelled');
     tools.forEach((el) => { el.classList.add('is-in'); el.style.removeProperty('--m'); });
-    entryFinish?.(ctx, 'completed');
+    return true;
   };
-  window.deckRegisterScene?.([2], { enter: sceneEnter, exit: sceneExit, resize: sceneResize });
+  const sceneResize = (ctx) => {
+    if (near()) size();
+    return ctx.to !== 2 || (sky.width > 0 && sky.height > 0);
+  };
+  window.deckRegisterScene?.([2], { enter: sceneEnter, exit: sceneExit, restore: sceneRestore, resize: sceneResize });
 })();

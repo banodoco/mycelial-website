@@ -1222,7 +1222,7 @@
       if (cancelHandoffFrame === cancel) cancelHandoffFrame = null;
     };
     cancelHandoffFrame = cancel;
-    ctx.defer(cancel);
+    ctx.transitionDefer(cancel);
   };
 
   // The reverse 9→8 hand-off returns the shared core and crowd to Flowers in the same picture.
@@ -1231,7 +1231,7 @@
   const endUnhand = (result = 'completed') => {
     if (!unhanding) return;
     unhanding = null;
-    window.AstridFlowers?.holdCore?.(false);
+    window.AstridFlowers?.holdCore?.(false, reverseCtx);
     if (activeStage < 0) { if (g) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height); } }
     if (reverseCtx) reverseCtx.present(flSlide, '', 'dt-return dt-await');
     if (activeStage >= 0) return;
@@ -1267,7 +1267,9 @@
     const withinWheel = ctx.from >= 8 && ctx.from <= 10 && activeStage >= 0 && begun;
     const target = ctx.to - 8;
     const clearing = withinWheel && !ctx.direct && !motionOff();
-    const duration = 1.15 + 0.45 * Math.abs(target - m);
+    // Give the forward opening into the final slide an extra half-second;
+    // the wheel, mark, copy clearance and its deadline share this duration.
+    const duration = 1.15 + 0.45 * Math.abs(target - m) + (ctx.from === 9 && ctx.to === 10 ? 0.5 : 0);
     if (clearing) {
       const release = ctx.holdText(() => {
         if (!ctx.isCurrent()) return;
@@ -1325,7 +1327,7 @@
       const snap = window.AstridFlowers.prepareReturn(ctx);
       if (!snap) { activeStage = -1; setVisible(false); stop(); finishOperation(ctx); return done; }
       if (hand?.snapshot === snap && !hand.painted) {
-        window.AstridFlowers.holdCore(false);
+        window.AstridFlowers.holdCore(false, ctx);
         activeStage = -1; setVisible(false); html.classList.remove('fw-quiet');
         stop(); cardsRoot.inert = true; finishOperation(ctx);
         return done;
@@ -1339,7 +1341,7 @@
       }
       unhanding = { shown: false };
       activeStage = -1;
-      window.AstridFlowers.holdCore?.(true);
+      window.AstridFlowers.holdCore?.(true, ctx);
       ctx.present(flSlide, 'dt-return dt-await');
       T = T_HAND; ta = Math.min(ta, HAND_END);
       entryCtx = ctx; stop(); start(ctx);
@@ -1364,7 +1366,7 @@
         stop();
         root.classList.remove('is-on'); cardsRoot.classList.remove('is-on');
         html.classList.remove('fw-quiet'); cardsRoot.inert = true;
-        window.AstridFlowers?.holdCore?.(false);
+        window.AstridFlowers?.holdCore?.(false, reverseCtx);
         releaseText(ctx);
         finishOperation(ctx);
       }
@@ -1379,7 +1381,7 @@
       html.classList.toggle('fw-quiet', target < 2);
       setVisible(true);
     }
-    if (!layout()) { setVisible(false); releaseText(ctx); finishOperation(ctx); return 'completed'; }
+    if (!layout()) { releaseText(ctx); finishOperation(ctx, 'failed'); return false; }
     stop();
     begun = true; morph = null; hand = null; m = activeStage; ta = Math.max(ta, T.chips + 1);
     if (m >= 1) { attach = { dir: 1, t0: ta - T.chips - 1 }; boost = 1; relay = { start: ta, arrivals: 6, next: 0, launch: ta + 1, attacks: chips.map(() => 0) }; }
@@ -1391,7 +1393,19 @@
     start(ctx);
     return 'completed';
   };
-  window.deckRegisterScene([8, 9, 10], { enter, exit, resize, supersede: true });
+  const restore = (ctx) => {
+    cancelHandoffFrame?.();
+    if (ctx.to < 8 || ctx.to > 10) { if (unhanding) endUnhand(); return true; }
+    activeStage = ctx.to - 8; entryCtx = ctx;
+    if (!layout()) return false;
+    begun = true; morph = null; hand = null; m = activeStage;
+    ta = Math.max(ta, T.chips + 1);
+    if (m >= 1) { attach = { dir: 1, t0: ta - T.chips - 1 }; boost = 1; }
+    lastM = -1; frame(); setVisible(true, activeStage !== 0);
+    releaseText(ctx); finishOperation(ctx); start(ctx);
+    return true;
+  };
+  window.deckRegisterScene([8, 9, 10], { enter, exit, restore, resize, supersede: true });
 
   const syncMotion = () => {
     if (motionOff() && activeStage >= 0) {

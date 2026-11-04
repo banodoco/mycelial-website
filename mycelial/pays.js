@@ -230,6 +230,7 @@
   const FIRST = 1.9, EVERY = [1.3, 2.6], WAVE = { v: 520, band: 34, life: 2.4 };
   let ta = 0, running = false, raf = 0, last = 0, timers = [], entryCtx = null, reverseCtx = null;
   let entryFinish = null, reverseFinish = null;
+  let coreOwner = null;
   let coreHeld = false; // slide 8 is drawing the core (on its way out, or on its way back here): this picture leaves it out
   let pulses = [], waves = [], nextPulse = 0, lastFrom = -1, glintAt = -9;
   const k01 = (t0, d) => clamp((ta - t0) / d);
@@ -499,14 +500,18 @@
   const stop = () => { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; };
   const reset = () => {
     timers.forEach(window.deckCancelLater); timers = [];
-    pulses = []; waves = []; ta = 0; fly = null; glintAt = -9; coreHeld = false;
+    pulses = []; waves = []; ta = 0; fly = null; glintAt = -9; coreHeld = false; coreOwner = null;
     root.classList.remove('is-labelled');
     canvas.style.transition = ''; canvas.style.opacity = ''; Object.values(labels).forEach((el) => { el.style.opacity = ''; });
     if (g) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, canvas.width, canvas.height); }
   };
   const begin = (ctx = entryCtx) => {
     entryCtx = ctx;
+    // Flowers may already own the returning core when source.exit runs before
+    // this target's enter. Reset the old visit without releasing that claim.
+    const returningCore = coreOwner === ctx && coreHeld;
     reset();
+    if (returningCore) { coreOwner = ctx; coreHeld = true; }
     if (!layout()) return;
     if (motionOff() || ctx?.rest || ctx?.direct) { ta = 9; nextPulse = ta + 0.3; root.classList.add('is-labelled'); draw(); entryFinish?.(ctx, 'completed'); if (!motionOff()) { document.documentElement.classList.add('pa-quiet'); start(ctx); } return; }
     ta = -0.2; nextPulse = FIRST;
@@ -621,7 +626,7 @@
         ctx.defer(releaseFlightText);
       }
       Promise.resolve(window.deckStackFlight?.collapsed(ctx)).then((result) => {
-        if (!ctx.isCurrent() || result === 'cancelled') return;
+        if (!ctx.isTransitionCurrent() || result === 'cancelled') return;
         if (!flyIn(ctx)) { releaseFlightText(); window.deckStackFlight?.ready(ctx); begin(ctx); }
       });
     } else begin(ctx);
@@ -638,7 +643,7 @@
         flightTextRelease = ctx.holdText(() => endUnfly(ctx), (duration + 0.3) * 1000);
         ctx.defer(releaseFlightText);
       }
-      queueMicrotask(() => { if (ctx.isCurrent() && !unfly(ctx)) { releaseFlightText(); reverseFinish?.(ctx, 'completed'); } });
+      queueMicrotask(() => { if (ctx.isTransitionCurrent() && !unfly(ctx)) { releaseFlightText(); reverseFinish?.(ctx, 'completed'); } });
       return promise;
     }
     stop(); fly = null; slide.classList.remove('pa-arrive');
@@ -646,22 +651,34 @@
     timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) reset(); }, 700, ctx));
     return undefined;
   };
-  const sceneResize = (ctx) => {
-    endUnfly();
+  const sceneRestore = (ctx) => {
+    endUnfly(ctx);
     if (ctx.to === 6) {
-      entryCtx = ctx; stop(); fly = null; window.deckStackFlight?.ready(ctx);
+      coreOwner = null; coreHeld = false;
+      canvas.style.transition = ''; canvas.style.opacity = '';
+      labels.local.style.opacity = labels.hosted.style.opacity = labels.core.style.opacity = '';
+      if (lens) draw();
+    }
+    if (ctx.to === 6 && (fly || ta < END)) {
+      entryCtx = ctx; fly = null; window.deckStackFlight?.ready(ctx);
       timers.forEach(window.deckCancelLater); timers = [];
       slide.classList.remove('pa-arrive');
       ta = END + 0.2; root.classList.add('is-labelled');
       document.documentElement.classList.add('pa-quiet');
-      pulses = []; waves = [];
-      if (layout()) draw();
-      entryFinish?.(ctx, 'completed');
+      if (!layout()) return false;
+      draw(); entryFinish?.(ctx, 'completed');
       if (!motionOff()) start(ctx);
     }
     releaseFlightText();
+    return true;
   };
-  window.deckRegisterScene?.([6], { enter: sceneEnter, exit: sceneExit, resize: sceneResize });
+  const sceneResize = (ctx) => {
+    if (ctx.to !== 6) return true;
+    if (!layout()) return false;
+    draw();
+    return true;
+  };
+  window.deckRegisterScene?.([6], { enter: sceneEnter, exit: sceneExit, restore: sceneRestore, resize: sceneResize });
   const syncMotion = () => {
     if (motionOff() && slide.classList.contains('on')) { endUnfly(); stop(); begin(); }
     else if (document.getElementById('overview')?.classList.contains('on')) { endUnfly(); stop(); }
@@ -680,8 +697,11 @@
       return lens && { x: b.left + lens.c.x, y: b.top + lens.c.y, w: lens.w, h: lens.h, cell };
     },
     // Going on to the foundation, this picture carries on: its core, its builders and everyone else, in viewport pixels.
-    snapshot() {
-      if (!lens || ta < END) return null;
+    snapshot({ rest = false } = {}) {
+      // A reverse handoff needs this slide's destination even when a prior
+      // visit has retired, or the viewer loaded Flowers directly.
+      if (rest && !layout()) return null;
+      if (!lens || (!rest && ta < END)) return null;
       const b = root.getBoundingClientRect(), v = (p) => ({ x: b.left + p.x, y: b.top + p.y });
       return {
         core: { ...v(lens.c), w: lens.w, h: lens.h, cell },
@@ -693,9 +713,14 @@
     },
     // Slide 8 carries the core on, and brings it back on a step back: this picture leaves it out meanwhile, and
     // takes it back in the frame slide 8 lets go of its own, so only one mink is ever on screen.
-    holdCore(on) { coreHeld = on; if (!on && lens && slide.classList.contains('on')) draw(); },
-    hide() { // fade out as the next slide's picture takes over
-      coreHeld = true; draw(); // the core goes at once: slide 8 draws it from this frame, in the same place
+    holdCore(on, owner) {
+      if (on) { if (!owner?.isTransitionCurrent?.()) return; coreOwner = owner; coreHeld = true; }
+      else { if (!owner || coreOwner !== owner) return; coreOwner = null; coreHeld = false; }
+      if (!on && lens && slide.classList.contains('on')) draw();
+    },
+    hide(owner) { // fade out as the next slide's picture takes over
+      if (!owner?.isTransitionCurrent?.()) return;
+      coreOwner = owner; coreHeld = true; draw(); // the core goes at once: slide 8 draws it from this frame, in the same place
       canvas.style.transition = 'opacity .35s ease'; canvas.style.opacity = '0';
       labels.local.style.opacity = labels.hosted.style.opacity = labels.core.style.opacity = '0';
     },

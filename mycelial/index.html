@@ -383,14 +383,15 @@
   .slide.dt-rewind:not(.on) { opacity: 1; transition: none; }
   .slide.dt-rewind > :not(.num):not(.split):not(.fw-stat), .slide.dt-rewind > .split > :not(:first-child) { opacity: 1; transition: none; }
   .slide.dt-rewind:not(.dt-leaving) > .split > :first-child, .slide.dt-rewound:not(.on) > .split > :first-child { opacity: 0; }
+  .slide.ac-host.dt-return { transform: none; transition: opacity .6s ease; }
   .slide.dt-return { z-index: 1; } /* its text over the picture coming back into it */
   .slide.st-host.dt-rewind.dt-leaving > .st { opacity: 1; transition: none; }
-  .slide.st-host.dt-rewind { transform: none; }
+  .slide.st-host.dt-rewind, .slide.as-host.dt-rewind { transform: none; }
   .slide.dt-rewind.dt-over { z-index: 2; } /* unless what comes back flies in over the earlier picture (slide 7's mink) */
   .slide.dt-return > :not(.num):not(.split), .slide.dt-return > .split > :not(:first-child) { transition: opacity .6s ease; }
   .slide.dt-await > :not(.num):not(.split), .slide.dt-await > .split > :not(:first-child) { opacity: 0; transition: none; }
   /* In F the label moves into the text column, directly above the headline. */
-  html[data-ver="f"] .split > :first-child > .num { margin-bottom: 1.1rem; }
+  html[data-ver="f"] .split > :first-child > .num, html[data-ver="f"] .gap-copy-content > .num { margin-bottom: 1.1rem; }
   /* F's slide 2: text wide and centred on top, the field full width beneath. */
   html[data-ver="f"] .sf-host { justify-content: flex-start; padding-top: max(72px, 12vh); text-align: center; }
   html[data-ver="f"] .sf-host > .split { grid-template-columns: minmax(0, 1fr); justify-items: center; }
@@ -404,6 +405,19 @@
   /* Version F, slide 3: the tools on hard↔easy and limited↔powerful (gap.js). Chart left, text right. */
   .gap-host .split { grid-template-columns: minmax(300px, 44vw) minmax(0, 1fr); }
   .gap-host .split > :first-child { order: 2; text-align: right; }
+  /* Keep slide 3's semantic text on one stable paint path. Its ink fades,
+     without promoting/demoting a transparent or drifting copy surface. */
+  .gap-copy { position: relative; z-index: 1; }
+  .gap-copy, .gap-copy-content { opacity: 1 !important; transform: none !important;
+    mask-image: none !important; -webkit-mask-image: none !important; }
+  .gap-host .split > .vis { position: relative; z-index: 0; }
+  .gap-copy-content { --gap-copy-alpha: 1; }
+  .gap-copy-content h1, .gap-copy-content .body b { color: rgb(239 230 214 / var(--gap-copy-alpha)); }
+  .gap-copy-content .body, .gap-copy-content .act { color: rgb(184 169 143 / var(--gap-copy-alpha)); }
+  .gap-copy-content .num { color: rgb(224 171 94 / var(--gap-copy-alpha)); }
+  .gap-copy-content h1 em { background-image: linear-gradient(176deg,
+    rgb(251 231 189 / var(--gap-copy-alpha)) 0%, rgb(240 198 126 / var(--gap-copy-alpha)) 38%,
+    rgb(217 154 74 / var(--gap-copy-alpha)) 70%, rgb(185 119 47 / var(--gap-copy-alpha)) 100%); }
   .gap-host .split > :first-child h1, .gap-host .split > :first-child .body { margin-left: auto; }
   .gp { position: relative; width: min(100%, 64vh); aspect-ratio: 1; margin: 0 auto; }
   .gp-axes { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
@@ -508,6 +522,10 @@
   .ac-seed em { position: absolute; left: -24px; top: -24px; width: 50px; height: 50px; } /* the empty ring's question mark */
   .ac-seed b { position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%; opacity: 0;
     background: radial-gradient(circle at 40% 35%, #fffaf0, #ffd991 55%, #e0ab5e); box-shadow: 0 0 14px #ffd991aa; }
+  /* Keep the complete core picture and its copy centered on portrait tablets. */
+  @media (min-width: 761px) and (max-width: 1100px) and (orientation: portrait) {
+    html[data-ver="f"] .ac-host { padding-bottom: 25vh; }
+  }
   /* Version F, slide 5: Astrid herself (demo.js). Text centred on top; beneath it the
      agent's chat beside the editor's preview, on the editor's timeline: the homepage's own pieces, in its dusk palette.
      The network stays visible behind; the panels are a touch translucent so its threads read around them. */
@@ -515,17 +533,29 @@
   html[data-ver="f"] .as-host > .split { grid-template-columns: minmax(0, 1fr); justify-items: center; flex-shrink: 0; }
   html[data-ver="f"] .as-host h1 { max-width: 22em; margin: 0 auto; text-wrap: balance; font-size: clamp(1.8rem, 2.9vw, 3rem); }
   html[data-ver="f"] .as-host .body { display: none; }
-  .as-link { color: inherit; text-decoration: underline 1px transparent; text-underline-offset: .14em; transition: text-decoration-color .2s ease; }
-  .as-link:hover, .as-link:focus-visible { text-decoration-color: #ecc57eb3; }
+  /* One semantic heading throughout the timed reveal; keep its paint surface
+     opaque and stationary while the ink itself fades, as on slide 3. */
+  .as-copy { --as-copy-alpha: 1; position: relative; z-index: 2; opacity: 1 !important; transform: none !important;
+    mask-image: none !important; -webkit-mask-image: none !important; }
+  .as-copy h1 { color: rgb(239 230 214 / var(--as-copy-alpha)); }
+  .as-copy .body { color: rgb(184 169 143 / var(--as-copy-alpha)); }
+  .as-copy h1 em { background-image: linear-gradient(176deg,
+    rgb(251 231 189 / var(--as-copy-alpha)) 0%, rgb(240 198 126 / var(--as-copy-alpha)) 38%,
+    rgb(217 154 74 / var(--as-copy-alpha)) 70%, rgb(185 119 47 / var(--as-copy-alpha)) 100%); }
+  .as-link { position: relative; color: inherit; text-decoration: none; }
+  .as-link::after { content: ''; position: absolute; left: 0; right: 0; bottom: .12em; height: 1px;
+    background: #ecc57eb3; pointer-events: none; transform: scaleX(0); transform-origin: left; }
+  .as-link.is-underlined::after { transform: scaleX(1); transition: transform .65s cubic-bezier(.2,.7,.2,1); }
+  html.deck-motion-off .as-link::after { transform: scaleX(1); transition: none; }
+  @media (prefers-reduced-motion: reduce) { .as-link::after { transform: scaleX(1); transition: none; } }
   .as-link:focus-visible { outline: 1px solid #ecc57e88; outline-offset: 4px; border-radius: 3px; }
   .as { position: relative; flex: 1 1 auto; min-height: 0; margin: 24px 0 max(74px, 9.5vh); user-select: none; -webkit-user-select: none;
     --as-panel: rgb(36 33 27 / .9); --as-card: #2c2822; --as-line: #4a4337; --as-field: rgb(27 25 21 / .9); --as-ink: #f3eee4; --as-muted: #aca395; --as-orange: #ed6b23; --as-sky: #38bdf8;
     --as-gap: 14px; font-family: Inter, "DM Sans", ui-sans-serif, system-ui, sans-serif; text-align: left; }
-  .as-stage { position: absolute; left: 50%; top: 0; bottom: 0; width: min(1180px, 100%); transform: translateX(-50%);
+  /* Centre through layout; retain local stacking without transforming the editor. */
+  .as-stage { position: absolute; z-index: 0; left: 0; right: 0; top: 0; bottom: 0; margin-inline: auto; width: min(1180px, 100%);
     display: grid; grid-template-columns: minmax(0, 31fr) minmax(0, 69fr); grid-template-rows: minmax(0, 1fr); column-gap: var(--as-gap); row-gap: 12px; }
-  /* The inactive editor stays measurable for copies, but only demo's own
-     reverse to slide 4 may keep painting outside the selected slide. */
-  .as-host:not(.on):not([data-as-rewind]) [data-astrid-demo],
+  /* Stack's return still owns dt-await; Core↔Demo uses the live slide fade. */
   .as-host.dt-await [data-astrid-demo] { visibility: hidden; }
   .as-chat { grid-column: 1; grid-row: 1; }
   .as-edit { grid-column: 2; grid-row: 1; }
@@ -614,14 +644,8 @@
   .as-playhead { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; margin-left: -1px; will-change: transform; background: var(--as-sky); box-shadow: 0 0 6px rgb(56 189 248 / .5); pointer-events: none; z-index: 2; }
   .as-playhead::before { content: ""; position: absolute; top: 0; left: -4px; width: 10px; height: 8px; border-radius: 2px 2px 5px 5px; background: var(--as-sky); }
   .as.is-resetting .as-clip { opacity: 0; }
-  /* Arriving from slide 4 the panels draw out of the rings (demo.js): hidden while the frames form, then the shells and their contents resolve. */
-  .as-flight-flier { position: fixed; left: 0; top: 0; width: 23px; height: 20px; z-index: 3; display: none; pointer-events: none; transform-origin: 0 0; image-rendering: pixelated; }
-  .as-flight { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; display: none; }
-  .as-panel { transition: opacity .45s ease; } .as-panel > * { transition: opacity .5s ease .2s; }
-  .as.is-morphing .as-panel, .as.is-morphing .as-panel > * { opacity: 0; transition: none; }
-  /* Going back to slide 4, the panels fade as their frames fold back into the rings (demo.js). */
-  .as.as-unmorph .as-panel, .as.as-unmorph .as-panel > * { opacity: 0; transition: opacity .45s ease; }
-  .as.is-minkless .as-avatar img { visibility: hidden; }
+  /* Core↔Demo fades the one live editor with its slide. Its panels and
+     avatar never enter a separate hidden/morphing presentation state. */
   @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px) {
     html[data-ver="f"] .as-host { padding-top: 52px; }
     html[data-ver="f"] .as-host h1 { font-size: clamp(1.4rem, 5.8vw, 1.8rem); max-width: 22ch; }
@@ -846,11 +870,12 @@
   .st-chat-head { display: flex; align-items: center; gap: 10px; padding: 0 18px; border-bottom: 1px solid var(--as-line); font-size: 17px; font-weight: 600; }
   .st-avatar { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #3a3128; }
   .st-avatar img { width: 30px; height: 26px; image-rendering: pixelated; transform: translate(1px, 3px); }
-  .st-rows { display: grid; grid-template-columns: 1fr 1fr; column-gap: 34px; padding: 14px 22px 8px; }
-  .st-rows > div { display: flex; flex-direction: column; gap: 9px; }
-  .st-rows > div + div { padding-top: 38px; }
-  .st-msg { align-self: flex-start; padding: 8px 15px; border-radius: 18px; background: var(--as-orange); color: #25241f; font-size: 15.5px; font-weight: 500; }
-  .st-rows > div + div .st-msg { align-self: flex-end; }
+  .st-rows { display: flex; flex-direction: column; justify-content: flex-end; gap: 7px; padding: 10px 18px; overflow: hidden; }
+  .st-rows > * { flex-shrink: 0; }
+  .st-rows > :first-child { margin-top: auto; }
+  .st-msg, .st-reply { max-width: 88%; padding: 8px 15px; border-radius: 18px; font-size: 15.5px; }
+  .st-msg { align-self: flex-end; background: var(--as-orange); color: #25241f; }
+  .st-reply { align-self: flex-start; background: var(--as-card); border: 1px solid var(--as-line); color: var(--as-ink); }
   .st-step { display: grid; grid-template-columns: 18px 1fr; column-gap: 10px; align-items: center; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--as-line); background: rgb(27 25 21 / .75); font-size: 15px; }
   .st-step svg { grid-row: 1 / span 2; color: #7fbf8f; }
   .st-step code { grid-column: 2; font: 400 13px/1.35 ui-monospace, "SF Mono", Menlo, monospace; color: var(--as-muted); }
@@ -871,12 +896,13 @@
   .st-mod svg { color: var(--as-ink); }
   .st-link { flex: none; width: 14px; height: 1px; background: var(--as-line); }
   .st-gpu { flex: none; margin-left: 20px; width: 142px; height: 110px; display: grid; justify-items: center; align-content: center; gap: 10px; border-radius: 12px; border: 1px solid var(--as-line); background: rgb(27 25 21 / .6); font-size: 13.5px; color: var(--as-muted); }
-  @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px) {
+  @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px), (max-width: 1100px) and (orientation: portrait) {
     /* Upright, the text stays at the top, the stack under it with its flags down its left side (stack.js). */
     html[data-ver="f"] .st-host { justify-content: flex-start; padding: 68px max(16px, 4.4vw) 90px 24px; }
     html[data-ver="f"] .st-host > .split { grid-template-columns: minmax(0, 1fr); }
     html[data-ver="f"] .st-host h1 { font-size: clamp(1.5rem, 6.4vw, 2rem); max-width: 16em; }
     html[data-ver="f"] .st-host h1 .st-nb { white-space: normal; }
+    html[data-ver="f"] .st-host .body.desktop-subtitle { display: none; }
     /* On a phone: short names on the flags, hanging left (the dot toward the leader), and every card opens in one
        slot below the stack. Its quiet backing stays in place while the explanations change. */
     .st-flag { flex-direction: row-reverse; justify-content: space-between; width: 90px; text-align: left; transform: translate(-100%, -50%); gap: 6px; padding: 4px 9px 5px 7px; font-size: 13.5px; }
@@ -1531,7 +1557,7 @@
     .chrome { gap: 0.5rem; padding: 0.35rem max(12px, env(safe-area-inset-right)) max(0.35rem, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); font-size: 0.75rem; }
     .chrome .navb { width: 44px; height: 44px; margin: 0 -0.5rem; } /* a 44 px touch target round a smaller ring */
     .chrome .navb i { width: 30px; height: 30px; }
-    html[data-ver="f"] .split > :first-child > .num { margin-bottom: .55rem; }
+    html[data-ver="f"] .split > :first-child > .num, html[data-ver="f"] .gap-copy-content > .num { margin-bottom: .55rem; }
     .split h1 { font-size: clamp(1.25rem, 6.2svh, 1.75rem); }
     .body { margin-top: .9rem; font-size: .95rem; line-height: 1.45; }
     html[data-ver="f"] .sf-host { padding-top: 34px; }
@@ -1666,9 +1692,11 @@
   <section class="slide gap-host" data-v="f">
     <div class="num">03<span class="act">The gap</span></div>
     <div class="split">
-      <div>
-        <h1>What's missing isn't another model, technical tool or hub. It's <em>an accessible place to create with all of it.</em></h1>
-        <div class="body">Hubs host the models; node graphs wire them together — both built for engineers. Closed tools are easy but limited. Nothing gives artists the power of open source without the nerd hole.</div>
+      <div class="gap-copy">
+        <div class="gap-copy-content">
+          <h1>What's missing isn't another model, technical tool or hub. It's <em>an accessible place to create with all of it.</em></h1>
+          <div class="body">Hubs host the models; node graphs wire them together — both built for engineers. Closed tools are easy but limited. Nothing gives artists the power of open source without the nerd hole.</div>
+        </div>
       </div>
       <div class="vis">
         <div class="gp" data-gap>
@@ -1723,8 +1751,8 @@
   <section class="slide as-host" data-v="f">
     <div class="num">05<span class="act">Astrid</span></div>
     <div class="split">
-      <div>
-        <h1>This is <a class="dt-flash as-link" href="https://astrid.haus/" target="_blank" rel="noopener">Astrid</a>. It starts as a new kind of video editor: describe what you want, and the agent reaches for <em>everything the community has built</em> to make it.</h1>
+      <div class="as-copy">
+        <h1>This is <a class="as-link" href="https://astrid.haus/" target="_blank" rel="noopener">Astrid</a>. It starts as a new kind of video editor: describe what you want, and the agent reaches for <em>everything the community has built</em> to make it.</h1>
         <div class="body">No installs, no node graphs, locally or in the cloud. The agent picks the right models and community-made tools, and when nothing fits, it builds what you need. Every result comes back to your timeline for you to change and build on: you stay the artist. We start with video because that's where open models are moving fastest — and where they're hardest to use.</div>
       </div>
     </div>
@@ -1741,7 +1769,7 @@
             <div class="as-transport"><b class="as-btn"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></b><b class="as-btn as-play"><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path class="as-i-play" d="M7 4.5v15L19.5 12z"/><path class="as-i-pause" d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/></svg></b><span class="as-time">0:00 / 0:14</span><span class="as-pill">1280×720 · 30 fps</span></div>
           </div>
           <div class="as-surface as-timeline"><div class="as-tl"></div></div>
-          <div class="as-media"><video data-src="../assets/astrid/lantern-valley/final.mp4" data-type='video/mp4; codecs="avc1.64001e"' data-fallback="../assets/astrid/lantern-valley/final-vp9.webm" muted playsinline preload="none"></video><video class="as-guide-media" data-src="../assets/astrid/lantern-valley/guide.mp4" data-type='video/mp4; codecs="avc1.64001e"' data-fallback="../assets/astrid/lantern-valley/guide.webm" muted playsinline preload="none"></video><img class="as-frame-media" data-src="../assets/astrid/lantern-valley/start-preview.webp" alt=""><img class="as-frame-media" data-src="../assets/astrid/lantern-valley/mountains-preview.webp" alt=""><img class="as-frame-media" data-src="../assets/astrid/lantern-valley/descent-preview.webp" alt=""><img class="as-frame-media" data-src="../assets/astrid/lantern-valley/town-preview.webp" alt=""></div>
+          <div class="as-media"><img class="as-guide-poster" data-src="../assets/astrid/lantern-valley/motion-guide.webp" alt=""><img class="as-final-poster" data-src="../assets/astrid/lantern-valley/final-poster.webp" alt=""><video data-src="../assets/astrid/lantern-valley/final.mp4" data-type='video/mp4; codecs="avc1.64001e"' data-fallback="../assets/astrid/lantern-valley/final-vp9.webm" muted playsinline preload="none"></video><video class="as-guide-media" data-src="../assets/astrid/lantern-valley/guide.mp4" data-type='video/mp4; codecs="avc1.64001e"' data-fallback="../assets/astrid/lantern-valley/guide.webm" muted playsinline preload="none"></video><img class="as-frame-media" data-src="../assets/astrid/lantern-valley/start-preview.webp" alt=""><img class="as-frame-media" data-src="../assets/astrid/lantern-valley/mountains-preview.webp" alt=""><img class="as-frame-media" data-src="../assets/astrid/lantern-valley/descent-preview.webp" alt=""><img class="as-frame-media" data-src="../assets/astrid/lantern-valley/town-preview.webp" alt=""></div>
         </section>
       </div>
     </div>
@@ -2102,24 +2130,9 @@
     }
     state.grants.clear();
   };
-  const finishTurn = () => {
-    if (transactionDepth || !turn || !turn.network || !turn.entry || !turn.textReady) return;
-    const context = turn.context;
-    context.close();
-    let copyFinished = false;
-    try { copyFinished = networkScene.finish(context) !== false; }
-    catch (error) { console.error('Deck copy finalization failed', error); }
-    if (!copyFinished) {
-      // Do not publish a settled slide until the network renderer confirms clear copy.
-      turn.recovering = false;
-      clearTimeout(turn.watchdog);
-      turn.watchdog = watchTurn(context, 1000);
-      return;
-    }
-    clearTimeout(turn.watchdog);
-    retirePresentation(turn.context);
-    slides[turn.to]?.setAttribute('data-settled', '');
-    turn = null;
+  // End only transition work. The selected visit remains current for ambient,
+  // media and interaction work until the next navigation aborts its signal.
+  const releaseQueue = () => {
     setPace(1);
     if (pendingTurns.length) queueMicrotask(() => {
       if (turn || !pendingTurns.length) return;
@@ -2128,7 +2141,11 @@
       hurry();
     });
   };
-  const ownsTurn = (slideEl, context) => !!context && context.isCurrent() &&
+  const finishTurn = () => {
+    if (transactionDepth || !turn || turn.finishing || !turn.network || !turn.entry || !turn.textReady) return;
+    window.deckTransaction('finish', turn.context);
+  };
+  const ownsTurn = (slideEl, context) => !!context && context.isTransitionCurrent() &&
     turn?.context === context && slides[context.to] === slideEl;
   const completePhase = (phase, slideEl, context) => {
     if (!ownsTurn(slideEl, context) || turn[phase]) return false;
@@ -2159,10 +2176,10 @@
   };
   const scenePair = (context) => [...new Set([scenes.get(context.from), scenes.get(context.to)])].filter(Boolean);
   const requestRecovery = (context, label, error) => {
-    if (!context.isCurrent() || turn?.context !== context) return;
+    if (!context.isTransitionCurrent() || turn?.context !== context) return;
     console.error(`Deck ${label} failed`, error);
     queueMicrotask(() => {
-      if (turn?.context === context && context.isCurrent() && !turn.recovering) window.deckTransaction('recover', context);
+      if (turn?.context === context && context.isTransitionCurrent() && !turn.recovering) window.deckTransaction('recover', context);
     });
   };
   const dispatchScenes = (context) => {
@@ -2180,7 +2197,7 @@
         catch (error) { requestRecovery(context, `scene ${hook}`, error); continue; }
         if (hook === 'exit' && context.back && typeof pending?.then === 'function') turn.reverseExitPending = true;
         Promise.resolve(pending).then((result) => {
-          if (!context.isCurrent() || turn?.context !== context) return;
+          if (!context.isTransitionCurrent() || turn?.context !== context) return;
           if (result === 'cancelled') { requestRecovery(context, `scene ${hook}`, new Error('participant cancelled while its visit was current')); return; }
           if (hook === 'enter') turn.entryRequested = true;
           else turn.reverseExitPending = false;
@@ -2193,7 +2210,7 @@
       try { networkEntry = networkScene.enter(context); }
       catch (error) { requestRecovery(context, 'network entry', error); return; }
       Promise.resolve(networkEntry).then((result) => {
-        if (!context.isCurrent() || turn?.context !== context) return;
+        if (!context.isTransitionCurrent() || turn?.context !== context) return;
         if (result === 'completed') window.deckTurnDone(slides[context.to], context);
         else requestRecovery(context, 'network entry', new Error(`participant returned ${String(result)}`));
       }, (error) => requestRecovery(context, 'network entry', error));
@@ -2220,7 +2237,9 @@
     net.style.maskSize = net.style.webkitMaskSize = size;
   };
   window.deckSetNetMask = (context, owner, value) => {
-    if (!context?.isCurrent() || context.terminal) return;
+    // The text mask belongs to the selected visit, including after settlement.
+    // A source scene using the new transition context cannot claim the target's mask.
+    if (!context?.isCurrent() || ({ demo: 4, stack: 5 })[owner] !== context.to) return;
     netMask = { context, owner };
     paintNetMask(value);
   };
@@ -2228,55 +2247,110 @@
     if (!netMask || netMask.context !== context || netMask.owner !== owner) return;
     netMask = null; paintNetMask('');
   };
-  window.deckTransaction = (reason, context = window.deckNav) => {
+  let layoutGeneration = 0, endpointGeneration = 0;
+  let lastFailure = null;
+  // Hooks are synchronous: do the terminal draw now, and guard any separately
+  // scheduled continuation with claim.isCurrent() immediately before its write.
+  // Explicit false/cancelled/failed and thrown errors are failures; undefined
+  // remains supported for legacy hooks that complete synchronously without a result.
+  window.deckTransaction = (reason, context = window.deckNav, size = null) => {
     if (!context?.isCurrent()) return false;
-    if (reason === 'recover' && turn?.context === context) {
-      if (turn.recovering) return true;
-      turn.recovering = true;
-    }
+    if ((reason === 'finish' || reason === 'recover') && turn?.context !== context) return true;
+    const geometryOnly = reason === 'fonts';
+    const endpoint = ++endpointGeneration;
+    const layout = layoutGeneration;
+    const claim = Object.freeze({ reason, generation: layout, size,
+      isCurrent: () => context.isCurrent() && endpoint === endpointGeneration && layout === layoutGeneration });
+    const errors = [];
+    const run = (label, fn) => {
+      if (!fn || !claim.isCurrent()) return;
+      try {
+        const result = fn();
+        if (typeof result?.then === 'function') {
+          Promise.resolve(result).catch(() => {});
+          throw new Error(`${label} must restore synchronously; guard separately scheduled writes with its claim`);
+        }
+        if (result === false || result === 'cancelled' || result === 'failed') {
+          throw new Error(`${label} did not synchronously restore its required state`);
+        }
+      } catch (error) { errors.push({ label, error }); }
+    };
+    const currentTurn = turn?.context === context ? turn : null;
+    if (currentTurn && !geometryOnly) { currentTurn.finishing = true; clearTimeout(currentTurn.watchdog); }
     transactionDepth++;
     try {
+      // Revoke writers before running cleanup. A throwing disposer must never
+      // stop other cleanup or prevent canonical copy from being attempted.
+      if (!geometryOnly) {
+        errors.push(...context.close());
+        run('presentation retirement', () => retirePresentation(context));
+      }
+      if (reason !== 'abort' && !geometryOnly && claim.isCurrent()) slides[context.to]?.removeAttribute('data-settled');
+      if (reason === 'abort' && netMask?.context === context) { netMask = null; run('network mask', () => paintNetMask('')); }
       if (reason === 'abort') {
-        clearTimeout(turn?.watchdog);
         turnController.abort();
-        netMask = null; paintNetMask('');
       } else {
-        const run = (label, fn) => {
-          if (!fn) return;
-          try { fn(); }
-          catch (error) {
-            if (reason === 'recover') console.error(`Deck recovery ${label} failed`, error);
-            else requestRecovery(context, `${label} resize`, error);
-          }
-        };
-        resizeSubscribers.forEach((fn) => run('resize subscriber', () => fn(context, reason)));
-        run('network', () => networkScene?.resize(context));
-        scenePair(context).forEach((scene) => run('scene', () => scene.resize?.(context)));
-        settleSubscribers.forEach((fn) => run('settle subscriber', () => fn(context, reason)));
-        if (reason === 'recover' && turn?.context === context && context.isCurrent()) {
-          // Attempt every picture owner first; a failing owner cannot strand copy or navigation.
-          context.recoverText();
-          turn.network = true;
-          turn.entry = true;
-          turn.entryRequested = true;
-          turn.scenePending = 0;
-          turn.reverseExitPending = false;
-          turn.textReady = true;
+        if (!geometryOnly) run('text holds', () => context.recoverText());
+        // Ordinary completion leaves intentional visit-owned animation tails
+        // running. Only an interruption requires a forced picture endpoint.
+        if (reason !== 'finish' && !geometryOnly) {
+          scenePair(context).forEach((scene) => run('picture restoration', () => scene.restore?.(context, claim)));
+        }
+        if (reason !== 'finish') {
+          resizeSubscribers.forEach((fn) => run('resize subscriber', () => fn(context, reason, claim)));
+          run('network layout', () => networkScene?.resize(context, claim));
+          scenePair(context).forEach((scene) => run('scene layout', () => scene.resize?.(context, claim)));
+          settleSubscribers.forEach((fn) => run('settle subscriber', () => fn(context, reason, claim)));
+        }
+        if (!geometryOnly) run('canonical copy', () => networkScene.finish(context));
+        else if (errors.length) {
+          // A failed font layout must not later be published as a successful
+          // entry. Retire its writers and attempt copy just like other failures.
+          errors.push(...context.close());
+          run('presentation retirement', () => retirePresentation(context));
+          run('text holds', () => context.recoverText());
+          run('canonical copy', () => networkScene.finish(context));
         }
       }
     } finally {
-      retirePresentation(context);
       transactionDepth--;
-      dispatchEvent(new CustomEvent('deck-transaction', { detail: {
-        reason, generation: context.generation,
-        pending: turn?.context === context ? ['network', 'entry'].filter((phase) => !turn[phase]) : [],
-      } }));
-      if (reason !== 'abort') finishTurn();
     }
-    return true;
+    if (reason !== 'abort' && !claim.isCurrent()) return false;
+    if (reason !== 'abort') {
+      const target = slides[context.to];
+      if (errors.length) {
+        target?.removeAttribute('data-settled');
+        target?.setAttribute('data-deck-failed', reason);
+        lastFailure = { generation: context.generation, reason, errors: errors.map(({ label, error }) => `${label}: ${error.message || error}`) };
+        console.error('Deck endpoint failed', lastFailure);
+        dispatchEvent(new CustomEvent('deck-failure', { detail: lastFailure }));
+      } else {
+        if (!geometryOnly) {
+          target?.removeAttribute('data-deck-failed');
+          target?.setAttribute('data-settled', '');
+          lastFailure = null;
+        }
+        if (size !== null) laidOut = size;
+      }
+      // Failure is terminal too: leave it observable, but allow a new navigation
+      // or a later same-size resize to retry. No unbounded recovery loop.
+      if (!geometryOnly || errors.length) {
+        if (currentTurn) { currentTurn.finishing = true; clearTimeout(currentTurn.watchdog); }
+        if (turn?.context === context) turn = null;
+        releaseQueue();
+      }
+    } else if (errors.length) {
+      console.error('Deck transition cleanup failed', errors);
+      dispatchEvent(new CustomEvent('deck-failure', { detail: { generation: context.generation, reason,
+        errors: errors.map(({ label, error }) => `${label}: ${error.message || error}`) } }));
+    }
+    dispatchEvent(new CustomEvent('deck-transaction', { detail: {
+      reason, generation: context.generation, success: !errors.length, pending: [],
+    } }));
+    return !errors.length;
   };
   const recoverExpiredTurn = (context) => {
-    if (!context.isCurrent() || turn?.context !== context) return;
+    if (!context.isTransitionCurrent() || turn?.context !== context) return;
     if (paused()) { turn.watchdog = watchTurn(context, 1000); return; }
     dispatchEvent(new CustomEvent('deck-watchdog', { detail: { generation: context.generation } }));
     console.warn('Deck navigation recovery', context.generation);
@@ -2296,12 +2370,12 @@
   const viewSize = () => `${innerWidth}x${innerHeight} ${Math.round(window.visualViewport?.width || 0)}x${Math.round(window.visualViewport?.height || 0)}`;
   let laidOut = viewSize();
   const scheduleResize = () => {
+    if (viewSize() !== laidOut) layoutGeneration++;
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       const size = viewSize();
       if (size === laidOut) return;
-      laidOut = size;
-      window.deckTransaction('resize');
+      window.deckTransaction('resize', window.deckNav, size);
     }, 120);
   };
   addEventListener('resize', scheduleResize);
@@ -2311,7 +2385,7 @@
   if (window.__deckDebug) Object.defineProperty(window.__deckDebug, 'controller', { get: () => {
     const context = turn?.context || window.deckNav;
     return { index: i, generation, paused: paused(), now: window.deckNow(), pace,
-      pending: pendingTurns.length, turnsStarted: generation,
+      pending: pendingTurns.length, turnsStarted: generation, layoutGeneration, laidOut, failure: lastFailure,
       turn: context ? { generation: context.generation, from: context.from, to: context.to, dir: context.dir,
         back: context.back, rest: context.rest, direct: context.direct, superseded: context.superseded,
         terminal: context.terminal, network: turn?.network ?? null, entry: turn?.entry ?? null,
@@ -2321,7 +2395,7 @@
         deckMs: turn ? window.deckNow() - turn.started : null,
         watchdogMs: turn?.watchdogDeadline ? Math.max(0, turn.watchdogDeadline - Date.now()) : null } : null };
   } });
-  const startTurn = (n, historyMode = 'push', stepPace = 0, superseded = false) => {
+  const startTurn = (n, _historyMode = 'push', stepPace = 0, superseded = false) => {
     if (!booted) return;
     const stepped = stepPace > 0;
     const to = Math.max(0, Math.min(slides.length - 1, n));
@@ -2341,7 +2415,16 @@
     // a jump back (hash, overview, history, Home) just lands at rest.
     // With animations off every slide lands at rest, as on a jump back; the network and text land as in reduced motion.
     const back = !motionOff && stepped && dir < 0 && to === from - 1 && !reversePair;
-    const disposers = new Set();
+    const disposers = new Set(), transitionDisposers = new Set();
+    const defer = (set, dispose, closed) => {
+      let live = true;
+      const release = () => {
+        if (!live) return;
+        live = false; set.delete(release); dispose();
+      };
+      if (closed()) release(); else set.add(release);
+      return release;
+    };
     // Scene hooks can synchronously hold text until their picture clears it.
     // The deadline shares the animation clock, including its pauses and pace.
     const textHolds = new Set();
@@ -2361,7 +2444,29 @@
       rest: motionOff || (dir < 0 && !reversePair), back, signal: turnController.signal,
       now: window.deckNow, isCurrent: () => window.deckNav === context && !context.signal.aborted,
       get terminal() { return terminal; },
-      close() { terminal = true; },
+      isTransitionCurrent: () => context.isCurrent() && !terminal,
+      close() {
+        if (terminal) return [];
+        terminal = true;
+        const errors = [];
+        for (const release of [...textHolds]) {
+          try { release(); } catch (error) { errors.push({ label: 'text hold cleanup', error }); }
+        }
+        for (const release of [...transitionDisposers]) {
+          try { release(); } catch (error) { errors.push({ label: 'transition cleanup', error }); }
+        }
+        return errors;
+      },
+      // defer keeps its historical visit-exit lifetime. Only explicitly
+      // transition-owned work is drained at settlement or interruption.
+      transitionDefer: (dispose) => defer(transitionDisposers, dispose, () => terminal || context.signal.aborted),
+      transitionGuard: (fn) => (...args) => { if (context.isTransitionCurrent()) return fn(...args); },
+      transitionLater(fn, ms) {
+        let release;
+        const handle = window.deckLater(() => { release(); if (context.isTransitionCurrent()) fn(); }, ms, context);
+        release = context.transitionDefer(() => window.deckCancelLater(handle));
+        return release;
+      },
       arrived, textReady, superseded,
       get textDeadline() { return textDeadline; },
       geometry: handoffGeometry,
@@ -2404,15 +2509,7 @@
         if (grants.size) { state.grants.set(slide, grants); slide.setAttribute('data-deck-present', ''); }
         else { state.grants.delete(slide); slide.removeAttribute('data-deck-present'); }
       },
-      defer(dispose) {
-        let live = true;
-        const release = () => {
-          if (!live) return;
-          live = false; disposers.delete(release); dispose();
-        };
-        if (context.signal.aborted) release(); else disposers.add(release);
-        return release;
-      },
+      defer: (dispose) => defer(disposers, dispose, () => context.signal.aborted),
     });
     presentations.set(context, { open: true, grants: new Map() });
     const arrive = (result) => {
@@ -2420,11 +2517,12 @@
       arrivalDone = true; resolveArrival(result);
     };
     turnController.signal.addEventListener('abort', () => {
+      context.close();
       arrive('cancelled');
       completeText('cancelled');
       for (const release of [...textHolds]) release();
       for (const release of [...disposers]) {
-        try { release(); } catch (error) { queueMicrotask(() => { throw error; }); }
+        try { release(); } catch (error) { console.error('Deck visit cleanup failed', error); }
       }
     }, { once: true });
     window.deckNav = context;
@@ -2434,7 +2532,7 @@
       budget: from === null ? 6500 : turnBudgets[to] };
     if (window.__deckDebug) turn.debugWallStarted = Date.now();
     textReady.then((result) => {
-      if (result !== 'completed' || turn?.context !== context || !context.isCurrent()) return;
+      if (result !== 'completed' || turn?.context !== context || !context.isTransitionCurrent()) return;
       turn.textReady = true;
       finishTurn();
     });
@@ -2443,18 +2541,14 @@
     i = to;
     initialized = true;
     // Only the slide on screen can be tabbed into or read out; the others are inert until they come on.
-    slides.forEach((s, k) => { s.classList.toggle('on', k === i); s.inert = k !== i; s.removeAttribute('data-settled'); });
+    slides.forEach((s, k) => { s.classList.toggle('on', k === i); s.inert = k !== i; s.removeAttribute('data-settled'); s.removeAttribute('data-deck-failed'); });
     if (!(i === 0 && document.documentElement.classList.contains('dt-intro'))) warmMedia(slides[i]);
     warmMedia(slides[i + 1]);
     count.textContent = `${i + 1} / ${slides.length}`;
     prevBtn.disabled = i === 0; nextBtn.disabled = i === slides.length - 1;
     fill.style.width = `${((i + 1) / slides.length) * 100}%`;
     progressNav?.update(i);
-    // Keep slide position in the current history entry, without changing the share URL or adding Back-button stops.
-    const url = `${location.pathname}${location.search}`;
-    if (historyMode !== 'none' || location.hash || history.state?.deckSlide !== i + 1) {
-      history.replaceState({ ...history.state, deckSlide: i + 1 }, '', url);
-    }
+    storeSlideLocation();
     turn.watchdog = watchTurn(context, from === null ? 18000 : 12000);
     dispatchScenes(context);
   };
@@ -2561,11 +2655,28 @@
   prevBtn.onclick = (e) => { e.stopPropagation(); step(-1); };
   nextBtn.onclick = (e) => { e.stopPropagation(); step(1); };
 
+  // Integer fragments belong to the deck; other anchors retain their own meaning.
+  // Clamp numeric input, including #0 and negative values, instead of partially
+  // parsing fragments such as #2.5 or #2-notes as slide 2.
+  const slideFragment = () => /^#-?\d+$/.test(location.hash) ? Number(location.hash.slice(1)) : null;
+  const storeSlideLocation = () => {
+    const foreign = location.hash && slideFragment() === null;
+    const fragment = foreign ? location.hash : `#${i + 1}`;
+    const url = `${location.pathname}${location.search}${fragment}`;
+    if (history.state?.deckSlide !== i + 1 || location.hash !== fragment) {
+      // Replacing the current entry keeps arrow navigation out of browser Back
+      // history. replaceState itself emits no hashchange or popstate event.
+      history.replaceState({ ...history.state, deckSlide: i + 1 }, '', url);
+    }
+  };
   const fromHash = () => {
-    go((parseInt(location.hash.slice(1), 10) || history.state?.deckSlide || 1) - 1, 'replace');
-    // Consume old deep links even if they already point at the selected slide.
-    // Record the slide too: a link to the slide already showing turns nothing, so nothing else writes it.
-    if (location.hash) history.replaceState({ ...history.state, deckSlide: i + 1 }, '', `${location.pathname}${location.search}`);
+    const fragment = slideFragment();
+    const saved = Number.isInteger(history.state?.deckSlide) ? history.state.deckSlide : initialized ? i + 1 : 1;
+    const to = Math.max(0, Math.min(slides.length - 1, (fragment ?? saved) - 1));
+    // Browser history traversal may emit both popstate and hashchange. The
+    // second notification must not clear a new turn's queue or reset its pace.
+    if (initialized && to === i) { storeSlideLocation(); return; }
+    go(to, 'replace');
   };
   addEventListener('popstate', () => { if (ov.classList.contains('on')) toggleOv(false); fromHash(); });
   addEventListener('hashchange', fromHash);
@@ -2601,10 +2712,15 @@
       if (video.dataset.warmed === 'true') return;
       video.dataset.warmed = 'true';
       if (!warmedMedia.has(url)) {
-        warmedMedia.set(url, fetch(url).then((response) => {
+        const request = fetch(url).then((response) => {
           if (!response.ok) throw new Error(`Video request failed: ${response.status}`);
           return response.blob();
-        }).then((blob) => URL.createObjectURL(blob)));
+        }).then((blob) => URL.createObjectURL(blob)).catch((error) => {
+          // A transient failure must not poison every later warm attempt.
+          if (warmedMedia.get(url) === request) warmedMedia.delete(url);
+          throw error;
+        });
+        warmedMedia.set(url, request);
       }
       pending.push(warmedMedia.get(url).then((objectUrl) => {
         if (!video.isConnected) return;
@@ -2661,18 +2777,39 @@
 // Diagnostic UI is intentionally independent of the animation clock.
 if (new URLSearchParams(location.search).has('debug')) (() => {
   const debug = window.__deckDebug, panel = document.createElement('div');
-  panel.style.cssText = 'position:fixed;z-index:2147483647;bottom:env(safe-area-inset-bottom);left:0;right:0;pointer-events:none;color:#fff;font:11px/1.2 monospace';
+  panel.style.cssText = 'position:fixed;z-index:2147483647;top:env(safe-area-inset-top);left:0;right:0;pointer-events:none;color:#fff;font:11px/1.2 monospace';
   const controls = document.createElement('div'), output = document.createElement('pre');
   controls.style.cssText = 'text-align:right;pointer-events:none';
-  output.style.cssText = 'margin:0;padding:3px;background:rgba(0,0,0,.82);white-space:pre-wrap;overflow-wrap:anywhere';
+  output.style.cssText = 'display:none;margin:0;padding:3px;background:rgba(0,0,0,.82);white-space:pre-wrap;overflow-wrap:anywhere';
   const button = (label, action) => {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
     b.style.cssText = 'pointer-events:auto;font:11px monospace;padding:3px;color:white;background:#333;border:1px solid #aaa';
     for (const event of ['pointerdown', 'touchstart', 'touchend', 'click']) b.addEventListener(event, e => e.stopPropagation());
-    b.addEventListener('click', action); controls.appendChild(b);
+    b.addEventListener('click', action); controls.appendChild(b); return b;
   };
   const copyColumn = (slide) => slide?.querySelector(slide.matches('.fw-raise') ? ':scope > .split' : ':scope > .split > :first-child');
-  const repaints = [], taps = [];
+  const repaints = [], taps = [], samples = [];
+  const overrides = document.createElement('style');
+  // Keep diagnostic overrides stronger than the ongoing inline drift writer.
+  // Removing these attributes restores the original styles without guessing them.
+  overrides.textContent = `
+    [data-deck-debug-flat] { transform:none!important; will-change:auto!important; filter:none!important; }
+    [data-deck-debug-font], [data-deck-debug-font] * { font-family:Georgia,serif!important; }
+    [data-deck-debug-ink], [data-deck-debug-ink] * { color:red!important; -webkit-text-fill-color:red!important; }
+    html[data-deck-debug-canvases] canvas { visibility:hidden!important; }
+  `;
+  document.head.appendChild(overrides);
+  const retain = (label) => {
+    if (!snapshot) return;
+    samples.push({ label, at: Math.round(performance.now()), controller: snapshot.controller,
+      copy: snapshot.copy, art: snapshot.art, fonts: snapshot.fonts, experiments: snapshot.experiments });
+    if (samples.length > 16) samples.shift();
+  };
+  const record = (label) => {
+    retain('before ' + label);
+    taps.push(`${Math.round(performance.now())}:slide${(debug.controller?.index ?? -1) + 1}:${label}`);
+    if (taps.length > 16) taps.shift();
+  };
   // Paint-relevant computed style of an element and its ancestors up to the slide.
   const paintOf = (el) => {
     if (!el) return '-';
@@ -2701,36 +2838,66 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
     const name = (n) => n.tagName.toLowerCase() + (n.id ? '#' + n.id : '') + (n.classList.length ? '.' + [...n.classList].slice(0, 2).join('.') : '');
     return list.filter((n) => getComputedStyle(n).opacity !== '0').slice(0, 4).map(name).join(' > ');
   };
-  let bottom = true, lastNow, lastFrame = performance.now(), frames = [], snapshot;
+  let bottom = false, lastNow, lastFrame = performance.now(), frames = [], snapshot;
   button('↕', () => { bottom = !bottom; panel.style.top = bottom ? 'auto' : 'env(safe-area-inset-top)'; panel.style.bottom = bottom ? 'env(safe-area-inset-bottom)' : 'auto'; });
-  button('hide', () => { output.style.display = output.style.display === 'none' ? '' : 'none'; });
+  const info = button('info', () => {
+    output.style.display = output.style.display === 'none' ? '' : 'none';
+    info.textContent = output.style.display === 'none' ? 'info' : 'hide';
+  });
   button('canvases', () => {
-    // Hides every canvas: if the text appears, something drawn on a canvas was covering it.
+    // Recovery supports a canvas paint interaction, but does not alone prove occlusion.
+    record('canvases');
     canvasesHidden = !canvasesHidden;
-    document.querySelectorAll('canvas').forEach((c) => { c.style.visibility = canvasesHidden ? 'hidden' : ''; });
+    document.documentElement.toggleAttribute('data-deck-debug-canvases', canvasesHidden);
   });
   button('flat', () => {
-    // Drops every transform/will-change/filter between the slide and its copy: if the text appears, its compositing layer had failed.
+    // Isolate the transformed rendering path while preserving the live node clock.
+    record('flat');
+    const old = document.querySelectorAll('[data-deck-debug-flat]');
+    if (old.length) { old.forEach(n => n.removeAttribute('data-deck-debug-flat')); return; }
     const slide = document.querySelector('.slide.on'), col = copyColumn(slide);
-    for (let n = col; n && n !== document.body; n = n.parentElement) { n.style.transform = 'none'; n.style.willChange = 'auto'; n.style.filter = 'none'; }
-    slide?.querySelectorAll('h1, p, .num').forEach((n) => { n.style.transform = 'none'; n.style.willChange = 'auto'; });
-    taps.push('flat');
+    for (let n = col; n && n !== document.body; n = n.parentElement) n.setAttribute('data-deck-debug-flat', '');
+    col?.querySelectorAll('h1, p, .num').forEach(n => n.setAttribute('data-deck-debug-flat', ''));
   });
-  button('plain', () => {
-    // Paints the copy in a system font and red: if red text appears, the copy's own font or colour was the problem.
+  button('font', () => {
+    record('font');
     const col = copyColumn(document.querySelector('.slide.on'));
-    col?.querySelectorAll('*').forEach((n) => { n.style.setProperty('font-family', 'Georgia, serif', 'important'); n.style.setProperty('color', 'red', 'important'); n.style.setProperty('-webkit-text-fill-color', 'red', 'important'); });
-    taps.push('plain');
+    col?.toggleAttribute('data-deck-debug-font');
+  });
+  button('ink', () => {
+    record('ink');
+    copyColumn(document.querySelector('.slide.on'))?.toggleAttribute('data-deck-debug-ink');
+  });
+  button('reset', () => {
+    record('reset');
+    for (const name of ['flat', 'font', 'ink', 'canvases']) {
+      document.querySelectorAll(`[data-deck-debug-${name}]`).forEach(n => n.removeAttribute(`data-deck-debug-${name}`));
+    }
+    canvasesHidden = false;
   });
   button('repaint', () => {
-    // Forces the copy to be laid out and painted from scratch: if the text appears, the browser had failed to repaint it.
+    // Test paint invalidation without changing font or ink. Recovery is not a root-cause proof.
+    record('repaint');
     const slide = document.querySelector('.slide.on'), els = [copyColumn(slide), slide?.querySelector('.fw-stat')].filter(Boolean);
     els.forEach((el) => { el.dataset.dbgDisplay = el.style.display; el.style.display = 'none'; });
     void document.body.offsetHeight;
     requestAnimationFrame(() => els.forEach((el) => { el.style.display = el.dataset.dbgDisplay; delete el.dataset.dbgDisplay; }));
-    repaints.push(new Date().toTimeString().slice(0, 8)); taps.push('repaint');
+    repaints.push(new Date().toTimeString().slice(0, 8));
   });
-  button('copy log', () => { navigator.clipboard?.writeText(JSON.stringify(snapshot, null, 2)).catch(() => {}); });
+  button('copy log', async () => {
+    tick(); // Include the current picture state, even when the panel is collapsed.
+    const text = JSON.stringify(snapshot, null, 2);
+    try { if (navigator.clipboard) { await navigator.clipboard.writeText(text); return; } } catch { /* LAN HTTP may have no clipboard permission. */ }
+    let field = panel.querySelector('textarea');
+    if (!field) {
+      field = document.createElement('textarea'); field.readOnly = true;
+      field.setAttribute('aria-label', 'Diagnostic log: select and copy');
+      field.style.cssText = 'display:block;box-sizing:border-box;width:100%;height:90px;pointer-events:auto;font:11px monospace';
+      for (const event of ['pointerdown', 'touchstart', 'touchend', 'click']) field.addEventListener(event, e => e.stopPropagation());
+      panel.appendChild(field);
+    }
+    field.value = text; field.focus(); field.select();
+  });
   panel.id = 'dbg-panel';
   panel.append(controls, output); document.body.appendChild(panel);
   const frame = (now) => { lastFrame = now; frames.push(now); while (frames.length && frames[0] < now - 1000) frames.shift(); requestAnimationFrame(frame); };
@@ -2753,12 +2920,62 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
     return { inlineMask: /linear-gradient/i.test(mask) ? 'r=0' : maskSummary(mask),
       inlineVisibility: el.style.visibility || 'default', opacity: style.opacity, opacityProduct: +product.toFixed(3),
       visibility: style.visibility, mask: style.maskImage, webkitMask: style.webkitMaskImage, checkVisibility: check,
-      rect: [rect.x, rect.y, rect.width, rect.height].map(Math.round) };
+      rect: [rect.x, rect.y, rect.width, rect.height].map(Math.round), transform: style.transform,
+      font: { family: style.fontFamily, weight: style.fontWeight, style: style.fontStyle, size: style.fontSize },
+      color: style.color, fill: style.webkitTextFillColor, textLength: el.textContent.length };
   };
+  const copyAncestors = (el) => {
+    const chain = [];
+    for (let node = el; node && node !== document.body; node = node.parentElement) {
+      const cs = getComputedStyle(node), r = node.getBoundingClientRect();
+      chain.push({ classes: node.className, opacity: cs.opacity, visibility: cs.visibility,
+        display: cs.display, mask: cs.maskImage, webkitMask: cs.webkitMaskImage,
+        transform: cs.transform, willChange: cs.willChange, filter: cs.filter,
+        rect: [r.x, r.y, r.width, r.height].map(v => +v.toFixed(2)) });
+    }
+    return chain;
+  };
+  const fontsOf = (slide) => {
+    const h = slide?.querySelector('h1'), style = h && getComputedStyle(h);
+    const families = [style?.fontFamily, h?.querySelector('em') && getComputedStyle(h.querySelector('em')).fontFamily].filter(Boolean).join(',');
+    const font = style && `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    return { status: document.fonts.status, headingReady: style ? document.fonts.check(font, h.textContent) : null,
+      faces: [...document.fonts].filter(face => families.includes(face.family.replaceAll('"', '')))
+        .map(face => ({ family: face.family, style: face.style, weight: face.weight, status: face.status, unicodeRange: face.unicodeRange })) };
+  };
+  // Read-only picture diagnostics: distinguish a hidden editor from a visible
+  // editor whose canvas or compositor has lost its picture on a return visit.
+  const artState = (slide) => {
+    if (!slide?.matches('.as-host')) return null;
+    const root = slide.querySelector('[data-astrid-demo]');
+    const nodes = { host: slide, root, stage: root?.querySelector('.as-stage'),
+      chat: root?.querySelector('.as-chat'), editor: root?.querySelector('.as-edit'), preview: root?.querySelector('.as-pic') };
+    const read = (el) => {
+      if (!el) return null;
+      const cs = getComputedStyle(el), rect = el.getBoundingClientRect();
+      return { classes: el.className, inline: el.getAttribute('style'),
+        opacity: cs.opacity, visibility: cs.visibility, display: cs.display,
+        rect: [rect.x, rect.y, rect.width, rect.height].map(v => +v.toFixed(2)),
+        transform: cs.transform, willChange: cs.willChange, filter: cs.filter,
+        backdropFilter: cs.backdropFilter || cs.webkitBackdropFilter, isolation: cs.isolation,
+        mask: cs.maskImage, webkitMask: cs.webkitMaskImage, clipPath: cs.clipPath, overflow: cs.overflow,
+        animations: el.getAnimations().map(a => ({ name: a.animationName || a.transitionProperty || 'animation',
+          state: a.playState, time: typeof a.currentTime === 'number' ? Math.round(a.currentTime) : null })) };
+    };
+    const canvas = nodes.preview;
+    return { nodes: Object.fromEntries(Object.entries(nodes).map(([name, el]) => [name, read(el)])),
+      canvas: canvas ? { width: canvas.width, height: canvas.height, hasFrame: root.classList.contains('has-frame') } : null,
+      media: [...root.querySelectorAll('.as-media video')].map(v => ({ source: v.currentSrc.split('/').pop(),
+        readyState: v.readyState, paused: v.paused, seeking: v.seeking, ended: v.ended,
+        time: +v.currentTime.toFixed(2), width: v.videoWidth, height: v.videoHeight, error: v.error?.code || null })) };
+  };
+  let demoVisits = 0, demoSettledGeneration = null;
   let build = 'dev';
   fetch('/release-revision.txt', { cache: 'no-store' }).then((r) => (r.ok ? r.text() : '')).then((t) => { if (/^[0-9a-f]{7,}/.test(t.trim())) build = t.trim().slice(0, 7); }).catch(() => {});
   const tick = () => {
     const c = debug.controller || {}, cap = debug.capture, now = performance.now(), slide = document.querySelector('.slide.on');
+    const changed = snapshot?.controller.index !== c.index;
+    if (snapshot && changed) retain('departure');
     const vv = window.visualViewport, ua = navigator.userAgent;
     const uaTag = /CriOS/i.test(ua) ? 'Chrome-iOS' : /iP(?:hone|ad|od)/i.test(ua) && !/Safari/i.test(ua) ? 'SFSafariVC?' : /Safari/i.test(ua) ? 'Safari' : 'other';
     snapshot = { build, ua: uaTag, userAgent: ua, viewport: [innerWidth, innerHeight],
@@ -2769,9 +2986,22 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
       controller: c, slide: slide ? { classes: [...slide.classList].filter(x => x === 'on' || x.startsWith('dt-') || x.endsWith('-host')),
         settled: slide.hasAttribute('data-settled'), present: slide.hasAttribute('data-deck-present') } : null,
       copy: { liveCloneCount: window.deckCopy?.liveCloneCount ?? 0, column: copyState(copyColumn(slide)),
-        stat: copyState(slide?.querySelector(':scope > .fw-stat')), h1: copyState(slide?.querySelector('h1')) },
-      network: debug.network || null, ...cap };
+        stat: copyState(slide?.querySelector(':scope > .fw-stat')), h1: copyState(slide?.querySelector('h1')),
+        clone: copyState(slide?.querySelector('.dt-copy-overlay')),
+        ancestors: copyAncestors(slide?.querySelector('h1')) },
+      art: artState(slide),
+      fonts: fontsOf(slide), experiments: { flat: !!document.querySelector('[data-deck-debug-flat]'),
+        font: !!copyColumn(slide)?.hasAttribute('data-deck-debug-font'), ink: !!copyColumn(slide)?.hasAttribute('data-deck-debug-ink'), canvasesHidden },
+      actions: taps.slice(), samples: samples.slice(), network: debug.network || null, ...cap };
+    if (changed && snapshot.art) retain(demoVisits++ ? 'slide5 return' : 'slide5 entry');
+    if (snapshot.art && snapshot.slide.settled && demoSettledGeneration !== c.generation) {
+      demoSettledGeneration = c.generation; retain('slide5 settled');
+    }
+    snapshot.samples = samples.slice();
+    debug.textSnapshot = snapshot;
     lastNow = c.now;
+    // Keep the global hit-test style mutation out of the hidden-output experiment.
+    if (output.style.display === 'none') return;
     const t = c.turn || {}, k = snapshot.clock, n = snapshot.network || {};
     const shortCopy = (v) => v ? `${v.inlineMask} iv:${v.inlineVisibility} op:${v.opacity}/${v.opacityProduct} vis:${v.visibility} masks:${maskSummary(v.mask)}|${maskSummary(v.webkitMask)} check:${v.checkVisibility} rect:${v.rect}` : '-';
     const errors = cap.errors.map(e => `${e.kind}:${e.message.slice(0, 65)} ${e.frame.slice(0, 90)}`).join('\n');
@@ -2781,11 +3011,19 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
       `turn:${t.generation} ${t.from}→${t.to} dir:${t.dir} back/rest/direct/super:${t.back}/${t.rest}/${t.direct}/${t.superseded} terminal:${t.terminal}\n` +
       `net/entry/text:${t.network}/${t.entry}/${t.textReady} scene:${t.scenePending} rewind:${t.rewinding} recover:${t.recovering} wall/deck:${Math.round(t.wallMs || 0)}/${Math.round(t.deckMs || 0)} watchdog:${t.watchdogMs} queue:${c.pending} starts:${c.turnsStarted} wd:${cap.watchdogs}\n` +
       `slide:${c.index + 1} ${snapshot.slide?.classes.join(' ')} settled:${snapshot.slide?.settled} present:${snapshot.slide?.present}\n` +
+      (snapshot.art ? `editor ${JSON.stringify(snapshot.art)}\n` : '') +
       `copy clones:${snapshot.copy.liveCloneCount}\ncolumn ${shortCopy(snapshot.copy.column)}\nstat ${shortCopy(snapshot.copy.stat)}\nh1 ${shortCopy(snapshot.copy.h1)}\n` +
       `network current:${n.current} turning:${n.turning} visit:${n.visit} tweens:${n.textTweens} zones/hyphae/baked:${n.zones}/${n.hyphae}/${n.baked} canvas:${n.canvas}\n` +
       `canvas created:${cap.canvas.created} bytes~:${cap.canvas.bytes} nulls:${cap.canvas.nulls}\n` +
-      `errors:${errors || '-'}\nevents:${events || '-'}\nrepaint taps:${repaints.slice(-3).join(',') || '-'} canvases:${canvasesHidden ? 'hidden' : 'shown'} taps:${taps.slice(-4).join(',') || '-'}\non top of h1: ${hitsAt(document.querySelector('.slide.on h1'))}\nh1 paint: ${paintOf(document.querySelector('.slide.on h1'))}\nfonts:${document.fonts.status} ${[...document.fonts].filter((f) => f.status !== 'loaded').map((f) => f.style + f.weight + ':' + f.status).slice(0, 4).join(' ') || 'all loaded'}`;
+      `errors:${errors || '-'}\nevents:${events || '-'}\nrepaint taps:${repaints.slice(-3).join(',') || '-'} canvases:${canvasesHidden ? 'hidden' : 'shown'} taps:${taps.slice(-4).join(',') || '-'}\non top of h1: ${hitsAt(document.querySelector('.slide.on h1'))}\nh1 paint: ${paintOf(document.querySelector('.slide.on h1'))}\nexperiments:${JSON.stringify(snapshot.experiments)}\nfonts:${snapshot.fonts.status} heading-ready:${snapshot.fonts.headingReady}\n${snapshot.fonts.faces.map(f => `${f.family} ${f.style}${f.weight}:${f.status} ${f.unicodeRange}`).join('\n')}`;
   };
+  // Phase notification precedes endpoint copy retirement; the microtask reads
+  // its result without adding another writer to the transition.
+  addEventListener('deck-phase', (event) => {
+    if (![1, 2, 4].includes(debug.controller?.index)) return;
+    tick(); retain('phase ' + event.detail.phase);
+    queueMicrotask(() => { tick(); retain('after phase ' + event.detail.phase); });
+  });
   tick(); setInterval(tick, 250);
 })();
 </script>

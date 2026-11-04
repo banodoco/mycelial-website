@@ -27,6 +27,9 @@
   const motionBlocked = () => document.getElementById('overview')?.classList.contains('on') || window.deckStill?.();
   const now = () => window.deckNow();
   const current = (ctx) => !!ctx && ctx.isCurrent();
+  // Canvases are decoration/snapshot aids. A browser refusing one must not
+  // prevent the HTML stack and its controls from being created or registered.
+  const context2D = (canvas) => { try { return canvas.getContext('2d'); } catch { return null; } };
   const RAD = Math.PI / 180;
 
   // ---- The scene -----------------------------------------------------------------------------
@@ -87,12 +90,11 @@
     preview: `<div class="st-screen"><div class="st-pic"><video data-src="${media}/final.mp4" data-type='video/mp4; codecs="avc1.64001e"' data-fallback="${media}/final-vp9.webm" data-poster="${media}/final-poster.webp" muted loop playsinline preload="none"></video><span></span></div></div>
       <div class="st-transport"><b class="st-btn">${I.back}</b><b class="st-btn is-play">${I.pause}</b><span class="st-time">0:00 / 0:14</span><span class="st-pill">1280×720 · 30 fps</span></div>`,
     timeline: `<div class="st-th"></div><div class="st-ruler">${[0, 2, 4, 6, 8, 10, 12, 14].map((t) => `<span style="left:${(t / SPAN) * 100}%">0:${String(t).padStart(2, '0')}</span>`).join('')}</div>
-      <div class="st-th">${I.film}<em>Video</em></div><div class="st-lane"><span class="st-clip" style="${span(0, SPAN)}" data-bg="${media}/final-poster.webp"><img data-src="${media}/final-poster.webp" alt=""><b>MiniMax H3</b></span><i class="st-head"></i></div>
-      <div class="st-th">${I.film}<em>Frames</em></div><div class="st-lane">${FRAMES.map(([name, at]) => `<span class="st-clip" style="${span(at, 1)}"><img data-src="${media}/${name}-thumb.webp" alt=""></span>`).join('')}</div>
-      <div class="st-th">${I.film}<em>Scene</em></div><div class="st-lane"><span class="st-clip" style="${span(0, SPAN)}"><img data-src="${media}/motion-guide.webp" alt=""><b>Lantern Valley · Three.js</b></span></div>`,
+      <div class="st-th">${I.film}<span>V3</span><em>Video</em></div><div class="st-lane"><span class="st-clip" style="${span(0, SPAN)}" data-bg="${media}/final-poster.webp"><img data-src="${media}/final-poster.webp" alt=""><b>MiniMax H3</b><i>14 s</i></span><i class="st-head"></i></div>
+      <div class="st-th">${I.film}<span>V2</span><em>Frames</em></div><div class="st-lane">${FRAMES.map(([name, at]) => `<span class="st-clip" style="${span(at, 1)}"><img data-src="${media}/${name}-thumb.webp" alt=""><i>Qwen</i></span>`).join('')}</div>
+      <div class="st-th">${I.film}<span>V1</span><em>Scene</em></div><div class="st-lane"><span class="st-clip" style="${span(0, SPAN)}" data-bg="${media}/guide-strip.webp"><b>Lantern Valley · Three.js</b><i>14 s</i></span></div>`,
     agent: `<header class="st-chat-head"><span class="st-avatar"><img data-src="../assets/astrid/mink-profile.png" alt=""></span>Astrid</header>
-      <div class="st-rows"><div><span class="st-msg">Make realistic frames using Qwen Image 2.1.</span><span class="st-step">${I.check}<span>Captured four reference frames</span><code><b>Qwen Image 2.1</b> · VibeComfy</code></span></div>
-        <div><span class="st-msg">Use MiniMax H3 with the four frames and motion guide.</span><span class="st-step">${I.check}<span>Generated the final shot</span><code><b>MiniMax H3</b> · 14 s</code></span></div></div>
+      <div class="st-rows">${(window.astridDemoBeats || []).map((b) => `<div class="st-msg">${b.ask}</div><div class="st-reply">${b.reply}</div><div class="st-step">${I.check}<span>${b.step[0]}</span><code><b>${b.step[1]}</b> ${b.step[2]}</code></div>`).join('')}</div>
       <div class="st-composer"><span class="st-field">Ask Astrid to edit your project…<b>${I.send}</b></span></div>`,
     tools: `<span class="st-tile">${I.typeon}type-on</span><span class="st-tile">${I.card}text-card</span><span class="st-tile">${I.beat}<span>audio-reactive-<br>colour</span></span><span class="st-tile">${I.grain}film grain</span><span class="st-tag">community-made</span>`,
     models: `<span class="st-comfy">ComfyUI workflows</span><span class="st-mod">${I.cube}Wan</span><i class="st-link"></i><span class="st-mod">${I.cube}LTX-Video</span><i class="st-link"></i><span class="st-mod">${I.cube}Qwen Image</span><span class="st-gpu">${I.cloud}local GPU or cloud</span>`,
@@ -132,7 +134,7 @@
   carry.className = 'st-carry';
   const carryPic = document.createElement('div');
   carryPic.className = 'st-carry-pic';
-  const carryCv = document.createElement('canvas'), carryG = carryCv.getContext('2d');
+  const carryCv = document.createElement('canvas'), carryG = context2D(carryCv);
   carryPic.append(carryCv, planes[0].querySelector('.st-pic span').cloneNode(true)); // the film's caption, for the way back
   carry.appendChild(carryPic);
   // on: carrying; A: the picture's rect in slide 5's player (px, as its copy is laid out); P: the plane's picture box
@@ -140,7 +142,7 @@
   const cy = { on: false, A: null, nw: 0, nh: 0, P: null, a: 1, back: false };
   const cv = document.createElement('canvas');
   cv.className = 'st-threads';
-  const g = cv.getContext('2d');
+  const g = context2D(cv);
   // The flags (buttons, so keyboard users can reach them) and the cards they unfold into.
   const flags = TAGS.map((t, i) => {
     const b = document.createElement('button');
@@ -177,10 +179,20 @@
     const k = Math.min(w / nw, h / nh);
     el.style.transform = `translate(${((w - k * nw) / 2).toFixed(2)}px, ${((h - k * nh) / 2).toFixed(2)}px) scale(${k.toFixed(5)})`;
   };
+  const stretch = (el, w, h, nw, nh) => {
+    el.style.transform = `scale(${(w / nw).toFixed(5)}, ${(h / nh).toFixed(5)})`;
+  };
   const applyPlanes = () => st.forEach((s, i) => {
     const el = planes[i], was = shown[i], p = PL[i];
     const moved = was.x !== s.x || was.y !== s.y || was.w !== s.w || was.h !== s.h, turned = was.rx !== s.rx || was.rz !== s.rz;
-    if (moved) { box(el, s); fit(inners[i], s.w - 2, s.h - 2, p.w - 2, p.h - 2); }
+    if (moved) {
+      box(el, s);
+      // The chat changes aspect ratio as it becomes a wide agent layer. Both
+      // renderings share that changing frame; contain-fit would leave the old
+      // narrow chat floating inside it until the new wide chat suddenly appears.
+      if (i === 3 && ghosts[i].firstChild) stretch(inners[i], s.w - 2, s.h - 2, p.w - 2, p.h - 2);
+      else fit(inners[i], s.w - 2, s.h - 2, p.w - 2, p.h - 2);
+    }
     if (turned) el.style.transform = `rotateX(${s.rx.toFixed(2)}deg) rotateZ(${s.rz.toFixed(2)}deg)`;
     if (was.o !== s.o) el.style.opacity = s.o.toFixed(3);
     if (was.c !== s.c) inners[i].style.opacity = s.c.toFixed(3);
@@ -189,7 +201,12 @@
       gh.style.display = s.g > 0 && gh.firstChild ? 'block' : 'none';
       if (s.g > 0 && gh.firstChild) {
         box(gh, s); gh.style.transform = el.style.transform; gh.style.opacity = s.g.toFixed(3);
-        fit(gh.firstChild, s.w, s.h, gh.dataset.w, gh.dataset.h);
+        if (i === 3) stretch(gh.firstChild, s.w, s.h, gh.dataset.w, gh.dataset.h);
+        else fit(gh.firstChild, s.w, s.h, gh.dataset.w, gh.dataset.h);
+        // A hidden clone has no scroll box. Restore its viewport only once it
+        // has layout, synchronously before its first visible animation frame.
+        const scroll = ghostScrolls[i];
+        if (scroll && !scroll.ready) { scroll.sync(); scroll.ready = true; }
       }
     }
     Object.assign(was, s);
@@ -240,7 +257,7 @@
   const rng = (seed) => () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const layout = () => {
     const W = innerWidth, H = innerHeight;
-    view.mobile = W <= 760 && (H >= W || H > 500); // a phone held upright (one on its side takes the wide layout)
+    view.mobile = (W <= 760 && (H >= W || H > 500)) || (W <= 1100 && H > W); // phones and portrait tablets; landscape tablets keep the wide layout
     // Which side the flags hang on: the right of the stack beside the text, or its left under the text on a phone.
     const right = view.right = !view.mobile, out = right ? 1 : -1;
     PO.x = right ? 1900 : 210; TURN = right ? 4.5 : -4.5;
@@ -350,13 +367,17 @@
   // sh: how far the registration threads have drawn (top down); lb: the labels' leaders, per plane;
   // rt: the roots' growth.
   const vis = { sh: 1, lb: PL.map(() => 1), rt: 1 };
+  // Flags are DOM controls: their reveal must not depend on a canvas draw succeeding.
+  const syncFlagVisibility = () => vis.lb.forEach((q, i) => {
+    flags[i].style.setProperty('--in', (q * q).toFixed(3));
+  });
   const GOLD = (a) => `rgba(240,200,119,${a.toFixed(3)})`;
   // Each bead's glow is stamped from one sprite (the same radial light, .55 at its heart to nothing at 4r, faded by its
   // alpha), not built as a new gradient for every bead in every frame.
   const glow = document.createElement('canvas');
   glow.width = glow.height = 128;
   {
-    const sg = glow.getContext('2d');
+    const sg = context2D(glow);
     if (sg) {
       const rg = sg.createRadialGradient(64, 64, 0, 64, 64, 64);
       rg.addColorStop(0, 'rgba(255,226,170,0.55)'); rg.addColorStop(1, 'rgba(255,217,145,0)');
@@ -376,7 +397,7 @@
     if (m < pts.length - 1) { const f = n - m, a = pts[m], b = pts[m + 1]; g.lineTo(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f); }
     g.stroke();
   };
-  const draw = () => {
+  const drawThreads = () => {
     if (!g) return;
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, cv.width, cv.height);
@@ -415,8 +436,6 @@
     }
     // Flag leaders: from each plane's outer edge out to its flag; the layer being explained burns brighter.
     vis.lb.forEach((q, i) => {
-      const revealed = q * q;
-      flags[i].style.setProperty('--in', revealed.toFixed(3));
       if (q <= 0) return;
       const m = C[i][geo.E.m], x0 = m.x + 8 * k * geo.out, x1 = geo.callX - 3 * geo.out, y1 = flagY[i] ?? m.y, l = lit[i];
       g.lineWidth = 0.8 + 0.5 * l; g.strokeStyle = GOLD((0.5 + 0.4 * l) * q);
@@ -440,6 +459,10 @@
       dot(x, y, 2.3 + 0.5 * guide.breath, guide.a);
     }
   };
+  const draw = () => {
+    if (cv.hidden) return;
+    try { drawThreads(); } catch { cv.hidden = true; }
+  };
 
   // ---- States ------------------------------------------------------------------------------------
   let snapshotRelease = null;
@@ -451,8 +474,10 @@
     planes[0].classList.remove('is-carrying');
   };
   const ghostCanvases = PL.map(() => []);
+  const ghostScrolls = PL.map(() => null);
   const retireGhosts = () => ghosts.forEach((gh, i) => {
     if (!gh) return;
+    ghostScrolls[i]?.observer.disconnect(); ghostScrolls[i] = null;
     gh.remove(); gh.replaceChildren(); gh.removeAttribute('style');
     delete gh.dataset.w; delete gh.dataset.h; delete shown[i].g;
   });
@@ -467,7 +492,7 @@
     st.forEach((s, i) => Object.assign(s, settledOf(PL[i]), { o: 0 }));
     apply();
     vis.sh = 0; vis.lb = PL.map(() => 0); vis.rt = 0;
-    flags.forEach((el) => el.style.setProperty('--in', '0'));
+    syncFlagVisibility();
     show(-1);
     draw();
   };
@@ -476,13 +501,14 @@
     apply();
     clearGhosts();
     vis.sh = 1; vis.lb = PL.map(() => 1); vis.rt = 1;
+    syncFlagVisibility();
     draw();
   };
 
   // ---- Arriving ----------------------------------------------------------------------------------
   // build: { t0, from5, src } while the stack is assembling; ambient afterwards.
   let build = null, amb = null, activeCtx = null;
-  // From slide 5: a = each copied panel's fold (rendering, timeline, agent); low = effects and the runtime rising into place;
+  // From slide 5: a = each copied panel's fold (rendering, timeline, agent); low = effects and the runtime descending into place;
   // carry = slide 5's picture, landed on the top plane, dissolving into the plane's own film.
   // card: the top layer has landed, and its card opens as the words arrive, so the landing is never without one.
   // wide: on a wider screen the headline is read first, so the first card waits until the words are whole.
@@ -523,7 +549,7 @@
             canvas.style.width = style.width; canvas.style.height = style.height;
             canvas.style.imageRendering = style.imageRendering;
           } else canvas.dataset.ghostCanvas = '';
-          const context = canvas.getContext('2d');
+          const context = context2D(canvas);
           if (context) { context.clearRect(0, 0, canvas.width, canvas.height); context.drawImage(node, 0, 0); }
           return canvas;
         }
@@ -538,8 +564,26 @@
       gh.replaceChildren(wrap);
       gh.dataset.w = r.width; gh.dataset.h = r.height;
       world.insertBefore(gh, planes[i].nextSibling);
+      const sourceMessages = src.querySelector('.as-msgs'), messages = c.querySelector('.as-msgs');
+      if (sourceMessages && messages) {
+        // cloneNode copies the finished conversation, but not its viewport.
+        // Preserve a reader's position on departure; completed return chats
+        // follow the bottom, including font/media layout changes before paint.
+        const top = sourceMessages.scrollTop;
+        const bottom = getComputedStyle(sourceMessages).justifyContent === 'flex-end' || top + sourceMessages.clientHeight >= sourceMessages.scrollHeight - 1;
+        const sync = () => {
+          if (gh.style.display !== 'block') return;
+          const end = getComputedStyle(messages).justifyContent === 'flex-end' ? 0 : Math.max(0, messages.scrollHeight - messages.clientHeight);
+          const target = bottom ? end : top;
+          if (Math.abs(messages.scrollTop - target) > .5) messages.scrollTop = target;
+        };
+        const observer = new ResizeObserver(sync);
+        observer.observe(messages);
+        [...messages.children].forEach((row) => observer.observe(row));
+        ghostScrolls[i] = { observer, sync, ready: false };
+      }
     });
-    snapshotRelease = ctx.defer(() => { retireGhosts(); endCarry(); });
+    snapshotRelease = ctx.transitionDefer(() => { retireGhosts(); endCarry(); });
     takePicture(demo.querySelector(SRC[0]), rects[0]);
     return { planes: Object.fromEntries(at.map((i, j) => [i, toWorld(rects[j])])) };
   };
@@ -567,6 +611,9 @@
   };
   const begin = (from5, layoutReady = false) => {
     if (!layoutReady) layout();
+    // A new build owns the planes until its handoff, even if an outgoing
+    // visit kept its ambient scene available for a borrowed picture.
+    amb = null;
     const t0 = now();
     if (from5) {
       hideAll();
@@ -590,6 +637,7 @@
     if (fwd && !amb && openI < 0 && e >= controlAt) { show(0); arrangeFlags(0); }
     if (fwd && !amb && e >= T0.open) { // every plane is in place: the tour takes them over (it lifts the open layer, and paints)
       st.forEach((s, i) => Object.assign(s, settledOf(PL[i])));
+      apply(); // publish the DOM endpoint before the ambient branch stops applying build frames
       clearGhosts();
       amb = { t }; tourFrom(0, Math.max(t, build.t0 + first * 1000));
     }
@@ -611,10 +659,19 @@
         s.o = seep(clamp((qa - f0) / (f1 - f0)));
         s.g = 1 - seep(clamp((qa - f1) / (g1 - f1)));
         s.c = seep(clamp((qa - c0) / (c1 - c0)));
+        if (i === 3) {
+          // Establish the receiving surface before dissolving the snapshot.
+          // Its full-size frame never dims or disappears between representations.
+          // The same clock reverses cleanly back to slide 5's exact snapshot.
+          s.o = seep(clamp(qa / 0.25));
+          s.c = seep(clamp((qa - 0.25) / 0.25));
+          s.g = 1 - seep(clamp((qa - 0.5) / 0.45));
+        }
       }
-      for (const i of [2, 4]) { // effects comes up between the timeline and the agent as they part; the runtime beneath
+      for (const i of [2, 4]) { // each new layer emerges from the one above it
         const p = PL[i], s = st[i], q = ease(k01(e, T.low[i]));
-        Object.assign(s, settledOf(p), { y: p.cy + 50 * (1 - q), rx: TILT + 12 * (1 - q), o: seep(q) });
+        const startY = view.mobile ? PL[i - 1].cy : p.cy + 50;
+        Object.assign(s, settledOf(p), { y: lerp(startY, p.cy, q), rx: TILT + 12 * (1 - q), o: seep(q) });
       }
       if (cy.on) { // slide 5's picture dissolves into the plane's own film once the plane has landed (and back)
         cy.a = 1 - seep(k01(e, T.carry));
@@ -626,19 +683,21 @@
       vis.lb = PL.map((_, i) => view.mobile ? stage : clamp((e - T.lb - i * T.lbGap) / T.lbDur));
     } else {
       const T = QUICK;
-      for (let i = 0; i < 5; i++) { // from the foundation up
-        const p = PL[i], q = ease(clamp((e - (4 - i) * T.rise) / T.dur));
-        Object.assign(st[i], settledOf(p), { y: p.cy + 46 * (1 - q), rx: TILT + 10 * (1 - q), o: seep(q) });
+      for (let i = 0; i < 5; i++) { // on phones each layer follows the layer above down
+        const p = PL[i], q = ease(clamp((e - (view.mobile ? i : 4 - i) * T.rise) / T.dur));
+        const startY = view.mobile ? (i ? PL[i - 1].cy : p.cy - 46) : p.cy + 46;
+        Object.assign(st[i], settledOf(p), { y: lerp(startY, p.cy, q), rx: TILT + 10 * (1 - q), o: seep(q) });
       }
       vis.sh = k01(e, T.sh); vis.rt = k01(e, T.rt);
       const stage = view.mobile ? clamp((e - first) / Math.max(0.01, T.open - first)) : null;
       vis.lb = PL.map((_, i) => view.mobile ? stage : clamp((e - T.lb - i * T.lbGap) / T.lbDur));
     }
+    syncFlagVisibility();
     if (!amb) { apply(); draw(); }
     if (!build.back && e >= T0.end) {
       const ctx = build.ctx;
       build = null;
-      if (amb) { vis.sh = 1; vis.lb = PL.map(() => 1); vis.rt = 1; } else { settleAll(); amb = { t }; tourFrom(0, t + 1100); }
+      if (amb) { vis.sh = 1; vis.lb = PL.map(() => 1); vis.rt = 1; syncFlagVisibility(); } else { settleAll(); amb = { t }; tourFrom(0, t + 1100); }
       entryFinished = true;
       if (current(ctx)) entryCompletion?.(ctx, 'completed');
     }
@@ -927,7 +986,7 @@
       pausedVideos = [video].filter((v) => v && !v.paused);
       pausedVideos.forEach((v) => v.pause());
     } else if (slide.classList.contains('on')) {
-      if (running && !amb && !paused && motionOff() === false) {
+      if (running && !build && !amb && !paused && motionOff() === false) {
         amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0)); play(); wake();
         return;
       }
@@ -1005,7 +1064,7 @@
     } };
     stackFlight = flight;
     root.style.transformOrigin = `${(rect.left + rect.width / 2 - box.left) * root.offsetWidth / box.width}px ${(rect.top + rect.height / 2 - box.top) * root.offsetHeight / box.height}px`;
-    flight.release = ctx.defer(() => {
+    flight.release = ctx.transitionDefer(() => {
       if (stackFlight !== flight) return;
       stackFlight = null; copy.remove(); avatar.style.visibility = ''; resetStackFlight();
     });
@@ -1054,7 +1113,7 @@
         } else settle('completed');
       };
       frame = requestAnimationFrame(stepCollapse);
-      ctx.defer(() => {
+      ctx.transitionDefer(() => {
         copy.remove(); settle('cancelled');
         flight.release();
         if (collapseSource?.ctx === ctx) collapseSource = null;
@@ -1076,25 +1135,33 @@
     fold(ctx);
     return promise;
   };
-  const sceneResize = (ctx) => {
-    if (collapseSource?.ctx === ctx) { collapseSource.settle('completed', 'cancelled'); collapseSource.copy.remove(); collapseSource.flight.release(); }
-    if (!stackFlight) resetStackFlight();
-    if (build?.back && build.ctx === ctx) { endFold(); return; }
-    if (slide.classList.contains('on') && activeCtx === ctx) {
-      running = false; paused = false;
-      if (raf) cancelAnimationFrame(raf); raf = 0;
-      build = null; clearGhosts();
-      activeCtx = ctx; running = true;
-      layout(); softenNet(ctx, true); settleAll(); stepHead();
+  const sceneRestore = (ctx) => {
+    if (collapseSource?.ctx === ctx) { collapseSource.settle('completed', 'cancelled'); collapseSource.copy.remove(); collapseSource.flight.release(); collapseSource = null; }
+    if (build?.back && build.ctx === ctx) endFold();
+    if (ctx.to === 5 && activeCtx === ctx && (build || !entryFinished)) {
+      build = null; clearGhosts(); settleAll(); stepHead();
       flags.forEach((f) => { f.tabIndex = 0; });
-      show(view.mobile ? 0 : -1);
-      amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0));
+      if (view.mobile && openI < 0) show(0);
+      if (!amb) { amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0)); }
       entryFinished = true; entryCompletion?.(ctx, 'completed');
-      if (!document.getElementById('overview')?.classList.contains('on') && !window.deckStill?.()) wake();
     }
+    if (ctx.to === 5 && activeCtx === ctx) softenNet(ctx, true);
     releaseFoldText();
+    return true;
   };
-  window.deckRegisterScene?.([5], { enter: sceneEnter, exit: sceneExit, resize: sceneResize });
+  const sceneResize = (ctx) => {
+    if (!stackFlight) resetStackFlight();
+    if (slide.classList.contains('on') && activeCtx === ctx) {
+      const box = root.getBoundingClientRect();
+      if (!box.width || !box.height) return false;
+      layout(); softenNet(ctx, true); settleAll(); stepHead();
+      if (openI >= 0 && geo && !view.mobile) cards[openI].style.top = `${geo.place[openI].top.toFixed(1)}px`;
+      arrangeFlags(0);
+      if (running && !paused) wake();
+    }
+    return true;
+  };
+  window.deckRegisterScene?.([5], { enter: sceneEnter, exit: sceneExit, restore: sceneRestore, resize: sceneResize });
   // Clicks on the stack stay here; they never turn the slide.
   root.addEventListener('click', (e) => { if (e.target.closest('.st-plane, .st-flag, .st-card, .st-hit')) e.stopPropagation(); });
   // Flags: hover (a mouse) or keyboard focus shows a layer's card; a click or tap pins it (again to let go).
@@ -1115,7 +1182,7 @@
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && hold.pin >= 0 && slide.classList.contains('on')) { hold.pin = -1; react(); } });
   window.deckOverlay?.register({
     isOpen: () => hold.pin >= 0 && slide.classList.contains('on'),
-    contains: (target) => cards[hold.pin]?.contains(target) || false,
+    contains: (target) => root.contains(target) && !!target.closest?.('.st-card, .st-flag, .st-plane'),
     close: () => { hold.pin = -1; react(); },
   });
   // Loading resets the film to paused, so one that arrives after the slide has started (a cold load) plays then.

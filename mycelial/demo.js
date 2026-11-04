@@ -1,14 +1,14 @@
 // Slide 5 demo.
 (() => {
   const root = document.querySelector('[data-astrid-demo]');
-  const M = window.AstridMink;
-  if (!root || !M) return;
+  if (!root) return;
   const slide = root.closest('.slide');
+  const coreSlide = document.querySelector('[data-astrid-core]')?.closest('.slide');
+  const link = slide.querySelector('.as-link');
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const motionOff = () => still || window.deckStill?.();
-  let entryCtx = null, reverseCtx = null, entryCompletion = null, reverseCompletion = null;
+  let entryCtx = null, entryCompletion = null;
   const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
-  const ease = (k) => 1 - Math.pow(1 - k, 3);
   const easeIO = (q) => (q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2);
   // Keep absolute animation timestamps on the same clock across a pause.
   let paused = false;
@@ -89,6 +89,35 @@
   const kind = (el, k) => { el.querySelector('.as-kind').textContent = k; };
   const anchors = [...root.querySelectorAll('.as-media .as-frame-media')];
   const guide = root.querySelector('.as-media .as-guide-media');
+  const guidePoster = root.querySelector('.as-guide-poster');
+  const finalPoster = root.querySelector('.as-final-poster');
+  // Mobile browsers may wait for play() before decoding their first frame.
+  // Request playback at the production gate, rather than waiting for the frame
+  // that only that request can produce. A denied or stalled film falls back to
+  // its own poster; the tour still gives each stage its full hold.
+  const MEDIA_STALL = 8000;
+  let primingVideo = null;
+  const mediaStates = new Map();
+  const mediaState = (v) => {
+    if (!mediaStates.has(v)) mediaStates.set(v, { pending: false, failed: false, at: now(), time: v.currentTime });
+    return mediaStates.get(v);
+  };
+  const mediaMayPlay = (v) => running && !paused && !motionBlocked() && !mediaStates.get(v)?.failed && entryCtx?.isCurrent?.()
+    && (primingVideo === v || (v === guide ? view.mode === 'guide' : view.mode === 'play'));
+  const mediaUnavailable = (v) => {
+    const state = mediaState(v);
+    if (Math.abs(v.currentTime - state.time) > 0.01) { state.time = v.currentTime; state.at = now(); }
+    if (!state.failed && (v.error || now() - state.at > MEDIA_STALL)) { state.failed = true; v.pause(); }
+    return state.failed;
+  };
+  const requestPlay = (v) => {
+    const state = mediaState(v);
+    if (!mediaMayPlay(v) || state.failed || state.pending || !v.paused || !v.getAttribute('src')) return;
+    state.pending = true;
+    v.play().then(() => { if (!mediaMayPlay(v)) v.pause(); }).catch((error) => {
+      if (mediaStates.get(v) === state && mediaMayPlay(v) && error.name !== 'AbortError') state.failed = true;
+    }).finally(() => { state.pending = false; });
+  };
 
   // The preview
   // mode: none | still | play.
@@ -134,7 +163,9 @@
     if (!pg) return;
     const cw = picCW < 0 ? pic.clientWidth : picCW, ch = picCH < 0 ? pic.clientHeight : picCH;
     if (Math.abs(cw * pdpr - pic.width) > 1 || Math.abs(ch * pdpr - pic.height) > 1) sizePic();
-    const src = view.mode === 'still' ? anchors[view.i] : (view.mode === 'guide' || view.mode === 'guide-hold') ? guide : view.mode === 'play' ? videos[0] : null;
+    const src = view.mode === 'still' ? anchors[view.i] : (view.mode === 'guide' || view.mode === 'guide-hold')
+      ? (mediaStates.get(guide)?.failed ? guidePoster : guide) : view.mode === 'play'
+        ? (mediaStates.get(videos[0])?.failed ? finalPoster : videos[0]) : null;
     const ready = !!src && (src.tagName === 'VIDEO' ? src.readyState >= 2 && !src.seeking : src.complete && src.naturalWidth > 0);
     root.classList.toggle('has-frame', ready || hasPicFrame);
     const key = picFade || ((view.mode === 'play' || view.mode === 'guide') && ready) ? '' : `${view.mode}|${view.i}|${ready}`;
@@ -156,32 +187,35 @@
   };
   // Frame changes cut with the playhead: a dissolve would leave the old frame visible at the new time.
   const showStill = (i) => { picFade = null; view.mode = 'still'; view.i = i; view.seq = -1; videos.forEach((v) => v.pause()); };
-  // A play request can settle after this visit has stopped or the overview has opened.
-  // Only the current, unpaused guide view may keep the shared element playing.
-  const guideMayPlay = () => running && !paused && !motionBlocked() && entryCtx?.isCurrent?.() && view.mode === 'guide';
-  const playGuide = () => {
-    if (!guideMayPlay()) return;
-    guide.play().then(() => { if (!guideMayPlay()) guide.pause(); }).catch(() => {});
-  };
   const showGuide = () => {
     if (view.mode !== 'guide') fadePic();
-    view.mode = 'guide'; view.i = -1; view.seq = 0;
+    view.mode = 'guide'; view.i = -1; view.seq = 0; primingVideo = null;
     videos[0].pause();
     guide.playbackRate = 2.5;
-    playGuide();
+    requestPlay(guide);
   };
-  const playFrom = (seqT, rate, prepared = false) => { if (view.mode === 'still') picFade = null; else fadePic(); view.mode = 'play'; view.seq = seqT; view.rate = rate; view.i = -2; view.seekPending = !prepared; };
-  const stepPlay = () => {
+  const playFrom = (seqT, rate, prepared = false) => { if (view.mode === 'still') picFade = null; else fadePic(); view.mode = 'play'; primingVideo = null; view.seq = seqT; view.rate = rate; view.i = -2; view.seekPending = !prepared; };
+  const stepPlay = (dt) => {
     if (view.mode === 'guide') {
+      if (mediaUnavailable(guide)) {
+        view.seq = Math.min(SPAN, Math.max(0, view.seq, headT) + dt * 2.5);
+        headTo(view.seq, true);
+        if (view.seq >= SPAN) view.mode = 'guide-hold';
+        return;
+      }
       if (guide.ended) { headTo(SPAN, true); view.mode = 'guide-hold'; }
       else {
-        if (guide.paused && !paused && guide.readyState >= 2 && !guide.seeking) playGuide();
+        if (guide.paused && !paused && !guide.seeking) requestPlay(guide);
         if (Number.isFinite(guide.duration) && guide.duration > 0) headTo(clamp(guide.currentTime / guide.duration) * SPAN, true);
       }
       return;
     }
     if (view.mode !== 'play') return;
     const video = videos[0];
+    if (mediaUnavailable(video)) {
+      view.seq = (Math.max(0, view.seq) + dt * view.rate) % SPAN;
+      headTo(view.seq, true); return;
+    }
     if (video.readyState < 1) { headTo(view.seq, true); return; }
     if (view.i !== 0) {
       view.i = 0;
@@ -195,7 +229,7 @@
     if (!video.paused) {
       view.seq = video.currentTime;
       if (view.seq >= SPAN) { view.seq = 0; view.seekPending = true; video.pause(); }
-    } else video.play().catch(() => {});
+    } else requestPlay(video);
     headTo(view.seq, true);
   };
 
@@ -235,22 +269,44 @@
     { at: 4.7, ask: 'Can you make me realistic frames for that using Qwen Image 2.1?', reply: 'I made four realistic reference frames through VibeComfy: start, mountains, descent, and town.', step: ['Captured 4 reference frames', 'Qwen Image 2.1', 'VibeComfy'], dur: FRAME_STEP * FRAMES.length },
     { at: 9.6, ask: 'Now animate it with MiniMax H3 using the frames and guide.', reply: 'MiniMax H3 used all four frames and the 14-second motion guide. The finished shot is trimmed to 14 seconds.', step: ['Generated the final shot', 'MiniMax H3', '4 frames + motion guide · 14 s'], dur: 2.8 },
   ];
+  // The stack uses the same finished conversation as this demo.
+  window.astridDemoBeats = BEATS;
   for (let i = 1; i < BEATS.length; i++) {
     const previous = BEATS[i - 1], typeEnd = previous.at + previous.ask.length / CPS;
     BEATS[i].at = typeEnd + 0.45 + THINK + previous.dur + 0.45; // send + think + act lead-in, as in beatTimes
   }
   let td = -1, wait = 0, rows = [];
   // The chat follows the newest message until the viewer scrolls up; scrolling back to the bottom resumes it.
-  let follow = true;
-  const toBottom = () => { if (follow) msgs.scrollTop = msgs.scrollHeight; };
-  msgs.addEventListener('scroll', () => { follow = msgs.scrollTop + msgs.clientHeight >= msgs.scrollHeight - 12; }, { passive: true });
-  const bubble = (cls, html) => {
+  let follow = true, followedRange = 0;
+  // Phones use a clipped, bottom-justified two-row view. Its overflow can
+  // extend above the origin; scrollHeight is not a positive scroll range.
+  const chatEnd = () => getComputedStyle(msgs).justifyContent === 'flex-end' ? 0 : Math.max(0, msgs.scrollHeight - msgs.clientHeight);
+  const toBottom = () => {
+    if (!follow) return;
+    followedRange = chatEnd();
+    if (Math.abs(msgs.scrollTop - followedRange) > .5) msgs.scrollTop = followedRange;
+  };
+  // Keep a followed conversation pinned when fonts, the avatar, or the panel
+  // size change. ResizeObserver runs after layout and before the next paint.
+  const chatLayout = new ResizeObserver(() => { if (running) toBottom(); });
+  chatLayout.observe(msgs);
+  msgs.addEventListener('scroll', () => {
+    if (getComputedStyle(msgs).justifyContent === 'flex-end') { follow = true; toBottom(); return; }
+    const range = chatEnd();
+    // WebKit can dispatch its layout/anchor scroll before ResizeObserver.
+    // A changed scroll range is not a reader choosing to leave the bottom.
+    if (follow && range !== followedRange) { toBottom(); return; }
+    follow = msgs.scrollTop >= range - 12;
+    followedRange = range;
+  }, { passive: true });
+  const bubble = (cls, html, scroll = true) => {
     const el = document.createElement('div');
     el.className = `${cls} as-in`;
     el.innerHTML = html;
     msgs.appendChild(el);
-    while (msgs.children.length > 40) msgs.firstChild.remove();
-    toBottom();
+    chatLayout.observe(el);
+    while (msgs.children.length > 40) { chatLayout.unobserve(msgs.firstChild); msgs.firstChild.remove(); }
+    if (scroll) toBottom();
     return el;
   };
   const clearAll = () => {
@@ -258,12 +314,14 @@
     if (pg) { pg.setTransform(1, 0, 0, 1, 0, 0); pg.clearRect(0, 0, pic.width, pic.height); }
     root.classList.remove('has-frame');
     picKey = '';
+    [...msgs.children].forEach((row) => chatLayout.unobserve(row));
     msgs.innerHTML = ''; follow = true;
     typed.textContent = ''; rows = [];
     root.classList.remove('is-typing', 'has-draft', 'is-working', 'is-playing', 'is-resetting');
     anchorEls.forEach((el) => { el.className = 'as-clip as-frame-clip'; el.style.opacity = '0'; kind(el, 'Qwen'); });
     sceneEl.className = 'as-clip as-scene-clip'; sceneEl.style.opacity = '0';
     resultEl.className = 'as-clip as-result-clip'; resultEl.style.opacity = '0';
+    primingVideo = null; mediaStates.clear();
     view.mode = 'none'; view.i = -1; view.seq = -1; view.seekPending = false; total = SPAN;
     videos.forEach((v) => v.pause());
     headTo(0, true);
@@ -288,27 +346,40 @@
   events.push({ at: RESET }, { at: LOOP });
   events.sort((a, b) => a.at - b.at);
   const imageReady = (img) => img.complete && img.naturalWidth > 0;
+  // Count only active tour time at each image gate, so an overview pause does
+  // not consume the loading allowance. A broken image can fall through at once.
+  let imageGate = null, imageGateWait = 0;
   let videoGateSeeking = false, guideGateSeeking = false;
-  const gateReady = (event) => {
-    if (event.guideEnd) return guide.ended;
+  const gateReady = (event, dt = 0) => {
+    if (event.guideEnd) return guide.ended || (mediaUnavailable(guide) && view.mode === 'guide-hold');
     if (event.bi === 0 && event.offset === 0.65) {
-      if (guide.readyState < 1) return false;
-      if (!guideGateSeeking) {
-        try { guide.currentTime = 0; guideGateSeeking = true; } catch { return false; }
+      primingVideo = guide;
+      guide.playbackRate = 2.5;
+      if (!guideGateSeeking && guide.readyState >= 1) {
+        try { if (guide.currentTime > 0.01) guide.currentTime = 0; guideGateSeeking = true; } catch { /* retry after metadata */ }
       }
-      return guide.readyState >= 2 && !guide.seeking;
+      requestPlay(guide);
+      return mediaUnavailable(guide) || (guide.readyState >= 2 && !guide.seeking);
     }
     if (event.bi === 1) {
       const i = FRAMES.findIndex((_, n) => Math.abs(event.offset - (n * FRAME_STEP + 0.32)) < 1e-7);
-      if (i >= 0) return imageReady(anchors[i]);
+      if (i >= 0) {
+        const img = anchors[i];
+        if (imageReady(img)) return true;
+        if (img.getAttribute('src') && img.complete) return true;
+        if (imageGate !== event) { imageGate = event; imageGateWait = 0; }
+        imageGateWait += dt;
+        return imageGateWait >= MEDIA_STALL / 1000;
+      }
     }
     if (event.bi === 2 && event.offset === 0.55) {
       const v = videos[0];
-      if (v.readyState < 1) return false;
-      if (!videoGateSeeking) {
-        try { v.currentTime = 0; videoGateSeeking = true; } catch { return false; }
+      primingVideo = v;
+      if (!videoGateSeeking && v.readyState >= 1) {
+        try { if (v.currentTime > 0.01) v.currentTime = 0; videoGateSeeking = true; } catch { /* retry after metadata */ }
       }
-      return v.readyState >= 2 && !v.seeking;
+      requestPlay(v);
+      return mediaUnavailable(v) || (v.readyState >= 2 && !v.seeking);
     }
     return true;
   };
@@ -331,7 +402,7 @@
         bubble('as-msg is-astrid as-thinking', '<i></i><span>Thinking…</span>');
       }
       if (passed(T.reply)) {
-        msgs.querySelectorAll('.as-thinking').forEach((el) => el.remove());
+        msgs.querySelectorAll('.as-thinking').forEach((el) => { chatLayout.unobserve(el); el.remove(); });
         bubble('as-msg is-astrid', b.reply);
         rows[bi] = bubble('as-step is-active', `<i></i><span>${b.step[0]}</span><code><b>${b.step[1]}</b> ${b.step[2]}</code>`);
       }
@@ -346,13 +417,13 @@
     let target = td + dt;
     while (eventIndex < events.length && events[eventIndex].at <= target) {
       const event = events[eventIndex];
-      if (!gateReady(event)) { target = event.at; break; }
+      if (!gateReady(event, dt)) { target = event.at; break; }
       advanceBeats(td, event.at);
       td = event.at;
       eventIndex++;
       if (event.at === LOOP) {
         const remaining = target - LOOP;
-        clearAll(); td = 0; eventIndex = 0; videoGateSeeking = false; guideGateSeeking = false;
+        clearAll(); td = 0; eventIndex = 0; videoGateSeeking = false; guideGateSeeking = false; imageGate = null; imageGateWait = 0;
         target = remaining;
       }
     }
@@ -361,7 +432,7 @@
       const before = Math.max(td, target - 1e-7);
       advanceBeats(td, before); td = before;
     } else { advanceBeats(td, target); td = target; }
-    stepPlay();
+    stepPlay(dt);
     stepHead(dt);
     return true;
   };
@@ -390,11 +461,12 @@
   const settledState = () => { // everything as it ends, for reduced motion
     clearAll();
     BEATS.forEach((b) => {
-      bubble('as-msg is-user', b.ask);
-      bubble('as-msg is-astrid', b.reply);
-      bubble('as-step is-done', `<i></i><span>${b.step[0]}</span><code><b>${b.step[1]}</b> ${b.step[2]}</code>`);
+      bubble('as-msg is-user', b.ask, false);
+      bubble('as-msg is-astrid', b.reply, false);
+      bubble('as-step is-done', `<i></i><span>${b.step[0]}</span><code><b>${b.step[1]}</b> ${b.step[2]}</code>`, false);
     });
     msgs.querySelectorAll('.as-in').forEach((el) => el.classList.remove('as-in'));
+    toBottom();
     sceneEl.style.opacity = ''; sceneEl.classList.add('is-ready', 'is-animated');
     anchorEls.forEach((el) => { el.style.opacity = ''; el.classList.add('is-ready'); kind(el, 'Qwen'); });
     resultEl.style.opacity = ''; resultEl.classList.add('is-ready', 'is-animated');
@@ -406,223 +478,181 @@
     headTo(4, true); stepHead(0);
   };
 
-  // From slide 4
-  const sky = document.createElement('canvas');
-  sky.className = 'as-flight';
-  sky.setAttribute('aria-hidden', 'true');
-  document.body.appendChild(sky);
-  const sg = sky.getContext('2d');
-  let morph = null;
-  const spriteCanvas = document.createElement('canvas'); spriteCanvas.width = 23; spriteCanvas.height = 20;
-  spriteCanvas.className = 'as-flight-flier'; spriteCanvas.setAttribute('aria-hidden', 'true');
-  document.body.appendChild(spriteCanvas);
-  const spriteG = spriteCanvas.getContext('2d');
-  // Timings in seconds: each pair is a start and duration; the remaining values are milestones.
-  const MORPH = { rings: [0.05, 1.15], fly: [0, 1.1], fill: [0.05, 0.35], jump: [0.4, 0.85], resolve: 1.05, handoff: 1.8, end: 1.85 };
-  // A rounded rectangle as n points spaced evenly round it, clockwise from the top centre.
-  const roundRect = (b, rad, n) => {
-    const { left: l, top: t, right: r, bottom: bt } = b, pts = [];
-    const arc = (cx, cy, a0) => { for (let i = 1; i <= 8; i++) { const a = a0 + (i / 8) * (Math.PI / 2); pts.push([cx + Math.cos(a) * rad, cy + Math.sin(a) * rad]); } };
-    const mx = (l + r) / 2;
-    pts.push([mx, t], [r - rad, t]); arc(r - rad, t + rad, -Math.PI / 2);
-    pts.push([r, bt - rad]); arc(r - rad, bt - rad, 0);
-    pts.push([l + rad, bt]); arc(l + rad, bt - rad, Math.PI / 2);
-    pts.push([l, t + rad]); arc(l + rad, t + rad, Math.PI);
-    pts.push([mx, t]);
-    const len = [0];
-    for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-    const total = len[len.length - 1], out = [];
-    for (let k = 0, j = 1; k < n; k++) {
-      const d = (k / n) * total;
-      while (len[j] < d) j++;
-      const f = (d - len[j - 1]) / ((len[j] - len[j - 1]) || 1);
-      out.push([pts[j - 1][0] + (pts[j][0] - pts[j - 1][0]) * f, pts[j - 1][1] + (pts[j][1] - pts[j - 1][1]) * f]);
-    }
-    return out;
+  // Two Core rings unfold into the live panel frames, with Astrid flying to
+  // her avatar. The editor remains mounted and visible throughout the flight.
+  let flight = null;
+  // The tiny built-in sprite also covers a slow or failed avatar image load.
+  const flightSprite = document.createElement('canvas');
+  flightSprite.width = 23; flightSprite.height = 20;
+  const spriteContext = flightSprite.getContext('2d'), minkArt = window.AstridMink;
+  const spriteCells = [];
+  if (spriteContext && minkArt) minkArt.POSES.profile.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (ch !== '.') spriteCells.push({ x, y, color: minkArt.COLORS[ch], at: (y + (22 - x) * 0.35) / (19 + 22 * 0.35) });
+  }));
+  // The destination is the exact same pixels as the flying sprite. A local
+  // data URL keeps the landing visible even if its tiny image is slow or fails.
+  const avatarImage = root.querySelector('.as-avatar img');
+  let avatarFallback = '';
+  if (spriteContext && spriteCells.length) {
+    for (const cell of spriteCells) { spriteContext.fillStyle = cell.color; spriteContext.fillRect(cell.x, cell.y, 1, 1); }
+    try { avatarFallback = flightSprite.toDataURL(); } catch { /* The normal image remains the fallback. */ }
+  }
+  const ensureAvatar = () => {
+    if (avatarFallback && (!avatarImage.complete || !avatarImage.naturalWidth) && avatarImage.src !== avatarFallback) avatarImage.src = avatarFallback;
   };
-  // The sky is allocated ahead, while slide 4 or 5 is up (allocating it in the press frame added to a full garbage
-  // collection there), cleared back to its first state as a morph begins, and retained for later handoffs.
-  const skySize = () => [Math.round(innerWidth * Math.min(2, devicePixelRatio || 1)), Math.round(innerHeight * Math.min(2, devicePixelRatio || 1))];
-  const startMorph = (snap, back = false, ctx = back ? reverseCtx : entryCtx) => {
-    const d = Math.min(2, devicePixelRatio || 1);
-    const [sw, sh] = skySize();
-    if (sky.width !== sw) sky.width = sw;
-    if (sky.height !== sh) sky.height = sh;
-    if (sg?.reset) sg.reset();
-    else if (sg) { sg.setTransform(1, 0, 0, 1, 0, 0); sg.clearRect(0, 0, sw, sh); }
-    spriteG.clearRect(0, 0, 23, 20);
-    sky.style.display = 'block';
-    if (!back) root.classList.add('is-morphing', 'is-minkless'); // (folding back, the editor is whole as it begins)
-    const chat = root.querySelector('.as-chat').getBoundingClientRect(), edit = root.querySelector('.as-edit').getBoundingClientRect();
-    const mr = root.querySelector('.as-avatar img').getBoundingClientRect();
-    const circle = root.querySelector('.as-avatar').getBoundingClientRect();
-    const origin = { x: mr.left, y: mr.top };
-    const xs = snap.outline.map(([x]) => x), ys = snap.outline.map(([, y]) => y);
-    const lens = { x: snap.left + (Math.min(...xs) + Math.max(...xs)) / 2,
-      y: snap.top + (Math.min(...ys) + Math.max(...ys)) / 2 };
-    const target = { x: origin.x + 11.5, y: origin.y + 10 };
-    const phone = matchMedia('(max-width: 760px)').matches;
-    const distance = Math.hypot(target.x - lens.x, target.y - lens.y);
-    const rise = phone ? clamp(distance * 0.35, 30, 110) : clamp(distance * 0.45, 60, 200);
-    const headingBottom = slide.querySelector('.split h1').getBoundingClientRect().bottom;
-    const control = { x: (lens.x + target.x) / 2, y: Math.max(headingBottom + 10, Math.min(lens.y, target.y) - rise) };
-    const ox = snap.left, oy = snap.top;
-    const N = 180;
-    const frames = [roundRect(chat, 12, N), roundRect(edit, 12, N)];
-    const rings = snap.rings.map((r, side) => ({ ...r, cx: r.x + ox, cy: r.y + oy, target: frames[side],
-      strands: r.strands.map((st) => st.map(([x, y]) => [x + ox, y + oy])) }));
-    // Where the mink's outline (in the 16 x 16 icon's units) lies over her pixels (the 23 x 20 profile).
-    const sprite = ([fx, fy]) => [origin.x + fx * 1.44, origin.y + ((fy - 1.5) * 1.345 + 0.5)];
-    const outlineTo = M.smooth(M.OUTLINE, 10).map(sprite), throatTo = M.smooth(M.THROAT, 10).map(sprite);
-    const P = M.POSES.profile, cells = [];
-    P.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.') cells.push({ x, y, ch, at: 0 }); }));
-    cells.forEach((c) => { c.at = (c.y + (22 - c.x) * 0.35) / (19 + 22 * 0.35); }); // from the head down the neck
-    cells.forEach((c) => { spriteG.fillStyle = M.COLORS[c.ch]; spriteG.fillRect(c.x, c.y, 1, 1); });
-    const motes = [];
-    const rnd = Math.random;
-    snap.slots.forEach((sl) => {
-      const box = sl.side ? edit : chat;
-      for (let i = 0; i < 5; i++) motes.push({ x: sl.x + ox + (rnd() - 0.5) * 30 * snap.k, y: sl.y + oy + (rnd() - 0.5) * 30 * snap.k,
-        tx: box.left + box.width * (0.15 + 0.7 * rnd()), ty: box.bottom - box.height * (0.05 + 0.3 * rnd()), d: 0.1 + rnd() * 0.3, r: 1 + rnd() * 1.2 });
-    });
-    snap.orbit.forEach((o) => {
-      const dx = o.x - snap.W / 2, dy = o.y - snap.H * 0.4, n = Math.hypot(dx, dy) || 1;
-      motes.push({ x: o.x + ox, y: o.y + oy, tx: o.x + ox + (dx / n) * (40 + rnd() * 60), ty: o.y + oy + (dy / n) * (40 + rnd() * 60) + 30, d: rnd() * 0.3, r: 0.8 + rnd() * 0.6, away: true });
-    });
-    const fit = (src, dst) => { const s = Math.min(dst.width / src.w, dst.height / src.h); return { s, x: dst.left + dst.width / 2, y: dst.top + dst.height / 2 }; };
-    morph = {
-      t0: back ? now() : null, d, snap, rings, cells, origin, circle, lens, target, control, outlineTo, throatTo, motes, ctx,
-      spriteScale: Math.max(1, (Math.max(...xs) - Math.min(...xs)) / 23),
-      outline: snap.outline.map(([x, y]) => [x + ox, y + oy]), throat: snap.throat.map(([x, y]) => [x + ox, y + oy]),
-      eyeFrom: { x: snap.eye.x + ox, y: snap.eye.y + oy }, eyeTo: { x: origin.x + 16, y: origin.y + 5 },
-      fly: [
-        { img: snap.layers.agent, from: { x: rings[0].cx, y: rings[0].cy }, src: { w: rings[0].r * 2, h: rings[0].r * 2 }, to: fit({ w: rings[0].r * 2, h: rings[0].r * 2 }, chat) },
-        { img: snap.layers.face, from: { x: rings[1].cx, y: rings[1].cy }, src: { w: rings[1].r * 2, h: rings[1].r * 2 }, to: fit({ w: rings[1].r * 2, h: rings[1].r * 2 }, edit) },
-      ],
-      steps: { resolve: false, handoff: false },
-    };
-    window.AstridCore.hide();
-  };
-  const lerp = (a, b, q) => a + (b - a) * q;
-  const drawMorph = (t) => {
-    const m = morph;
-    if (m.t0 === null) m.t0 = t; // begin when the first frame can actually be drawn
-    let e = Math.max(0, t - m.t0) / 1000;
-    // CSS fades can lag the morph under load; keep the flier until the whole header is opaque.
-    if (!m.back && e >= MORPH.handoff && !headerShown()) {
-      e = MORPH.handoff - 0.001; m.t0 = t - e * 1000;
+  avatarImage.addEventListener('error', ensureAvatar);
+  const stopFlight = () => {
+    if (!flight) return;
+    cancelAnimationFrame(flight.raf);
+    const { done, ctx, back, oldOpacity, avatarImage, oldAvatarOpacity, releaseText, coreArt, oldCoreOpacity, oldCoreTransition } = flight;
+    releaseText?.();
+    if (back) {
+      ctx.present(slide, '', 'dt-rewind');
+      coreArt.style.opacity = oldCoreOpacity; coreArt.style.transition = oldCoreTransition;
     }
-    const d = m.d;
-    if (sg) {
-      sg.setTransform(d, 0, 0, d, 0, 0);
-      sg.clearRect(0, 0, sky.width / d, sky.height / d);
-      sg.lineCap = 'round'; sg.lineJoin = 'round';
-      const k01 = ([a, b]) => clamp((e - a) / b);
-      const qf = easeIO(k01(MORPH.fly));
-      for (const f of m.fly) {
-        const s = lerp(1, f.to.s * 0.82, qf), x = lerp(f.from.x, f.to.x, qf), y = lerp(f.from.y, f.to.y, qf);
-        const a = 1 - smoothstep(clamp((e - 0.45) / 0.65));
-        if (a <= 0) continue;
-        sg.save();
-        sg.globalAlpha = a;
-        sg.translate(x, y); sg.scale(s, s); sg.translate(-f.from.x, -f.from.y);
-        sg.drawImage(f.img, m.snap.left, m.snap.top, m.snap.W, m.snap.H);
-        sg.restore();
-      }
-      const qo = 1 - clamp(e / 0.3);
-      if (qo > 0) { sg.globalAlpha = qo; sg.drawImage(m.snap.layers.outer, m.snap.left, m.snap.top, m.snap.W, m.snap.H); sg.globalAlpha = 1; }
-      for (const p of m.motes) {
-        const q = clamp((e - p.d) / 0.9);
-        if (q <= 0 || q >= 1) continue;
-        const qq = p.away ? ease(q) : easeIO(q);
-        const x = lerp(p.x, p.tx, qq), y = lerp(p.y, p.ty, qq), a = Math.sin(Math.PI * q) * (p.away ? 0.55 : 0.85);
-        sg.fillStyle = `rgba(255,217,145,${a.toFixed(3)})`;
-        sg.beginPath(); sg.arc(x, y, p.r, 0, Math.PI * 2); sg.fill();
-      }
-      const qr = easeIO(k01(MORPH.rings));
-      const fa = 1 - clamp((e - MORPH.resolve - 0.1) / 0.45);
-      if (fa > 0) {
-        m.rings.forEach((r) => {
-          r.strands.forEach((st, si) => {
-            const spread = 1 - qr;
-            sg.lineWidth = lerp(r.width[si] * m.snap.lw, 1, qr);
-            sg.strokeStyle = `rgba(240,200,119,${(lerp(r.alpha[si], si ? 0 : 0.55, qr) * fa).toFixed(3)})`;
-            sg.beginPath();
-            st.forEach(([x, y], i) => {
-              const [tx, ty] = r.target[i];
-              const px = lerp(x, tx, qr), py = lerp(y, ty, qr);
-              if (spread <= 0 && si) return;
-              i ? sg.lineTo(px, py) : sg.moveTo(px, py);
-            });
-            sg.closePath(); sg.stroke();
-          });
-        });
-      }
-      const qm = smoothstep(k01(MORPH.jump));
-      const arcX = 2 * (1 - qm) * qm * (m.control.x - (m.lens.x + m.target.x) / 2);
-      const arcY = 2 * (1 - qm) * qm * (m.control.y - (m.lens.y + m.target.y) / 2);
-      const qp = k01(MORPH.fill);
-      if (e < MORPH.handoff) {
-        const oa = 1 - qp;
-        if (oa > 0) {
-          for (const [src, dst, w, a] of [[m.outline, m.outlineTo, 1.2, 0.9], [m.throat, m.throatTo, 0.8, 0.45]]) {
-            sg.lineWidth = w; sg.strokeStyle = `rgba(255,217,145,${(a * oa).toFixed(3)})`; sg.beginPath();
-            src.forEach(([x, y], i) => { const px = lerp(x, dst[i][0], qm) + arcX, py = lerp(y, dst[i][1], qm) + arcY; i ? sg.lineTo(px, py) : sg.moveTo(px, py); });
-            sg.stroke();
-          }
-          sg.fillStyle = `rgba(255,236,200,${oa.toFixed(3)})`; sg.beginPath();
-          sg.arc(lerp(m.eyeFrom.x, m.eyeTo.x, qm) + arcX, lerp(m.eyeFrom.y, m.eyeTo.y, qm) + arcY, 3 * (1 - qm) + qm, 0, Math.PI * 2); sg.fill();
+    ctx.present(coreSlide, '', 'dt-return dt-await');
+    root.style.opacity = oldOpacity;
+    avatarImage.style.opacity = oldAvatarOpacity;
+    flight.canvas.remove(); flight = null; done?.('completed');
+  };
+  const roundFrame = (b, n) => {
+    const rad = Math.min(12, b.width / 2, b.height / 2), pts = [[b.left + b.width / 2, b.top], [b.right - rad, b.top]];
+    const arc = (x, y, a) => { for (let i = 1; i <= 8; i++) { const t = a + i * Math.PI / 16; pts.push([x + Math.cos(t) * rad, y + Math.sin(t) * rad]); } };
+    arc(b.right - rad, b.top + rad, -Math.PI / 2); pts.push([b.right, b.bottom - rad]);
+    arc(b.right - rad, b.bottom - rad, 0); pts.push([b.left + rad, b.bottom]);
+    arc(b.left + rad, b.bottom - rad, Math.PI / 2); pts.push([b.left, b.top + rad]);
+    arc(b.left + rad, b.top + rad, Math.PI); pts.push([b.left + b.width / 2, b.top]);
+    const lengths = [0];
+    for (let i = 1; i < pts.length; i++) lengths.push(lengths[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    return Array.from({ length: n }, (_, i) => {
+      const d = i / n * lengths.at(-1); let j = 1;
+      while (lengths[j] < d) j++;
+      const q = (d - lengths[j - 1]) / (lengths[j] - lengths[j - 1] || 1);
+      return [pts[j - 1][0] + (pts[j][0] - pts[j - 1][0]) * q, pts[j - 1][1] + (pts[j][1] - pts[j - 1][1]) * q];
+    });
+  };
+  const startFlight = (ctx, back) => {
+    stopFlight();
+    if (!coreSlide || motionOff() || ctx.direct || (ctx.rest && !back)) return;
+    const canvas = document.createElement('canvas');
+    canvas.className = 'as-core-flight'; canvas.setAttribute('aria-hidden', 'true');
+    Object.assign(canvas.style, { position: 'fixed', inset: '0', width: '100%', height: '100%', zIndex: '100', pointerEvents: 'none' });
+    const g = canvas.getContext('2d'); if (!g) return;
+    let done; const completion = new Promise(resolve => { done = resolve; });
+    const coreArt = coreSlide.querySelector('[data-astrid-core]');
+    const f = flight = { canvas, raf: 0, done, ctx, back, oldOpacity: root.style.opacity, avatarImage, oldAvatarOpacity: avatarImage.style.opacity,
+      coreArt, oldCoreOpacity: coreArt.style.opacity, oldCoreTransition: coreArt.style.transition };
+    if (!back) avatarImage.style.opacity = '0';
+    if (back) {
+      ctx.present(slide, 'dt-rewind');
+      ctx.present(coreSlide, 'dt-return dt-await');
+      coreArt.style.transition = 'none'; coreArt.style.opacity = '0';
+      // Do not reveal Core's headline through the still-visible editor.
+      f.releaseText = ctx.holdText(() => stopFlight(), 3000);
+    }
+    else { ctx.present(coreSlide, 'dt-return'); root.style.opacity = '0.22'; }
+    document.body.appendChild(canvas);
+    ctx.defer(() => { if (flight === f) stopFlight(); });
+    f.raf = requestAnimationFrame(() => {
+      if (flight !== f || !ctx.isTransitionCurrent()) return stopFlight();
+      const core = window.AstridCoreGeometry?.();
+      // Slide 5 can still be sliding into place: measure its final viewport
+      // coordinates, not the transient transform on this first frame.
+      const shift = slide.getBoundingClientRect().top;
+      const finalBox = (el) => { const b = el.getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top - shift, bottom: b.bottom - shift, width: b.width, height: b.height }; };
+      const boxes = [root.querySelector('.as-chat'), root.querySelector('.as-edit')].map(finalBox);
+      const avatar = finalBox(avatarImage), avatarCircle = finalBox(root.querySelector('.as-avatar'));
+      if (!core || !minkArt || !spriteContext || boxes.some(b => !b.width || !b.height)) return stopFlight();
+      const dpr = Math.min(2, devicePixelRatio || 1), w = innerWidth, h = innerHeight;
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const frames = boxes.map(b => roundFrame(b, 180));
+      const xs = core.outline.map(p => p[0]), ys = core.outline.map(p => p[1]);
+      const bounds = { left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys) };
+      const origin = { x: (bounds.left + bounds.right) / 2, y: (bounds.top + bounds.bottom) / 2 };
+      const target = { x: avatar.left + avatar.width / 2, y: avatar.top + avatar.height / 2 };
+      const distance = Math.hypot(target.x - origin.x, target.y - origin.y);
+      const rise = innerWidth <= 760 ? clamp(distance * 0.35, 30, 110) : clamp(distance * 0.45, 60, 200);
+      const control = { x: (origin.x + target.x) / 2, y: Math.max(slide.querySelector('.split h1').getBoundingClientRect().bottom - shift + 10, Math.min(origin.y, target.y) - rise) };
+      const spritePoint = ([x, y]) => [avatar.left + x * 1.44, avatar.top + ((y - 1.5) * 1.345 + 0.5)];
+      const outlineTo = minkArt.smooth(minkArt.OUTLINE, 10).map(spritePoint), throatTo = minkArt.smooth(minkArt.THROAT, 10).map(spritePoint);
+      // A small, deterministic echo of the original slot and orbit motes.
+      const motes = core.slots.flatMap((slot, i) => Array.from({ length: 3 }, (_, j) => {
+        const box = boxes[slot.side], v = ((i * 17 + j * 29) % 97) / 97;
+        return { x: slot.x, y: slot.y, tx: box.left + box.width * (0.15 + 0.7 * v), ty: box.bottom - box.height * (0.08 + 0.22 * ((v * 3) % 1)), delay: 0.1 + v * 0.25, r: 0.8 + v * 0.8 };
+      }));
+      core.orbit.forEach((p, i) => {
+        const dx = p.x - origin.x, dy = p.y - origin.y, length = Math.hypot(dx, dy) || 1, v = (i * 37 % 97) / 97;
+        motes.push({ x: p.x, y: p.y, tx: p.x + dx / length * (40 + 60 * v), ty: p.y + dy / length * (40 + 60 * v) + 30, delay: v * 0.3, r: 0.7 + v * 0.5, away: true });
+      });
+      let first = null;
+      const draw = () => {
+        if (flight !== f || !ctx.isTransitionCurrent() || motionOff() || innerWidth !== w || innerHeight !== h) return stopFlight();
+        const t = ctx.now();
+        if (first === null) first = t;
+        const elapsed = Math.min(back ? 2.1 : 1.85, (t - first) / 1000), e = back ? Math.max(0, 1.85 - elapsed) : elapsed;
+        const cross = back ? clamp((elapsed - 1.45) / 0.6) : 0;
+        const coreMix = cross * cross * (3 - 2 * cross);
+        const q = easeIO(clamp((e - 0.05) / 1.15));
+        const departure = back ? 1 - clamp((elapsed - 1.45) / 0.35) : 1;
+        root.style.opacity = String((0.22 + 0.78 * q) * Math.max(0.001, departure));
+        // Once the sprite reaches the avatar, the identical destination pixels
+        // sit beneath it as it dissolves. They never occupy separate positions.
+        avatarImage.style.opacity = e < 1.25 ? '0' : f.oldAvatarOpacity;
+        if (back && cross > 0) {
+          if (!f.coreShown) { f.coreShown = true; ctx.present(coreSlide, '', 'dt-await'); }
+          coreArt.style.opacity = String(coreMix);
         }
-        if (qp > 0) {
-          spriteG.clearRect(0, 0, 23, 20);
-          for (const c of m.cells) if (c.at <= qp) { spriteG.fillStyle = M.COLORS[c.ch]; spriteG.fillRect(c.x, c.y, 1, 1); }
-          const scale = lerp(m.spriteScale, 1, qm * qm);
-          const x = lerp(m.lens.x, m.target.x, qm) + arcX - 11.5 * scale;
-          const y = lerp(m.lens.y, m.target.y, qm) + arcY - 10 * scale;
-          spriteCanvas.style.left = `${x}px`; spriteCanvas.style.top = `${y}px`;
-          spriteCanvas.style.transform = scale === 1 ? 'none' : `scale(${scale})`;
-          spriteCanvas.style.clipPath = qm >= 1 ? `circle(${m.circle.width / 2}px at ${m.circle.left + m.circle.width / 2 - m.origin.x}px ${m.circle.top + m.circle.height / 2 - m.origin.y}px)` : '';
-          spriteCanvas.style.display = 'block';
-        } else { spriteCanvas.style.display = 'none'; }
-      } else { spriteCanvas.style.display = 'none'; }
-    }
-    if (!m.steps.resolve && e >= MORPH.resolve) { m.steps.resolve = true; root.classList.remove('is-morphing'); }
-    if (!m.steps.handoff && e >= MORPH.handoff) { m.steps.handoff = true; root.classList.remove('is-minkless'); }
-    if (e >= MORPH.end) { endMorph(); return false; }
-    return true;
-  };
-  const smoothstep = (k) => k * k * (3 - 2 * k);
-  const endMorph = () => {
-    if (wait === Infinity) wait = 0; // a morph that ends early never leaves the demo held
-    const completed = morph;
-    morph = null;
-    if (completed && !completed.back) entryCompletion?.(completed.ctx, 'completed');
-    if (sg) { sg.setTransform(1, 0, 0, 1, 0, 0); sg.clearRect(0, 0, sky.width, sky.height); }
-    spriteG.clearRect(0, 0, 23, 20);
-    sky.style.display = 'none';
-    spriteCanvas.style.display = 'none'; spriteCanvas.style.clipPath = '';
-    window.AstridCore?.release?.();
-    root.classList.remove('is-morphing', 'is-minkless');
+        if (back && elapsed >= 1.8 && f.releaseText) { f.releaseText(); f.releaseText = null; }
+        // Fade at either end so the real Core and panel edges remain the only settled pictures.
+        const edge = back ? Math.min(1, elapsed / 0.18) * (1 - coreMix) : Math.min(1, elapsed / 0.18, (1.85 - elapsed) / 0.3);
+        const alpha = edge * (1 - clamp((e - 1.15) / 0.45));
+        g.clearRect(0, 0, w, h); g.lineWidth = core.lineWidth + (1.2 - core.lineWidth) * q; g.strokeStyle = `rgba(240,200,119,${0.8 * alpha})`;
+        core.rings.forEach((r, side) => {
+          g.beginPath(); frames[side].forEach(([x, y], i) => {
+            const [px, py] = r.strand[i];
+            const xx = px + (x - px) * q, yy = py + (y - py) * q;
+            i ? g.lineTo(xx, yy) : g.moveTo(xx, yy);
+          }); g.closePath(); g.stroke();
+        });
+        for (const p of motes) {
+          const m = clamp((e - p.delay) / 0.9); if (m <= 0 || m >= 1) continue;
+          const v = p.away ? 1 - Math.pow(1 - m, 3) : easeIO(m); g.fillStyle = `rgba(255,217,145,${(p.away ? 0.45 : 0.7) * Math.sin(Math.PI * m) * edge})`;
+          g.beginPath(); g.arc(p.x + (p.tx - p.x) * v, p.y + (p.ty - p.y) * v, p.r, 0, Math.PI * 2); g.fill();
+        }
+        const jump = clamp((e - 0.4) / 0.85), u = jump * jump * (3 - 2 * jump), v = 1 - u;
+        const arcX = 2 * v * u * (control.x - (origin.x + target.x) / 2);
+        const arcY = 2 * v * u * (control.y - (origin.y + target.y) / 2);
+        const x = v * origin.x + u * target.x + arcX, y = v * origin.y + u * target.y + arcY;
+        const fill = clamp((e - 0.05) / 0.35);
+        // The real Core's thread becomes the profile from the head down, then
+        // follows the same arc to the avatar. At the Core end both bounds match.
+        if (fill < 1) {
+          for (const [from, to, width, opacity] of [[core.outline, outlineTo, 1.2, 0.9], [core.throat, throatTo, 0.8, 0.45]]) {
+            g.lineWidth = width; g.strokeStyle = `rgba(255,217,145,${opacity * (1 - fill) * edge})`; g.beginPath();
+            from.forEach(([px, py], i) => { const xx = px + (to[i][0] - px) * u + arcX, yy = py + (to[i][1] - py) * u + arcY; i ? g.lineTo(xx, yy) : g.moveTo(xx, yy); }); g.stroke();
+          }
+          g.fillStyle = `rgba(255,236,200,${(1 - fill) * edge})`; g.beginPath();
+          g.arc(core.eye.x + (avatar.left + 16 - core.eye.x) * u + arcX, core.eye.y + (avatar.top + 5 - core.eye.y) * u + arcY, 3 * (1 - u) + u, 0, Math.PI * 2); g.fill();
+        }
+        if (fill > 0) {
+          spriteContext.clearRect(0, 0, 23, 20);
+          for (const cell of spriteCells) if (cell.at <= fill) { spriteContext.fillStyle = cell.color; spriteContext.fillRect(cell.x, cell.y, 1, 1); }
+          const width = (bounds.right - bounds.left) * (1 - u * u) + avatar.width * u * u;
+          const height = (bounds.bottom - bounds.top) * (1 - u * u) + avatar.height * u * u;
+          g.save();
+          if (u >= 1) {
+            g.beginPath(); g.arc(avatarCircle.left + avatarCircle.width / 2, avatarCircle.top + avatarCircle.height / 2, avatarCircle.width / 2, 0, Math.PI * 2); g.clip();
+          }
+          g.globalAlpha = edge * (1 - clamp((e - 1.25) / 0.35));
+          g.imageSmoothingEnabled = false; g.drawImage(flightSprite, x - width / 2, y - height / 2, width, height); g.restore();
+        }
+        if (elapsed >= (back ? 2.1 : 1.85)) stopFlight(); else f.raf = requestAnimationFrame(draw);
+      };
+      f.raf = requestAnimationFrame(draw);
+    });
+    return completion;
   };
 
-  // The chat counts as shown once it and its ancestors are fully opaque and not morphing.
-  const chatPanel = root.querySelector('.as-chat');
-  const chatHeader = root.querySelector('.as-chat-head');
-  const headerShown = () => {
-    for (let el = chatHeader; el && el !== document.body; el = el.parentElement) {
-      const cs = getComputedStyle(el);
-      if (cs.visibility !== 'visible' || +cs.opacity < 1) return false;
-    }
-    return true;
-  };
-  const chatShown = () => {
-    if (root.classList.contains('is-morphing')) return false;
-    for (let el = chatPanel; el && el !== document.body; el = el.parentElement) {
-      const cs = getComputedStyle(el);
-      if (cs.visibility !== 'visible' || +cs.opacity < 0.98) return false;
-    }
-    return true;
-  };
   // Clock
   let running = false, raf = 0, oneFrame = 0, last = 0, ticking = false, requested = false;
   const tick = (ctx) => {
@@ -632,11 +662,8 @@
     ticking = true;
     const dt = Math.max(0, (t - (last || t)) / 1000);
     last = t;
-    const morphing = morph ? (morph.back ? unmorph(t) : drawMorph(t)) : false;
-    if (!running) { ticking = false; return; } // the fold back into slide 4 has just landed and stopped the demo
     // Coming back from slide 6 the finished editor waits, hidden, for the stack to fold back into it (dt-await).
-    if (wait === Infinity && chatShown()) wait = 0.1; // the first prompt types once the chat is fully on screen
-    const busy = morphing | (wait === Infinity) | stepBeats(slide.classList.contains('dt-await') || morph?.back ? 0 : dt);
+    const busy = stepBeats(slide.classList.contains('dt-await') ? 0 : dt);
     drawPic(t);
     ticking = false;
     if (busy || requested) { requested = false; raf = requestAnimationFrame(() => tick(ctx)); }
@@ -651,38 +678,36 @@
     const value = `url("data:image/svg+xml,${svg.replace(/"/g, "'").replace(/</g, '%3C').replace(/>/g, '%3E')}")`;
     window.deckSetNetMask?.(ctx, 'demo', { image: value, mode: 'luminance', size: '100% 100%' });
   };
-  const layout = () => { sizePic(); measureTl(); placeHead(); if (slide.classList.contains('on')) softenNet(true, entryCtx); };
+  const layout = () => { sizePic(); measureTl(); placeHead(); toBottom(); if (slide.classList.contains('on')) softenNet(true, entryCtx); };
   new ResizeObserver((es) => { for (const e of es) if (e.target === tl) { measureTl(e.contentRect.width); placeHead(); } }).observe(tl);
-  const start = (fromCore, ctx) => {
+  const start = (ctx) => {
     entryCtx = ctx;
-    if (document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingStart = fromCore; return; }
+    if (document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingStart = ctx; return; }
     pendingStart = null;
     bindMediaHandlers(ctx);
-    slide.removeAttribute('data-as-rewind');
-    root.classList.remove('as-unmorph', 'is-morphing', 'is-minkless'); // folded away on the way back to slide 4
     // Also warm direct #5 entry.
     window.warmDeckMedia(slide);
+    ensureAvatar();
     running = true;
     layout();
-    if (ctx?.from === 5 && ctx?.back) {
+    // Reduced motion uses direct navigation (back is false), but it still
+    // needs the same finished conversation on a return from the stack.
+    if (motionOff() || (ctx?.from === 5 && (ctx?.back || ctx?.dir < 0))) {
       settledState(); td = beatTimes(BEATS[BEATS.length - 1]).done; eventIndex = events.findIndex((event) => event.at > td); wait = 0;
       entryCompletion?.(ctx, 'completed'); wake(); return;
     }
     clearAll();
-    td = 0; wait = 0; eventIndex = 0; videoGateSeeking = false; guideGateSeeking = false;
+    td = 0; wait = 0; eventIndex = 0; videoGateSeeking = false; guideGateSeeking = false; imageGate = null; imageGateWait = 0;
     if (motionOff() || ctx?.rest || ctx?.direct) {
       entryCompletion?.(ctx, 'completed'); wake(); return;
     }
-    const snap = fromCore && window.AstridCore && window.AstridCore.snapshot();
-    // The first prompt starts typing once the chat is on screen: held until the morph resolves the panels
-    // (that step then allows their fade-in), or a short beat when there is no morph.
-    wait = snap ? Infinity : 0.3;
-    if (snap) startMorph(snap);
-    else window.deckLater(() => { if (ctx?.isCurrent?.()) entryCompletion?.(ctx, 'completed'); }, 1800, ctx); // deliberate entry stage when no Core picture is available
+    if (ctx.from === 3) startFlight(ctx, false);
+    // The live editor stays mounted while the decorative flight runs.
+    wait = 1.8;
+    window.deckLater(() => { if (ctx?.isCurrent?.()) entryCompletion?.(ctx, 'completed'); }, 1800, ctx);
     wake();
   };
   const stop = () => {
-    slide.removeAttribute('data-as-rewind');
     clearPicFade();
     running = false;
     clearMediaHandlers();
@@ -690,60 +715,13 @@
     if (raf) cancelAnimationFrame(raf);
     if (oneFrame) cancelAnimationFrame(oneFrame);
     raf = 0; oneFrame = 0; requested = false;
-    if (morph?.back) endUnmorph();
-    if (morph) endMorph();
     softenNet(false);
     videos.forEach((v) => v.pause());
   };
 
-  // ---- Going back to slide 4 ------------------------------------------------------------------
-  // A step back: the morph from slide 4 played backwards. The panels fade as their frames fold back into the two
-  // rings, the chat and editor layers shrink back into them, the avatar jumps back into the lens and becomes a gold
-  // outline, and the community's motes come home; then slide 4's own picture stands in its place.
-  const fold = (ctx) => {
-    reverseCtx = ctx;
-    const snap = window.AstridCore && window.AstridCore.snapshot(); // slide 4 has settled before this runs
-    if (!snap) return false;
-    startMorph(snap, true, reverseCtx); // the same paths, measured from the editor as it stands (it hides slide 4's picture)
-    morph.back = { e: MORPH.end - 1e-3, last: 0, shown: false };
-    morph.steps = { resolve: true, handoff: true };
-    ctx.present(slide, 'dt-rewind');
-    ctx.present(coreSlide, 'dt-return dt-await');
-    if (raf) cancelAnimationFrame(raf);
-    raf = 0; last = now();
-    wake();
-    return true;
-  };
-  const unmorph = (t) => {
-    const b = morph.back;
-    b.e = Math.max(0, b.e - Math.max(0, (t - (b.last || t)) / 1000));
-    b.last = t;
-    const e = b.e;
-    morph.steps = { resolve: e >= MORPH.resolve, handoff: e >= MORPH.handoff };
-    if (e < MORPH.resolve + 0.5) root.classList.add('as-unmorph'); // the panels fade as their frames come back (as they faded in)
-    root.classList.toggle('is-morphing', e < MORPH.resolve);
-    root.classList.toggle('is-minkless', e < MORPH.handoff);
-    if (!b.shown && e <= 0.7) { b.shown = true; reverseCtx.present(coreSlide, '', 'dt-await'); } // its labels come back as it forms
-    morph.t0 = t - e * 1000;
-    drawMorph(t);
-    if (e <= 0) { endUnmorph(); reverseCompletion?.(reverseCtx, 'completed'); stop(); return false; }
-    return true;
-  };
-  const endUnmorph = () => {
-    if (!morph?.back) return;
-    slide.removeAttribute('data-as-rewind');
-    window.AstridCore?.show(); // the very picture the flight layer has just drawn
-    endMorph(); // the sky is kept while slide 4 or 5 is up: the next turn between them flies on it
-    root.classList.add('is-minkless'); // the editor and its mink stay folded away as slide 5 fades (until it next starts)
-    reverseCtx.present(slide, 'dt-rewound', 'dt-rewind');
-    reverseCtx.present(coreSlide, '', 'dt-return dt-await');
-  };
-
-  const coreHost = document.querySelector('[data-astrid-core]');
-  const coreSlide = coreHost && coreHost.closest('.slide');
   const syncMotion = () => {
-    if (motionOff() && slide.classList.contains('on') && morph && !morph.back) { endMorph(); entryCompletion?.(entryCtx, 'completed'); }
-    if (motionBlocked() && morph?.back) { endUnmorph(); reverseCompletion?.(reverseCtx, 'completed'); stop(); return; } // a reverse never waits behind the overview
+    if (motionOff() || motionBlocked()) stopFlight();
+    if (motionOff() && slide.classList.contains('on')) entryCompletion?.(entryCtx, 'completed');
     if (motionBlocked()) {
       if (!running || paused) return;
       paused = true;
@@ -754,11 +732,11 @@
       videos.forEach((v) => v.pause());
     } else if (slide.classList.contains('on')) {
       // An entry deferred behind the overview has no scene to resume yet.
-      if (pendingStart !== null) { start(pendingStart, entryCtx); return; }
+      if (pendingStart !== null) { start(pendingStart); return; }
       if (!paused) { if (!running) { running = true; last = now(); wake(); } return; }
       paused = false;
       last = now();
-      pausedVideos.forEach((v) => { if (v === guide) playGuide(); else v.play().catch(() => {}); });
+      pausedVideos.forEach((v) => requestPlay(v));
       pausedVideos = [];
       wake();
     }
@@ -779,46 +757,48 @@
     return promise;
   };
   const enter = (ctx) => {
+    link.classList.remove('is-underlined');
     const promise = makeCompletion(ctx, (fn) => { entryCompletion = fn; }, () => {
       if (entryCtx === ctx) { stop(); }
     });
     entryCtx = ctx;
-    start(ctx.from === 3, ctx);
+    start(ctx);
     return promise;
   };
-  const exit = (ctx) => {
-    if (ctx.from !== 4 || ctx.to !== 3 || !ctx.back || motionOff()) return undefined;
-    const promise = makeCompletion(ctx, (fn) => { reverseCompletion = fn; }, () => {
-      if (reverseCtx === ctx) {
-        if (morph?.back) endUnmorph();
-        stop();
-      }
-    });
-    reverseCtx = ctx;
-    slide.setAttribute('data-as-rewind', '');
-    queueMicrotask(() => {
-      if (reverseCtx !== ctx || !ctx.isCurrent() || !reverseCompletion) return;
-      entryCtx = ctx; running = true; paused = false;
-      if (!fold(ctx)) { slide.removeAttribute('data-as-rewind'); reverseCompletion?.(ctx, 'completed'); stop(); }
-    });
-    return promise;
-  };
+  const exit = (ctx) => { stop(); if (ctx.to === 3 && ctx.back) return startFlight(ctx, true); };
   const resize = (ctx) => {
-    if (morph?.back && reverseCtx === ctx) {
-      if (raf) cancelAnimationFrame(raf);
-      raf = 0;
-      endUnmorph(); reverseCompletion?.(ctx, 'completed'); stop();
-    } else if (reverseCtx === ctx && reverseCompletion) {
-      slide.removeAttribute('data-as-rewind'); reverseCompletion(ctx, 'completed'); stop();
-    } else if (slide.classList.contains('on') && entryCtx === ctx) {
-      if (morph) endMorph();
-      layout(); drawPic(now());
-      entryCompletion?.(ctx, 'completed');
-      if (running && !paused) wake();
-    }
+    stopFlight();
+    if (!slide.classList.contains('on') || entryCtx !== ctx) return true;
+    if (!root.getBoundingClientRect().width || !root.getBoundingClientRect().height) return false;
+    layout(); drawPic(now());
+    entryCompletion?.(ctx, 'completed');
+    if (running && !paused) wake();
+    return true;
   };
-  window.deckRegisterScene?.([4], { enter, exit, resize });
-  slide.querySelector('.as-link').addEventListener('click', (e) => e.stopPropagation());
+  const restore = (ctx) => {
+    if (ctx.to !== 4) return true;
+    if (!root.getBoundingClientRect().width || !root.getBoundingClientRect().height) return false;
+    drawPic(now()); softenNet(true, ctx);
+    return true;
+  };
+  window.deckRegisterScene?.([4], { enter, exit, restore, resize });
+  // The editor's tour continues after entry. Join entry/network/copy readiness
+  // and the slide's own CSS arrival (not its descendants' ongoing animation).
+  // Geometry refreshes keep the underline; a new visit starts it afresh.
+  const underline = async () => {
+    const ctx = entryCtx;
+    const current = () => ctx?.isCurrent() && ctx === entryCtx && slide.hasAttribute('data-settled');
+    if (!current() || link.classList.contains('is-underlined')) return;
+    while (!motionOff()) {
+      const arriving = slide.getAnimations().filter((a) => a.playState !== 'finished' && Number.isFinite(a.effect.getComputedTiming().endTime));
+      if (!arriving.length) break;
+      await Promise.allSettled(arriving.map((a) => a.finished));
+      if (!current()) return;
+    }
+    link.classList.add('is-underlined');
+  };
+  window.addEventListener('deck-transaction', underline);
+  link.addEventListener('click', (e) => e.stopPropagation());
   // Clicks on the demos stay here; they never turn the slide.
   root.addEventListener('click', (e) => { if (e.target.closest('.as-panel')) e.stopPropagation(); });
   clearAll();

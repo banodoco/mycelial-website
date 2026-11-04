@@ -16,7 +16,7 @@
   if (!root) return;
   const slide = root.closest('.slide');
   const canvas = root.querySelector('.ac-canvas');
-  let g = canvas.getContext('2d'); // let: slide 5 borrows the drawing to take this picture's layers
+  const g = canvas.getContext('2d');
   const html = document.documentElement;
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const motionOff = () => still || window.deckStill?.();
@@ -743,7 +743,7 @@
   };
   // From slide 3: the empty ring lifts off the chart and flies up to become the core's bright node.
   const FLIGHT = 1.1;
-  const launch = () => {
+  const launch = (back = false) => {
     if (!ring) return false;
     const r = ring.getBoundingClientRect(), b = root.getBoundingClientRect();
     if (!r.width) return false;
@@ -757,20 +757,23 @@
     document.body.appendChild(seedEl);
     ring.style.visibility = 'hidden';
     const steps = 24;
+    // Keep a positive playback rate so the deck's pace controller cannot
+    // overwrite a pending reverse() rate before the first animation frame.
+    const flight = { duration: FLIGHT * 1000, fill: 'forwards', direction: back ? 'reverse' : 'normal' };
     seedEl.animate(Array.from({ length: steps + 1 }, (_, i) => {
       const t = smooth(i / steps), u = 1 - t;
       const x = u * u * from.x + 2 * u * t * c.x + t * t * to.x, y = u * u * from.y + 2 * u * t * c.y + t * t * to.y;
       return { transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)` };
-    }), { duration: FLIGHT * 1000, fill: 'forwards' });
+    }), flight);
     seedEl.querySelector('i').animate([
       { transform: 'scale(1) rotate(0deg)', opacity: 1 },
       { transform: 'scale(.5) rotate(50deg)', opacity: 0.9, offset: 0.6 },
       { transform: 'scale(.1) rotate(90deg)', opacity: 0 },
-    ], { duration: FLIGHT * 1000, easing: 'ease-in', fill: 'forwards' });
+    ], { ...flight, easing: 'ease-in' });
     seedEl.querySelector('em').animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(.6)', offset: 0.4 }, { opacity: 0, transform: 'scale(.6)' }],
-      { duration: FLIGHT * 1000, easing: 'ease-in', fill: 'forwards' });
+      { ...flight, easing: 'ease-in' });
     seedEl.querySelector('b').animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 0, transform: 'scale(.6)', offset: 0.45 }, { opacity: 1, transform: 'scale(1.3)' }],
-      { duration: FLIGHT * 1000, fill: 'forwards' });
+      flight);
     return true;
   };
 
@@ -878,7 +881,7 @@
       u.seeded = true;
       html.classList.remove('ac-quiet');
       reverseCtx.present(slide, 'dt-rewound', 'dt-rewind');
-      if (launch()) seedEl.getAnimations({ subtree: true }).forEach((a) => a.reverse());
+      launch(true);
     }
     if (u.seeded) {
       u.at += dt;
@@ -902,7 +905,6 @@
     reverseFinish?.(reverseCtx, 'completed');
   };
 
-  const idleSoon = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 100));
   const sceneEnter = (ctx) => {
     const promise = completion(ctx, (fn) => { entryFinish = fn; }, () => { stop(); dropSeed(); });
     prepare(ctx.from === 2 && !ctx.rest && !ctx.direct && !motionOff(), ctx);
@@ -928,18 +930,22 @@
   const sceneResize = (ctx) => {
     if (unbuilding) endUnbuild();
     if (!slide.classList.contains('on')) return;
-    if (!rings.length && !layout()) { entryFinish?.(ctx, 'completed'); return; }
+    if (!rings.length && !layout()) return false;
     entryCtx = ctx;
     stop();
     timers.forEach(window.deckCancelLater); timers = [];
     const interrupted = ta < T.end || !!seedEl;
     const state = sides.map((sd) => sd.slots.map((x) => ({ state: x.state, shown: x.shown, filledAt: x.filledAt, flash: x.flash })));
+    const oldHot = hot, oldPinned = pinned;
     // A contribution in flight lands at its own socket; the rest of the
     // community keeps its existing clock and filled slots.
     for (const gift of gifts) Object.assign(state[gift.x.side][gift.x.i], { state: 'full', filledAt: ta - 2 });
     dropSeed();
-    if (!layout()) { entryFinish?.(ctx, 'completed'); return; }
+    if (!layout()) return false;
     sides.forEach((sd, i) => sd.slots.forEach((x, j) => Object.assign(x, state[i][j])));
+    hot = oldHot ? sides[oldHot.side]?.slots[oldHot.i] : null;
+    pinned = oldPinned ? sides[oldPinned.side]?.slots[oldPinned.i] : null;
+    if (hot || pinned) show();
     gifts = []; pend = []; pulses = [];
     sides.forEach((sd) => {
       if (sd.slots.filter(isFull).length >= CAP || sd.slots.some((x) => x.state === 'socket')) return;
@@ -950,13 +956,36 @@
       settle(state.map((sd) => sd.map((x) => x.state)));
       timers.forEach(window.deckCancelLater); timers = [];
     }
-    hot = pinned = null;
-    card.classList.remove('is-on');
     draw();
     entryFinish?.(ctx, 'completed');
     start(ctx);
+    return true;
   };
-  window.deckRegisterScene?.([3], { enter: sceneEnter, exit: sceneExit, resize: sceneResize });
+  const sceneRestore = (ctx) => {
+    if (unbuilding) endUnbuild();
+    if (ctx.to !== 3) return true;
+    canvas.style.opacity = '';
+    if (ta < T.end || seedEl) return sceneResize(ctx);
+    return true;
+  };
+  window.deckRegisterScene?.([3], { enter: sceneEnter, exit: sceneExit, restore: sceneRestore, resize: sceneResize });
+
+  // Geometry only: the decorative handoff never borrows or hides this canvas.
+  window.AstridCoreGeometry = () => {
+    if (!rings.length) return null;
+    const b = root.getBoundingClientRect();
+    return { rings: rings.map((r, side) => ({ x: b.left + r.c.x, y: b.top + r.c.y, r: RR * k,
+      strand: Array.from({ length: 180 }, (_, i) => {
+        const a = -Math.PI / 2 + i / 180 * TAU;
+        const [x, y] = ringPt(side, STRANDS[side][0], side ? Math.PI - a : a);
+        return [b.left + x, b.top + y];
+      }) })), lineWidth: LW, scale: k,
+      outline: lens.outline.pts.map(([x, y]) => [b.left + x, b.top + y]),
+      throat: lens.throat.pts.map(([x, y]) => [b.left + x, b.top + y]),
+      eye: { x: b.left + lens.eye.x, y: b.top + lens.eye.y },
+      slots: sides.flatMap(sd => sd.slots.filter(x => x.state !== 'none').map(x => ({ x: b.left + x.x, y: b.top + x.y, side: x.side }))),
+      orbit: orbit.filter((_, i) => i % 3 === 0).map(o => ({ x: b.left + o.x, y: b.top + o.y })) };
+  };
 
   // ---- Hovering ---------------------------------------------------------------------
   const local = (e) => { const b = root.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; };
@@ -1003,75 +1032,4 @@
     if (pinned) { e.stopPropagation(); pinned = null; show(); }
   });
 
-  // ---- For slide 5 ---------------------------------------------------------------------
-  // Going on to slide 5, this picture turns into the real product: slide 5 takes its geometry
-  // and its layers (painted on their own canvases) and carries them into its panels.
-  // They are painted at the press (slide 4 breathes, so they are painted as it stands), on three canvases allocated
-  // ahead, while slide 4 or 5 is up (the hand-off runs both ways), and reused, so the press allocates nothing (three
-  // full-screen canvases there set off a full garbage collection in the press frame). They stay allocated for the next handoff.
-  const layerCv = { agent: null, face: null, outer: null };
-  let lent = false; // slide 5's morph is drawing them
-  const sizeLayers = () => {
-    for (const w in layerCv) {
-      const c = layerCv[w] || (layerCv[w] = document.createElement('canvas'));
-      if (c.width !== canvas.width) c.width = canvas.width;
-      if (c.height !== canvas.height) c.height = canvas.height;
-    }
-  };
-  const paintLayer = (which) => {
-    // One of the right size is cleared back to its first state, as a new canvas starts; otherwise it is sized now.
-    let off = layerCv[which];
-    if (!off) off = layerCv[which] = document.createElement('canvas');
-    if (off.width !== canvas.width) off.width = canvas.width;
-    if (off.height !== canvas.height) off.height = canvas.height;
-    const x = off.getContext('2d');
-    if (!x) return null;
-    if (x.reset) x.reset();
-    else { x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, off.width, off.height); }
-    const keep = g;
-    g = x;
-    g.save();
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.lineCap = 'round'; g.lineJoin = 'round';
-    try {
-      if (which === 'agent') drawAgent();
-      else if (which === 'face') drawFace();
-      else { drawSides(); drawOrbit(); grow(feed, T.feed, 0.75 / pace, 0.7 * LW, 0.38); }
-    } finally { g.restore(); g = keep; }
-    return off;
-  };
-  const strandPts = (side, n) => STRANDS[side].map((st) => Array.from({ length: n }, (_, i) => {
-    const a = -Math.PI / 2 + (i / n) * TAU; // clockwise from the top, on screen
-    return ringPt(side, st, side ? Math.PI - a : a);
-  }));
-  window.AstridCore = {
-    snapshot() {
-      if (!rings.length || ta < T.end) return null; // only a picture that has finished growing is carried on
-      const layers = { agent: paintLayer('agent'), face: paintLayer('face'), outer: paintLayer('outer') };
-      if (Object.values(layers).some((layer) => !layer)) return null;
-      lent = true;
-      const b = root.getBoundingClientRect();
-      return {
-        left: b.left, top: b.top, W, H, dpr, k, lw: LW,
-        rings: [0, 1].map((side) => ({ x: rings[side].c.x, y: rings[side].c.y, r: RR * k, strands: strandPts(side, 180), alpha: STRANDS[side].map((st) => st.a), width: STRANDS[side].map((st) => st.w) })),
-        outline: lens.outline.pts, throat: lens.throat.pts, eye: lens.eye,
-        slots: sides.flatMap((sd) => sd.slots.filter((x) => x.state !== 'none').map((x) => ({ x: x.x, y: x.y, side: x.side }))),
-        orbit: orbit.filter((_, i) => i % 3 === 0).map((o) => ({ x: o.x, y: o.y })),
-        layers,
-      };
-    },
-    hide() { canvas.style.opacity = '0'; },
-    show() { canvas.style.opacity = ''; }, // slide 5 folding back into this picture: it is whole again
-    release() { lent = false; }, // slide 5's morph is done with them
-  };
-
-  // The hand-off's layers: allocated once slide 4 or 5 is up and the page is idle, retained for later handoffs.
-  const demoSlide = document.querySelector('[data-astrid-demo]')?.closest('.slide');
-  const near45 = () => slide.classList.contains('on') || !!demoSlide?.classList.contains('on');
-  const keepLayers = () => {
-    if (near45()) { if (!still) setTimeout(() => idleSoon(() => { if (near45() && !lent) sizeLayers(); }), 1500); }
-  };
-  const keep = new MutationObserver(keepLayers);
-  [slide, demoSlide].filter(Boolean).forEach((s) => keep.observe(s, { attributes: true, attributeFilter: ['class'] }));
-  keepLayers();
 })();

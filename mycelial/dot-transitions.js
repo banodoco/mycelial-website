@@ -466,7 +466,10 @@
   // Decoration must never hold up copy or transition completion.
   const safeZone = (elements, key) => { try { return zone(elements(), key); } catch { return null; } };
   // The text block of a slide: its column, the label included.
-  const lines = (s) => textOf(s).flatMap((col) => [...col.children]);
+  const stableCopy = (column) => column.matches('.gap-copy, .as-copy');
+  const copyContent = (column) => column.matches('.gap-copy')
+    ? column.querySelector(':scope > .gap-copy-content') : column;
+  const lines = (s) => textOf(s).flatMap((col) => [...copyContent(col).children]);
   // The deck's own chrome: the wordmark, the counter and its buttons.
   const chromeEls = () => [name, ...document.querySelectorAll('.chrome #count, .chrome button')];
   const soften = () => {
@@ -690,13 +693,13 @@
     const num = s.querySelector(':scope > .num'), col = columnOf(s);
     if (!num || !col) return;
     homes.set(num, s);
-    col.prepend(num);
+    copyContent(col).prepend(num);
   });
   const restore = () => homes.forEach((s, num) => s.insertBefore(num, s.querySelector(':scope > .split')));
 
   const textOf = (s) => [s.matches('.fw-raise') ? s.querySelector(':scope > .split') : columnOf(s), s.querySelector(':scope > .fw-stat')].filter(Boolean);
   const copyRectsOf = (el) => {
-    const items = el.matches('.fw-stat') ? [el] : el.matches('.split') ? [...el.children].flatMap((child, i) => i === 0 ? [...child.children] : [child]) : [...el.children];
+    const items = el.matches('.fw-stat') ? [el] : el.matches('.split') ? [...el.children].flatMap((child, i) => i === 0 ? [...child.children] : [child]) : [...copyContent(el).children];
     return items.flatMap((item) => {
       if (getComputedStyle(item).display === 'none' || (item.matches('.num') && item.closest('.fw-raise'))) return [];
       if (item.matches('.fw-stat')) {
@@ -776,10 +779,14 @@
   };
   const clearOverlays = (slide) => textOf(slide).forEach(removeOverlay);
   const cancelOverlay = (slide, state) => {
+    if (state?.timer) window.deckCancelLater(state.timer);
     if (copyStates.get(slide) !== state) return;
+    // Revoke the owner before cleanup, including continuations already queued.
+    copyStates.set(slide, { phase: 'cancelled' });
+    state?.resolve?.('cancelled');
     clearOverlays(slide);
     // If this visit is cancelled without a successor, the active copy remains readable.
-    if (slide.classList.contains('on')) textOf(slide).forEach((el) => el.classList.remove('dt-copy-hidden'));
+    if (slide.classList.contains('on')) textOf(slide).forEach((el) => paintCopy(el, null, 0));
   };
   // Keep the real copy in the layout and reserve masks for disposable paint layers.
   const overlayFor = (el) => {
@@ -794,10 +801,18 @@
     const clones = [overlay, ...overlay.querySelectorAll('*')];
     originals.forEach((original, i) => {
       const computed = getComputedStyle(original), clone = clones[i];
+      const declarations = [];
       for (let j = 0; j < computed.length; j++) {
         const property = computed[j];
-        clone.style.setProperty(property, computed.getPropertyValue(property), computed.getPropertyPriority(property));
+        // WebKit's resolved stroke-color enables an extra text stroke when
+        // written back onto HTML. Keep gradient glyphs identical to live copy.
+        if (property === 'stroke-color' && original.namespaceURI !== 'http://www.w3.org/2000/svg') continue;
+        const priority = computed.getPropertyPriority(property);
+        declarations.push(`${property}:${computed.getPropertyValue(property)}${priority ? ' !important' : ''};`);
       }
+      // Apply the frozen style once per node. Thousands of individual CSSOM
+      // writes can block WebKit for the entire wheel transition.
+      clone.style.cssText += declarations.join('');
     });
     if (wasHidden) el.classList.add('dt-copy-hidden');
     overlay.setAttribute('aria-hidden', 'true');
@@ -820,6 +835,17 @@
   };
   // All copy mask and visibility writes pass through this one function.
   const paintCopy = (el, at, r, hidden = false, bounds = null) => {
+    if (stableCopy(el)) {
+      // Animate glyph/gradient ink on a stable, opaque semantic tree. No
+      // opacity layer, clone, mask or visibility swap participates.
+      const content = copyContent(el);
+      if (at) masks.set(el, { at: { ...at }, r });
+      else masks.delete(el);
+      const alpha = at ? String(clamp(r / reach(el, at, bounds))) : hidden ? '0' : '1';
+      const property = el.matches('.gap-copy') ? '--gap-copy-alpha' : '--as-copy-alpha';
+      if (content.style.getPropertyValue(property) !== alpha) content.style.setProperty(property, alpha);
+      return;
+    }
     if (at) {
       masks.set(el, { at: { ...at }, r });
       const b = bounds || el.getBoundingClientRect();
@@ -828,10 +854,10 @@
         : `radial-gradient(circle at ${x.toFixed(1)}px ${y.toFixed(1)}px, #000 ${Math.max(0, r - SOFT).toFixed(1)}px, transparent ${r.toFixed(1)}px)`;
       const overlay = overlayFor(el);
       overlay.style.webkitMaskImage = overlay.style.maskImage = value;
-      el.classList.add('dt-copy-hidden');
+      copyContent(el).classList.add('dt-copy-hidden');
     } else {
       removeOverlay(el);
-      el.classList.toggle('dt-copy-hidden', hidden);
+      copyContent(el).classList.toggle('dt-copy-hidden', hidden);
     }
   };
   const copyStates = new WeakMap();
@@ -845,9 +871,9 @@
       const state = reuse ? old : { context, phase: 'hidden', timer: null, done: new Promise((r) => { resolve = r; }) };
       if (!reuse) state.resolve = resolve;
       copyStates.set(slide, state);
-      if (!reuse && context) context.defer(() => cancelOverlay(slide, state));
+      if (!reuse && context) context.transitionDefer(() => cancelOverlay(slide, state));
       if (deadline && context) state.timer = window.deckLater(() => {
-        if (copyStates.get(slide) !== state || !context.isCurrent()) return;
+        if (copyStates.get(slide) !== state || !context.isTransitionCurrent()) return;
         stopText(context);
         copy.show(slide);
       }, deadline, context);
@@ -865,9 +891,13 @@
       if (state?.timer) window.deckCancelLater(state.timer);
       copyStates.set(slide, { phase: 'shown' });
       put.x = NaN;
-      textOf(slide).forEach((el) => { el.style.transform = ''; paintCopy(el, null, 0); });
-      state?.resolve?.('completed');
-      return true;
+      let complete = true;
+      textOf(slide).forEach((el) => {
+        try { if (!stableCopy(el)) el.style.transform = ''; paintCopy(el, null, 0); }
+        catch (error) { complete = false; console.error('Deck copy restoration failed', error); }
+      });
+      state?.resolve?.(complete ? 'completed' : 'cancelled');
+      return complete;
     },
     retire(slide) {
       if (!slide) return;
@@ -930,39 +960,13 @@
     textTweens.add(p);
     if (!textTweensByContext.has(context)) textTweensByContext.set(context, new Set());
     textTweensByContext.get(context).add(p);
-    const release = context.defer(p.stop);
+    const release = context.transitionDefer(p.stop);
     p.then(release);
     return p;
   };
   const stopText = (context) => {
     const owned = context ? textTweensByContext.get(context) : textTweens;
     [...(owned || [])].forEach((tw) => tw.stop());
-  };
-
-  // Astrid's first mention (.dt-flash, on slide 5) warms to her own orange as the reveal reaches it, then cools back
-  // to the headline's ink. It starts from the mask's own progress, so it peaks as the word comes in on any turn and
-  // at any pace; as an animation on the slide, the deck hurries it with the rest and finishes it when motion goes off.
-  const ORANGE = '255,122,46'; // her mink's coat (assets/astrid/mink-profile.png; mink.js, COLORS.o)
-  const FLASH_UP = 380, FLASH_DOWN = 1050;
-  const flashes = (el, at, far, duration) => [...el.querySelectorAll('.dt-flash')].map((w, i) => {
-    const b = w.getBoundingClientRect();
-    // The peak: the mask's soft edge has just passed the word's middle (seep() solved for that radius).
-    const d = Math.hypot(b.left + b.width / 2 - at.x, b.top + b.height / 2 - at.y);
-    const peak = (duration * Math.acos(1 - 2 * clamp((d + SOFT) / far))) / Math.PI;
-    const up = Math.min(FLASH_UP, peak);
-    return { words: [w, overlays.get(el)?.querySelectorAll('.dt-flash')[i]].filter(Boolean), up, from: seep((peak - up) / duration), lit: false };
-  });
-  const flash = ({ words, up }) => {
-    if (still) return; // motion switched off mid-reveal: the word just rests in its ink
-    words.forEach((w) => {
-      w.getAnimations().forEach((a) => a.cancel()); // a flash from an earlier visit, so the ink is read clean
-      const ink = getComputedStyle(w).color, glow = (a) => `0 0 .25em rgba(${ORANGE},${0.45 * a}), 0 0 .8em rgba(${ORANGE},${0.2 * a})`;
-      w.animate([
-        { color: ink, textShadow: glow(0), easing: 'cubic-bezier(.35,0,.25,1)' },
-        { offset: up / (up + FLASH_DOWN), color: `rgb(${ORANGE})`, textShadow: glow(1), easing: 'cubic-bezier(.45,0,.3,1)' },
-        { color: ink, textShadow: glow(0) },
-      ], { duration: up + FLASH_DOWN });
-    });
   };
 
   // Threads run from the node down into the text, and the words appear where
@@ -984,12 +988,10 @@
           hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 1.1, rest: 0, smooth: true, owner: context, delay: delay / 1000, duration: (duration / 1000) * clamp(d / (far - SOFT), 0.3, 1) });
         }
       }
-      const lit = flashes(el, at, far, duration);
       const run = tween(duration, seep, (k) => {
         if (!s.classList.contains('on')) return;
         if (copyStates.get(s) !== state) return;
         copy.paint(el, at, k * far, context.geometry?.box(el));
-        for (const f of lit) if (!f.lit && k >= f.from) { f.lit = true; flash(f); }
       }, delay, context);
       tw.push(run);
     }
@@ -1008,7 +1010,7 @@
     old?.resolve?.('cancelled');
     const state = { context, phase: 'gathering' };
     copyStates.set(s, state);
-    context.defer(() => cancelOverlay(s, state));
+    context.transitionDefer(() => cancelOverlay(s, state));
     for (const el of textOf(s)) {
       const bounds = context.geometry?.box(el);
       const saved = masks.get(el), centre = saved?.at || at, far = saved?.r ?? reach(el, at, bounds);
@@ -1093,7 +1095,9 @@
     const e = 1 / (8 * (devicePixelRatio || 1));
     if (!(Math.abs(trail.x - put.x) < e && Math.abs(trail.y - put.y) < e)) {
       put.x = trail.x; put.y = trail.y;
-      textOf(current).forEach((el) => { el.style.transform = `translate(${trail.x.toFixed(2)}px, ${trail.y.toFixed(2)}px)`; });
+      textOf(current).forEach((el) => {
+        if (!stableCopy(el)) el.style.transform = `translate(${trail.x.toFixed(2)}px, ${trail.y.toFixed(2)}px)`;
+      });
     }
   };
   window.addEventListener('deck-overview', syncIdle);
@@ -1157,6 +1161,11 @@
   // central glow, following the wheel's progress. Its surface is drawn once; only its transform and opacity move.
   let following = null; // { glow, back }
   const crown = (at, now, glow) => {
+    // A reversal resumes the very same mark at the wheel's current progress.
+    if (glow && mark?.crown && following) {
+      following = { glow, back: false };
+      return;
+    }
     if (!now && !glow && mark && mark.crown && mark.folding === undefined) return; // already growing out of the glow
     const c = crownAt() || { x: at.x, y: at.y, size: 54 };
     mark = { x: c.x, y: c.y, t: now ? 2 : -0.2, size: c.size, shrink: 0, trail: null, shed: 0, crown: true, faint: 0.75 };
@@ -1172,10 +1181,12 @@
     wake();
   };
   const followAt = (f) => {
-    const g = following.glow, q = clamp(f), s = clamp((2 * g.r) / mark.size, 0.04, 0.5);
+    // The glow's radius is atmospheric, not the size of the emerging mark.
+    // Starting at half-size made the visible growth almost imperceptible.
+    const g = following.glow, q = clamp(f), s = 0.08;
     if (q >= 1) { markCv.style.transform = markCv.style.opacity = ''; return; }
     markCv.style.transform = `translate(${((g.x - mark.x) * (1 - q)).toFixed(1)}px, ${((g.y - mark.y) * (1 - q)).toFixed(1)}px) scale(${(s + (1 - s) * q).toFixed(4)})`;
-    const o = clamp(q / 0.35);
+    const o = clamp(q / 0.15);
     markCv.style.opacity = (o * o * (3 - 2 * o)).toFixed(3);
   };
   window.AstridMark = {
@@ -1363,7 +1374,7 @@
       },
     };
     turning = transition;
-    context.defer(() => transition.cancel());
+    context.transitionDefer(() => transition.cancel());
     const from = { x: (anchor ? anchor.x : 0) + drift.x, y: (anchor ? anchor.y : 0) + drift.y };
     const glow = (s) => !still && window.AstridFlywheel?.glow(s); // slide 10's glow, between it and the last slide
     uncrown(prev === lastSlide() && next === deck().at(-2) && glow(1));
@@ -1377,14 +1388,20 @@
     tweens.push(...gather(prev, from, context));
     current = next;
     const to = context.geometry?.anchor || anchorOf(next) || from;
-    const early = overlap(prev, from, to, context);
+    // The final mark shares the wheel's clock and starts at the same central
+    // glow into which it folds on the return trip.
+    const wheelGlow = next === lastSlide() && prev === deck().at(-2) && glow(1);
+    if (wheelGlow) crown(to, false, wheelGlow);
+    // Give these pictures a moment to establish themselves before their copy grows.
+    const pictureLead = context.dir > 0 && [2, 3, 5].includes(context.to) ? 800 : 0;
+    const early = Math.max(overlap(prev, from, to, context), pictureLead);
     // A hold's declared deadline is on the same clock; the reveal can begin
     // only after both that hold and the overlap milestone have passed.
     const revealAt = Math.max(started + early, context.textDeadline);
     const copyVisit = copy.hide(next, context, to, Math.max(0, revealAt - context.now()) + revealDuration(next, to, context) + 400);
     anchor = to;
     drift = { x: 0, y: 0 }; trail = { x: 0, y: 0 };
-    // The closing mark grows only when the travelling node reaches its destination (arrive below).
+    // Other routes still grow the closing mark when the node arrives below.
 
     // The new text grows from its node while the old is still being drawn in (overlap), or once a picture crossing
     // its place has cleared, the node's travel running alongside; the turn is done once the text is whole
@@ -1460,10 +1477,10 @@
     current = next;
     const promise = new Promise((resolve) => { visit = { context, resolve }; });
     const ownVisit = visit;
-    context.defer(() => { ownVisit.resolve('cancelled'); });
+    context.transitionDefer(() => { ownVisit.resolve('cancelled'); });
     if (context.intro) {
       openingPending = true;
-      context.defer(endOpening);
+      context.transitionDefer(endOpening);
       settle(true, true, context, false);
       startOpening(context);
       return promise;
@@ -1536,7 +1553,7 @@
   // First navigation starts only after every scene has registered.
   const startOpening = (firstContext) => {
     const launchOpening = () => {
-      if (!firstContext.isCurrent()) return;
+      if (!firstContext.isTransitionCurrent()) return;
       if (window.__deckIntro?.failed) {
         openingPending = false;
         settle(false, false, firstContext);
@@ -1569,7 +1586,7 @@
       let started = false;
       const launch = () => { if (started) return; started = true; clearTimeout(ceiling); launchOpening(); };
       const ceiling = setTimeout(launch, 2500);
-      firstContext.defer(() => clearTimeout(ceiling));
+      firstContext.transitionDefer(() => clearTimeout(ceiling));
       try {
         const fonts = document.fonts;
         const needed = [
@@ -1588,7 +1605,8 @@
     // Recovery may complete textReady while the reveal's continuation is queued.
     // Stop its owner before clearing copy; every destination element is still
     // attempted if cancellation or another element's cleanup throws.
-    const attempt = (fn) => { try { fn(); } catch (error) { console.error('Deck text finalization failed', error); } };
+    let failed = false;
+    const attempt = (fn) => { try { fn(); } catch (error) { failed = true; console.error('Deck text finalization failed', error); } };
     if (turning?.context === context) attempt(() => turning.cancel());
     if (opening?.context === context) attempt(endOpening);
     attempt(() => stopText(context));
@@ -1599,7 +1617,7 @@
     let complete = false;
     attempt(() => { complete = copy.show(destination); });
     if (complete) finishNetwork(context);
-    return complete;
+    return complete && !failed;
   };
   window.deckCopy = copy;
 

@@ -430,6 +430,7 @@
   const END = 2.2;
   let ta = 0, off = 0, running = false, raf = 0, last = 0, timers = [], from = null, handed = false, counted = '';
   let retained = false, retainedSnapshot = null;
+  let coreOwner = null;
   let coreHeld = false; // slide 9 is drawing the core (on its way out, or on its way back here): this picture leaves it out
   const k01 = (t0, d) => clamp((ta - t0) / d);
   // The apps and the crowd run on their own clock, which starts a little later when slide 7's picture is carried on.
@@ -633,7 +634,7 @@
     retained = false; retainedSnapshot = null;
     gen++;
     timers.forEach(window.deckCancelLater); timers = [];
-    ta = 0; off = 0; from = null; handed = false; counted = ''; coreHeld = false;
+    ta = 0; off = 0; from = null; handed = false; counted = ''; coreHeld = false; coreOwner = null;
     root.classList.remove('is-labelled', 'is-counting');
     slide.classList.remove('fl-arrive');
     dots.forEach((d) => { delete d.src; delete d.handed; });
@@ -680,7 +681,7 @@
       for (const d of free) { const dd = (d.x - p.x) ** 2 + (d.y - p.y) ** 2; if (dd < bd) { bd = dd; best = d; } }
       if (best) { free.delete(best); best.src = { x: p.x, y: p.y, d: 0.2 + (i % 17) * 0.035 }; } else from.rest.push(p);
     });
-    window.AstridPays.hide();
+    window.AstridPays.hide(ctx);
     ta = 0;
     html.classList.add('fl-quiet');
     timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, 1400, ctx));
@@ -705,6 +706,9 @@
     reverseCtx = ctx;
     const signal = reverseCtx?.signal;
     timers.forEach(window.deckCancelLater); timers = [];
+    // step7 owns this fade on the handoff clock; a fresh CSS transition on
+    // every frame would leave the counter over Pays's returning copy.
+    coreLabel.style.transition = count.style.transition = 'none';
     const tc0 = ta - off;
     const b = root.getBoundingClientRect(), v = (p) => ({ ...p, x: p.x - b.left, y: p.y - b.top });
     const sk = snap.k || k, mink = snap.mink ? { x: snap.mink.x - snap.core.x, y: snap.mink.y - snap.core.y } : { x: 4 * sk, y: 8 * sk };
@@ -718,10 +722,10 @@
       if (best) { free.delete(best); best.src = { x: p.x, y: p.y, d: 0.2 + (i % 17) * 0.035 }; } else from.rest.push(p);
     });
     ta = BACK7; off = ta - tc0;
-    window.AstridPays.holdCore?.(true); // the core is drawn here until it has landed in slide 7's lens
+    window.AstridPays.holdCore?.(true, ctx); // the core is drawn here until it has landed in slide 7's lens
     reverseCtx.present(slide, 'dt-rewind');
     reverseCtx.present(paysSlide, 'dt-return dt-await');
-    back7 = { tc0, shown: false, since: 0 };
+    back7 = { ctx, tc0, shown: false, since: 0 };
     const rects = ctx.copyRects(), bnd = root.getBoundingClientRect(), step = 0.01;
     const hit = (x, y, rx, ry = rx) => rects.some((r) => x + bnd.left + rx > r.left && x + bnd.left - rx < r.right && y + bnd.top + ry > r.top && y + bnd.top - ry < r.bottom);
     let clearAt = Infinity;
@@ -753,7 +757,7 @@
       back7.clearAt = clearAt;
       back7.release = ctx.holdText(() => { ta = 0; off = -back7.tc0; end7(); }, (BACK7 + 0.65) * 1000 + 300);
     }
-    signal?.addEventListener('abort', end7, { once: true });
+    signal?.addEventListener('abort', () => end7(ctx), { once: true });
     stop(); entryCtx = reverseCtx; start(reverseCtx);
     return true;
   };
@@ -768,11 +772,11 @@
     if (ta <= 0 && back7.since >= 0.65) { end7(); return false; }
     return true;
   };
-  const end7 = () => {
-    if (!back7) return;
+  const end7 = (owner = back7?.ctx) => {
+    if (!back7 || back7.ctx !== owner) return;
     // Slide 7 takes its core back in this frame, and this picture lets go of its own (drawn as it stands, its crowd
     // still drawn back), so there is never a second mink.
-    window.AstridPays?.holdCore?.(false);
+    window.AstridPays?.holdCore?.(false, reverseCtx);
     if (!slide.classList.contains('on')) { coreHeld = true; draw(); }
     back7.release?.();
     back7 = null;
@@ -815,8 +819,8 @@
       let resolve;
       const done = new Promise((r) => { resolve = r; });
       reverseDone = resolve;
-      ctx.defer(() => { if (back7) end7(); if (reverseDone) { reverseDone('cancelled'); reverseDone = null; } });
-      const snap = window.AstridPays.snapshot();
+      ctx.defer(() => { if (back7) end7(ctx); if (reverseDone) { reverseDone('cancelled'); reverseDone = null; } });
+      const snap = window.AstridPays.snapshot({ rest: true });
       if (snap && unhand7(ctx, snap)) return done;
       reverseDone = null;
     }
@@ -849,10 +853,26 @@
   window.addEventListener('deck-motion', syncMotion);
   window.deckOnResize(() => { retained = false; retainedSnapshot = null; });
   document.fonts?.addEventListener?.('loadingdone', () => { retained = false; retainedSnapshot = null; });
+  const restore = (ctx) => {
+    if (back7) end7();
+    if (ctx.to !== 7) return true;
+    coreOwner = null; coreHeld = false; handed = false;
+    canvas.style.transition = ''; canvas.style.opacity = '';
+    pool.forEach((p) => { p.el.style.transition = ''; });
+    coreLabel.style.transition = count.style.transition = '';
+    coreLabel.style.opacity = count.style.opacity = '';
+    slide.classList.remove('fl-arrive');
+    if (from || ta < END) { from = null; off = 0; ta = END + 0.2; }
+    root.classList.add('is-labelled');
+    entryCtx = ctx;
+    if (!layout()) return false;
+    draw(); labels(); finishEntry(ctx); start(ctx);
+    return true;
+  };
   const resize = (ctx) => {
     if (back7) { ta = 0; off = -back7.tc0; }
     end7(); // its people's way back was measured on the old screen
-    if (!slide.classList.contains('on')) return;
+    if (!slide.classList.contains('on')) return true;
     entryCtx = ctx;
     gen++;
     if (waiting) { waiting.disconnect(); waiting = null; }
@@ -868,10 +888,12 @@
       root.classList.add('is-labelled');
       html.classList.add('fl-quiet');
     }
-    if (layout()) { draw(); labels(); start(ctx); }
+    if (!layout()) return false;
+    draw(); labels(); start(ctx);
     finishEntry(ctx);
+    return true;
   };
-  window.deckRegisterScene([7], { enter, exit, resize });
+  window.deckRegisterScene([7], { enter, exit, restore, resize });
 
   // For slide 9: the core and the visible communities' people, in viewport pixels, so the wheel can grow out of them.
   // The most recent communities go first, then an even sample of the rest, at most HAND people in all.
@@ -883,7 +905,7 @@
       const snap = retained && retainedSnapshot;
       if (snap) {
         timers.forEach(window.deckCancelLater); timers = [];
-        retained = false; retainedSnapshot = null; handed = false; coreHeld = true; entryCtx = ctx;
+        retained = false; retainedSnapshot = null; handed = false; coreOwner = ctx; coreHeld = true; entryCtx = ctx;
         dots.forEach((d) => { delete d.handed; });
         canvas.style.transition = ''; canvas.style.opacity = '';
         pool.forEach((p) => { p.el.style.transition = ''; });
@@ -914,9 +936,14 @@
     retain(snap) { retained = true; retainedSnapshot = snap; },
     // Slide 9 brings the core back on a step back: this picture leaves it out until it has landed, then takes it
     // back in the same frame, so only one mink is ever on screen.
-    holdCore(on) { coreHeld = on; if (!on && core && slide.classList.contains('on')) { draw(); start(entryCtx); } },
+    holdCore(on, owner) {
+      if (on) { if (!owner?.isTransitionCurrent?.()) return; coreOwner = owner; coreHeld = true; }
+      else { if (!owner || coreOwner !== owner) return; coreOwner = null; coreHeld = false; }
+      if (!on && core && slide.classList.contains('on')) { draw(); start(entryCtx); }
+    },
     hide(ctx) { // fade out as the next slide's picture takes over; its people are drawn there from now on
-      handed = true; coreHeld = true; draw(); // the core goes at once: slide 9 draws it from this frame, in the same place
+      if (!ctx?.isTransitionCurrent?.()) return;
+      coreOwner = ctx; handed = true; coreHeld = true; draw(); // the core goes at once: slide 9 draws it from this frame, in the same place
       canvas.style.transition = 'opacity .5s ease'; canvas.style.opacity = '0';
       pool.forEach((p) => { p.el.style.transition = 'opacity .4s ease'; p.el.style.opacity = '0'; p.o = 0; });
       coreLabel.style.opacity = '0'; count.style.opacity = '0';

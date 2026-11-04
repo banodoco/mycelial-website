@@ -1,3 +1,4 @@
+/* global turn, pendingTurns */ // Controller lexical state read inside browser evaluate callbacks.
 // Standing stranger checks, ported from edges/tools-src/stress.mjs (A–L).
 // Uses the worktree's existing playwright-core; no extra packages or helper files.
 // JSON goes to stdout, progress to stderr. Exit: 0 pass, 1 failure, 2 bad arguments.
@@ -28,7 +29,7 @@ async function deadline(promise, label, ms = 30000) {
     })]);
   } finally { clearTimeout(timer); }
 }
-// An old-style #N deep link. The deck reads it, lands on slide N and removes it from the URL.
+// A #N deep link selects its slide and remains shareable in the URL.
 const hash = (page, n) => page.evaluate(k => { location.hash = `#${k}`; }, n);
 const historyInfo = page => page.evaluate(() => ({ length: history.length, deckSlide: history.state?.deckSlide ?? null, hash: location.hash }));
 const burst = async (page, key, count = 10, interval = 150) => {
@@ -120,7 +121,7 @@ function problems(s, expected) {
   if (s.onCount !== 1) failures.push(`expected one .slide.on, found ${s.onCount}`);
   if (s.onIndex !== expected) failures.push(`expected slide ${expected}, active ${s.onIndex}`);
   if (s.deckSlide !== expected) failures.push(`expected history.state.deckSlide ${expected}, got ${s.deckSlide}`);
-  if (s.hash !== '') failures.push(`expected a clean URL, got hash ${s.hash}`);
+  if (s.hash !== `#${expected}`) failures.push(`expected current slide hash #${expected}, got ${s.hash}`);
   if (!s.visible || !s.textNodes || !s.heading) failures.push('blank or hidden narrative');
   if (s.introActive || s.overviewOpen) failures.push('intro or overview still covering the deck');
   return [...failures, ...s.textProblems, ...s.flightProblems];
@@ -229,29 +230,29 @@ async function desktop(browser) {
     });
     await check('final', 11);
   });
-  await run(browser, 'H', 'Slide position lives in history.state: arrows add no Back stops; #N links are consumed', async ({ page, check, rec }) => {
+  await run(browser, 'H', 'Current #N and history state agree; arrows add no Back stops', async ({ page, check, rec }) => {
     const before = await historyInfo(page);
     await burst(page, 'ArrowRight', 3, 1500); await check('before Back', 4);
     const afterArrows = await historyInfo(page);
     rec.historyLength = { before: before.length, afterArrows: afterArrows.length };
     if (afterArrows.length !== before.length) rec.failures.push(`arrow navigation added history entries: ${before.length} -> ${afterArrows.length}`);
-    // An old #N link adds one entry; the deck consumes the hash in place.
     await hash(page, 7); await check('after #7 link', 7);
     const afterLink = await historyInfo(page);
     if (afterLink.length !== afterArrows.length + 1) rec.failures.push(`#7 link should add exactly one entry: ${afterArrows.length} -> ${afterLink.length}`);
-    // Following the link to the slide already showing is consumed too, and its entry keeps the slide.
+    // Assigning the already-current fragment is a no-op and adds no entry.
     await hash(page, 7); await check('same-slide #7 link', 7);
-    // Back onto the same-slide entry and Forward again must land on 7 with matching state.
-    await page.goBack({ timeout: 15000 }); await check('Back onto same-slide #7 entry', 7);
-    await page.goForward({ timeout: 15000 }); await check('Forward onto same-slide #7 entry', 7);
-    // Two more Backs pass the first link's entry and reach the one that was holding slide 4; Forward returns to 7.
-    await page.goBack({ timeout: 15000 }); await check('Back to the first #7 entry', 7);
+    const afterSame = await historyInfo(page);
+    if (afterSame.length !== afterLink.length) rec.failures.push('same-slide #7 added a history entry');
+    await hash(page, 9); await check('after distinct #9 link', 9);
+    if ((await historyInfo(page)).length !== afterLink.length + 1) rec.failures.push('#9 link should add exactly one entry');
+    await page.goBack({ timeout: 15000 }); await check('Back to first linked slide', 7);
     await page.goBack({ timeout: 15000 }); rec.backURL = page.url();
-    await check('after Back', 4);
+    await check('after second Back', 4);
+    await page.goForward({ timeout: 15000 }); await check('Forward to first linked slide', 7);
     await page.goForward({ timeout: 15000 }); rec.forwardURL = page.url();
-    await check('after Forward', 7);
+    await check('after second Forward', 9);
   });
-  await run(browser, 'M', 'Old #N deep links on load land on slide N and are cleaned', async ({ page, check, rec }) => {
+  await run(browser, 'M', '#N deep links on load land on slide N and remain shareable', async ({ page, check, rec }) => {
     rec.loads = [];
     for (const n of [7, 11, 1]) {
       await page.goto(`${url.origin}${url.pathname}${url.search}#${n}`, { waitUntil: 'load', timeout: 60000 });

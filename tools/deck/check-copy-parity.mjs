@@ -1,4 +1,4 @@
-// Compare the disposable copy layers with their canonical text as each slide enters.
+// Compare disposable copy layers with canonical text; slides 3 and 5 paint their semantic trees directly.
 // Usage: node tools/deck/check-copy-parity.mjs [url] [phone|desktop|both]
 import { chromium } from 'playwright-core';
 import { existsSync } from 'node:fs';
@@ -49,7 +49,16 @@ async function armCapture(page) {
         }
       }
     }
-    return { active, settled: !!activeSlide?.hasAttribute('data-settled'), overlayCount: overlays.length,
+    const canonical = activeSlide?.querySelector('.gap-copy-content, .as-copy');
+    const canonicalPaint = canonical ? {
+      count: activeSlide.querySelectorAll('.gap-copy-content, .as-copy').length,
+      hidden: canonical.classList.contains('dt-copy-hidden'),
+      masks: [canonical.parentElement, canonical, canonical.querySelector('h1')].map(el => getComputedStyle(el).maskImage),
+      lineCount: lineRects(canonical).length,
+      opacity: Number(getComputedStyle(canonical).opacity),
+      alpha: Number(getComputedStyle(canonical).getPropertyValue(canonical.matches('.as-copy') ? '--as-copy-alpha' : '--gap-copy-alpha')),
+    } : null;
+    return { active, settled: !!activeSlide?.hasAttribute('data-settled'), overlayCount: overlays.length, canonicalPaint,
       comparisons, maxDeltaPx: Math.max(0, ...comparisons.map(item => item.maxDeltaPx)) };
     };
     window.__deckParityRead = observe;
@@ -61,7 +70,9 @@ async function armCapture(page) {
       requestAnimationFrame(() => { window.__deckParityResult = observe(); });
     });
     window.__deckParityObserver = observer;
-    observer.observe(document.querySelector('.slide.on') || document.body, { childList: true, subtree: true });
+    // The outgoing slide can be canonical-only (slide 3), so observe the
+    // destination's insertions too rather than relying on outgoing clones.
+    observer.observe(document.body, { childList: true, subtree: true });
   }, selectors);
 }
 
@@ -109,10 +120,18 @@ async function runProfile(browser, profile) {
   await context.close();
   return { profile, viewport: mobile ? '390x670 @3 DPR' : '1440x900 @1 DPR', slides,
     slidesWithoutOverlay: slides.filter(slide => !slide.overlayObserved).map(slide => slide.slide),
-    failures: slides.filter(slide => !slide.overlayObserved || !slide.comparisons.length ||
-      slide.maxDeltaPx > limitPx || !Number.isFinite(slide.maxDeltaPx))
+    failures: slides.filter(slide => {
+      if (slide.slide === 3 || slide.slide === 5) {
+        const canonical = slide.canonicalPaint;
+        return slide.overlayCount !== 0 || !canonical || canonical.count !== 1 || canonical.hidden ||
+          canonical.masks.some(mask => mask !== 'none') || canonical.lineCount < 1 ||
+          canonical.opacity !== 1 || !Number.isFinite(canonical.alpha) || canonical.alpha < 0 || canonical.alpha > 1;
+      }
+      return !slide.overlayObserved || !slide.comparisons.length ||
+        slide.maxDeltaPx > limitPx || !Number.isFinite(slide.maxDeltaPx);
+    })
       .map(slide => ({ slide: slide.slide, overlayObserved: slide.overlayObserved,
-        comparisonCount: slide.comparisons.length, maxDeltaPx: slide.maxDeltaPx })) };
+        comparisonCount: slide.comparisons.length, maxDeltaPx: slide.maxDeltaPx, canonicalPaint: slide.canonicalPaint })) };
 }
 
 let browser;
