@@ -297,6 +297,7 @@
   const releaseFlightText = () => { flightTextRelease?.(); flightTextRelease = null; };
   const FLY = { charge: 0.5, travel: 1.25, land: 0.6 }; // seconds: unfold, cross, settle
   const FLIGHT_START = 0.95 - FLY.charge - FLY.travel; // scene clock when the mink leaves the stack
+  const STACK_ARRIVAL_STRETCH = (END - FLIGHT_START + 0.75) / (END - FLIGHT_START);
   const inLens = () => ({ x: lens.c.x + M.LENS.x * cell, y: lens.c.y + M.LENS.y * cell }); // her centre, optically centred in the lens
   // Sample the remaining quadratic flight, including the mink and its trailing glow.
   const flightCrossesCopy = (ctx, f, q0, q1) => {
@@ -491,7 +492,9 @@
     const clock = window.deckNow?.() ?? now;
     const dt = Math.max(0, (clock - (last || clock)) / 1000);
     last = clock;
-    advance(dt, ctx);
+    // Keep the stack collapse and the reverse route at their existing pace.
+    const stretch = ctx.from === 5 && ctx.to === 6 && !ctx.direct && !ctx.rest && ta < END ? STACK_ARRIVAL_STRETCH : 1;
+    advance(dt / stretch, ctx);
     draw();
     checkFlightText(ctx);
     raf = requestAnimationFrame((t) => tick(ctx, t));
@@ -537,7 +540,7 @@
     window.deckStackFlight?.ready(ctx);
     timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) slide.classList.remove('pa-arrive'); }, 900, ctx));
     timers.push(window.deckLater(() => { if (ctx?.isCurrent?.() && slide.classList.contains('on')) document.documentElement.classList.add('pa-quiet'); }, 400, ctx));
-    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, (FLY.charge + FLY.travel + 0.4) * 1000, ctx));
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, (FLY.charge + FLY.travel + 0.4) * STACK_ARRIVAL_STRETCH * 1000, ctx));
     nextPulse = FIRST;
     start(ctx);
     return true;
@@ -622,7 +625,7 @@
         flightTextRelease = ctx.holdText(() => {
           stop(); fly = null; window.deckStackFlight?.ready(ctx);
           ta = END + 0.2; root.classList.add('is-labelled'); draw(); entryFinish?.(ctx, 'completed');
-        }, (0.68 + END - FLIGHT_START + 0.3) * 1000);
+        }, (0.68 + END - FLIGHT_START + 0.75 + 0.3) * 1000);
         ctx.defer(releaseFlightText);
       }
       Promise.resolve(window.deckStackFlight?.collapsed(ctx)).then((result) => {

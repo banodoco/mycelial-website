@@ -915,7 +915,10 @@
     return Math.max(...[[b.left, b.top], [b.right, b.top], [b.left, b.bottom], [b.right, b.bottom]]
       .map(([x, y]) => Math.hypot(x - at.x, y - at.y))) + SOFT;
   };
-  const revealDuration = (slide, at, context) => Math.max(0, ...textOf(slide).map((el) => clamp(reach(el, at, context?.geometry?.box(el)) / 0.62, 1100, 1600)));
+  // These two forward arrivals keep their picture pace and let only the copy breathe.
+  const copyExtra = (context) => context?.dir > 0 && !context.direct && !context.rest
+    && ((context.from === 0 && context.to === 1) || (context.from === 3 && context.to === 4)) ? 500 : 0;
+  const revealDuration = (slide, at, context) => Math.max(0, ...textOf(slide).map((el) => clamp(reach(el, at, context?.geometry?.box(el)) / 0.62, 1100, 1600) + copyExtra(context)));
   // Points spread through a text block, for threads to run to or from.
   const spots = (el, n, bounds) => {
     const b = bounds || el.getBoundingClientRect();
@@ -937,7 +940,7 @@
       if (stopped || blocked()) return;
       if (!context.isCurrent() || context.terminal) { p.stop(); return; }
       const elapsed = context.now() - started - delay;
-      const k = clamp(elapsed / duration);
+      const k = clamp(elapsed / (typeof duration === 'function' ? duration() : duration));
       if (elapsed >= 0) step(ease(k));
       if (k < 1) raf = requestAnimationFrame(tick); else { stopped = true; resolve('completed'); }
     };
@@ -971,24 +974,53 @@
 
   // Threads run from the node down into the text, and the words appear where
   // they reach. The circle's edge keeps pace with the threads' tips.
-  const reveal = (s, at, delay = 0, context = window.deckNav) => {
+  // The final forward visit can breathe before the wheel has fully cleared.
+  // Its original clearance still anchors the end: no scene hold is shortened.
+  const gentleTiming = (context) => {
+    const started = context.now();
+    let readyAt = null;
+    context.textReady.then((result) => {
+      if (result === 'completed' && context.isTransitionCurrent()) readyAt = context.now();
+    });
+    return (base) => {
+      const leadCurve = (elapsed) => {
+        const q = Math.max(0, elapsed) / base;
+        return { value: 0.5 * (1 - Math.exp(-q * q)), slope: q * Math.exp(-q * q) / base };
+      };
+      return {
+        duration: () => (readyAt ?? context.textDeadline) - started + base,
+        ease: () => {
+          const elapsed = context.now() - started;
+          if (readyAt === null) return leadCurve(elapsed).value;
+          const first = leadCurve(readyAt - started), q = clamp((context.now() - readyAt) / base);
+          // Hermite continuation preserves the gentle speed at clearance and
+          // eases to rest at precisely the original reveal's completion time.
+          return (2 * q ** 3 - 3 * q ** 2 + 1) * first.value
+            + (q ** 3 - 2 * q ** 2 + q) * first.slope * base
+            + (-2 * q ** 3 + 3 * q ** 2);
+        },
+      };
+    };
+  };
+  const reveal = (s, at, delay = 0, context = window.deckNav, timing = null) => {
     if (context.terminal) return [];
-    const state = copy.hide(s, context, at, delay + revealDuration(s, at, context) + 400);
+    const state = copy.hide(s, context, at, delay + revealDuration(s, at, context) + (timing ? Math.max(0, context.textDeadline - context.now()) : 0) + 400);
     if (state) state.phase = 'revealing';
     const tw = [];
     for (const el of textOf(s)) {
       const bounds = context.geometry?.box(el);
       copy.paint(el, at, 0, bounds);
       const far = reach(el, at, bounds);
-      const duration = clamp(far / 0.62, 1100, 1600);
+      const duration = clamp(far / 0.62, 1100, 1600) + copyExtra(context);
       if (!still) {
         for (const p of spots(el, 7, bounds)) {
           const pts = wander(at, p);
           const d = lengths(pts).at(-1);
-          hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 1.1, rest: 0, smooth: true, owner: context, delay: delay / 1000, duration: (duration / 1000) * clamp(d / (far - SOFT), 0.3, 1) });
+          hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 1.1, rest: 0, smooth: true, owner: context, delay: delay / 1000, duration: ((duration + (timing ? 1000 : 0)) / 1000) * clamp(d / (far - SOFT), 0.3, 1) });
         }
       }
-      const run = tween(duration, seep, (k) => {
+      const motion = timing?.(duration);
+      const run = tween(motion?.duration || duration, motion?.ease || seep, (k) => {
         if (!s.classList.contains('on')) return;
         if (copyStates.get(s) !== state) return;
         copy.paint(el, at, k * far, context.geometry?.box(el));
@@ -1394,9 +1426,12 @@
     if (wheelGlow) crown(to, false, wheelGlow);
     // Give these pictures a moment to establish themselves before their copy grows.
     const pictureLead = context.dir > 0 && [2, 3, 5].includes(context.to) ? 800 : 0;
-    const early = Math.max(overlap(prev, from, to, context), pictureLead);
-    // A hold's declared deadline is on the same clock; the reveal can begin
-    // only after both that hold and the overlap milestone have passed.
+    const gentleFinal = context.from === slides.length - 2 && context.to === slides.length - 1 && context.dir > 0 && !context.rest;
+    // Upright cards cross the copy later. Bound their head start as well, so
+    // the slow reveal begins about a second before its former visible onset.
+    const finalLead = gentleFinal && innerWidth <= 760 && innerHeight > innerWidth ? 1100 : 0;
+    const early = Math.max(overlap(prev, from, to, context), pictureLead, finalLead);
+    // The original hold also bounds recovery for the longer final reveal.
     const revealAt = Math.max(started + early, context.textDeadline);
     const copyVisit = copy.hide(next, context, to, Math.max(0, revealAt - context.now()) + revealDuration(next, to, context) + 400);
     anchor = to;
@@ -1413,7 +1448,7 @@
     });
     const grow = () => {
       if (done || context.terminal || !context.isCurrent() || !copy.pending(next, context)) return;
-      const shown = copy.reveal(next, to, 0, context);
+      const shown = copy.reveal(next, to, 0, context, gentleFinal ? gentleTiming(context) : null);
       tweens.push(...shown);
       try {
         const z = zone(lines(next), next);
@@ -1461,7 +1496,8 @@
       elapsed = context.now() - started;
       if (textDue && elapsed >= early) {
         textDue = false;
-        context.textReady.then((result) => { if (result === 'completed' && context.isCurrent() && !context.terminal) grow(); });
+        if (gentleFinal) grow();
+        else context.textReady.then((result) => { if (result === 'completed' && context.isCurrent() && !context.terminal) grow(); });
       }
       if (travelDue || textDue) {
         const nextAt = Math.min(travelDue ? 340 : Infinity, textDue ? early : Infinity);

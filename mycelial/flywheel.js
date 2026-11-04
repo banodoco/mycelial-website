@@ -1137,7 +1137,8 @@
     raf = 0;
     if (!running || ctx !== entryCtx || !ctx?.isCurrent?.()) return;
     const clock = window.deckNow?.() ?? now;
-    const elapsed = Math.max(0, (clock - (last || clock)) / 1000), dt = Math.min(0.05, elapsed);
+    const stretch = ctx.from === 7 && ctx.to === 8 && !ctx.direct && !ctx.rest && hand && ta < HAND_END ? FLOWERS_HANDOFF_STRETCH : 1;
+    const elapsed = Math.max(0, (clock - (last || clock)) / 1000) / stretch, dt = Math.min(0.05, elapsed);
     last = clock;
     // Lifecycle deadlines use the semantic clock even if rendering stalls. Only visual integration is capped.
     if (unhanding) { if (!unstep(dt, elapsed)) return; } else advance(dt, elapsed, ctx);
@@ -1206,7 +1207,7 @@
     root.style.transition = 'none';
     let pendingFrame = requestAnimationFrame(() => {
       if (!ctx.isCurrent() || ctx.terminal) return;
-      ta = Math.min(HAND_END, Math.max(0, (ctx.now() - started) / 1000));
+      ta = Math.min(HAND_END, Math.max(0, (ctx.now() - started) / 1000) / FLOWERS_HANDOFF_STRETCH);
       frame();
       setVisible(true, false);
       hand.painted = true;
@@ -1227,6 +1228,7 @@
 
   // The reverse 9→8 hand-off returns the shared core and crowd to Flowers in the same picture.
   const HAND_END = 2.6;
+  const FLOWERS_HANDOFF_STRETCH = (HAND_END + 0.25) / HAND_END;
   let unhanding = null;
   const endUnhand = (result = 'completed') => {
     if (!unhanding) return;
@@ -1293,7 +1295,7 @@
         const rects = ctx.copyRects();
         const crossings = handCrossings(rects);
         if (crossings) {
-          const release = ctx.holdText(() => { ta = HAND_END; hand.done = true; frame(); finishOperation(ctx); }, HAND_END * 1000 + 300);
+          const release = ctx.holdText(() => { ta = HAND_END; hand.done = true; frame(); finishOperation(ctx); }, HAND_END * FLOWERS_HANDOFF_STRETCH * 1000 + 300);
           textClear = { ctx, target, release, hand: true, clearAt: crossings.last };
         }
       }

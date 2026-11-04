@@ -428,6 +428,7 @@
 
   // ---- Time ----------------------------------------------------------------------------------------------------
   const END = 2.2;
+  const PAYS_HANDOFF_STRETCH = (END + 0.9 + 0.25) / (END + 0.9);
   let ta = 0, off = 0, running = false, raf = 0, last = 0, timers = [], from = null, handed = false, counted = '';
   let retained = false, retainedSnapshot = null;
   let coreOwner = null;
@@ -624,7 +625,10 @@
     const clock = window.deckNow?.() ?? now;
     const dt = Math.max(0, (clock - (last || clock)) / 1000);
     last = clock;
-    if (back7) { if (!step7(dt)) return; } else advance(dt, ctx);
+    if (back7) { if (!step7(dt)) return; } else {
+      const stretch = ctx.from === 6 && ctx.to === 7 && !ctx.direct && !ctx.rest && from && ta - off < END ? PAYS_HANDOFF_STRETCH : 1;
+      advance(dt / stretch, ctx);
+    }
     draw(); labels();
     raf = requestAnimationFrame((t) => tick(ctx, t));
   };
@@ -684,7 +688,7 @@
     window.AstridPays.hide(ctx);
     ta = 0;
     html.classList.add('fl-quiet');
-    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, 1400, ctx));
+    timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, 1400 * PAYS_HANDOFF_STRETCH, ctx));
     draw(); // the core, in this frame, where slide 7 has just let go of it
     slide.classList.add('fl-arrive'); // at full strength at once, as slide 7 is
     timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) slide.classList.remove('fl-arrive'); }, 900, ctx));

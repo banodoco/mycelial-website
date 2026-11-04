@@ -164,7 +164,12 @@
     return { x1: r.left + r.width / 2, y1: r.top + r.height / 2 - dy, r1: r.width / 2 + 1.5 }; // the orb covers the ring too
   };
   const tint = (el) => rgb(getComputedStyle(el).getPropertyValue('--c').trim() || '#e0ab5e');
-  let flightTime = 0, flightLast = 0;
+  let flightTime = 0, flightLast = 0, flightStretch = 1;
+  // Stretch the generated flight itself: its randomized endpoint still gains exactly half a second.
+  const stretchFlight = (ctx) => {
+    const end = Math.max(0, ...flights.map((f) => f.delay + f.dur + (f.dot ? MORPH : 0)));
+    flightStretch = ctx?.from === 1 && ctx.to === 2 && !ctx.direct && !ctx.rest && end > 0 ? (end + 0.5) / end : 1;
+  };
   const fire = (ctx) => {
     flightTime = 0; flightLast = window.deckNow?.() ?? performance.now();
     if (!flying) {
@@ -186,8 +191,9 @@
       flights.push({ el, ...p, x0: p.x1, y0: p.y1, cx: p.x1, cy: p.y1, r0: 1, c0: tint(el), c1: tint(el),
         delay: lead + 0.45 + i * 0.03, dur: 0.42, dot: true });
     });
-    later(150, () => { if (ctx?.isTransitionCurrent?.()) root.classList.add('is-drawn'); });
-    later(900 + lead * 1000, () => { if (ctx?.isTransitionCurrent?.()) root.classList.add('is-labelled'); });
+    stretchFlight(ctx);
+    later(150 * flightStretch, () => { if (ctx?.isTransitionCurrent?.()) root.classList.add('is-drawn'); });
+    later((900 + lead * 1000) * flightStretch, () => { if (ctx?.isTransitionCurrent?.()) root.classList.add('is-labelled'); });
     fire(ctx);
   };
 
@@ -227,8 +233,9 @@
         r0: 1.1, r1: 1.1, c0: rgb(d.color), c1: [224, 171, 94], delay: rnd() * 0.25, dur: 0.75 + rnd() * 0.35, dot: false,
       });
     });
-    later(950, () => { if (ctx?.isTransitionCurrent?.()) root.classList.add('is-drawn'); });
-    later(1500, () => { if (ctx?.isTransitionCurrent?.()) root.classList.add('is-labelled'); });
+    stretchFlight(ctx);
+    later(950 * flightStretch, () => { if (ctx?.isTransitionCurrent?.()) root.classList.add('is-drawn'); });
+    later(1500 * flightStretch, () => { if (ctx?.isTransitionCurrent?.()) root.classList.add('is-labelled'); });
     fire(ctx);
   };
 
@@ -259,7 +266,7 @@
     if (generation !== forwardGeneration || ctx !== visitCtx || !ctx?.isTransitionCurrent?.()) return;
     forwardRaf = 0;
     const clock = window.deckNow?.() ?? now;
-    flightTime += Math.max(0, (clock - (flightLast || clock)) / 1000);
+    flightTime += Math.max(0, (clock - (flightLast || clock)) / 1000) / flightStretch;
     flightLast = clock;
     const t = flightTime;
     g?.clearRect(0, 0, innerWidth, innerHeight);
