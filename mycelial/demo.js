@@ -286,8 +286,8 @@
   let td = -1, wait = 0, rows = [];
   // The chat follows the newest message until the viewer scrolls up; scrolling back to the bottom resumes it.
   let follow = true, followedRange = 0;
-  // Phones use a clipped, bottom-justified two-row view. Its overflow can
-  // extend above the origin; scrollHeight is not a positive scroll range.
+  // Mobile now uses the same scrollable, top-justified chat history as desktop.
+  // Keep the flex-end fallback for any compact layout without a scroll range.
   const chatEnd = () => getComputedStyle(msgs).justifyContent === 'flex-end' ? 0 : Math.max(0, msgs.scrollHeight - msgs.clientHeight);
   const toBottom = () => {
     if (!follow) return;
@@ -435,7 +435,7 @@
   const stepBeats = (dt) => {
     if (td < 0 || motionOff()) return false;
     // Keep the timeline and note under the pointer stable while it is read.
-    // An in-progress film may finish; the ten-second reading hold does not run down.
+    // An in-progress film may finish; the thirty-second reading hold does not run down.
     if (notes?.isOpen()) { stepPlay(dt); stepHead(dt); return true; }
     if (wait > 0) { const used = Math.min(wait, dt); wait -= used; dt -= used; }
     let target = td + dt;

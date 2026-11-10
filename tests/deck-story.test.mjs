@@ -6,6 +6,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 const source = readFileSync(new URL('../mycelial/deck-overlay.js', import.meta.url), 'utf8');
 const deckHtml = readFileSync(new URL('../mycelial/index.html', import.meta.url), 'utf8');
+const networkSource = readFileSync(new URL('../mycelial/dot-transitions.js', import.meta.url), 'utf8');
 
 class Element {
   constructor(tag = 'div', classes = '') {
@@ -229,4 +230,38 @@ test('approved pacing only accelerates forward, unsettled slides 7 and 8', () =>
   const f = fixture(), ctx = f.window.deckNav; ctx.isTransitionCurrent = () => true;
   ctx.to = 6; assert.equal(f.window.deckStoryPacing.rate(), 1.45); ctx.to = 7; assert.equal(f.window.deckStoryPacing.rate(), 1.3);
   ctx.back = true; assert.equal(f.window.deckStoryPacing.rate(), 1); ctx.back = false; ctx.isTransitionCurrent = () => false; assert.equal(f.window.deckStoryPacing.rate(), 1);
+});
+
+
+test('slide 5 mobile footer links are placed after the demo, not in the header', () => {
+  const css = fixture().styles.get('deck-intro-story').textContent;
+  assert.match(source, /const mobileLinks = headingLinks\.cloneNode\(true\)/);
+  assert.match(source, /demoSlide\.appendChild\(mobileLinks\)/);
+  assert.match(source, /mobileLinks\.classList\.add\('as-mobile-links'\)/);
+  assert.match(source, /mobileLinks\.querySelectorAll\('a'\)/);
+  assert.match(css, /\.as-host\.story-refined \.story-intro > \.story-links \{ display: none; \}/);
+  assert.match(css, /\.as-host\.story-refined \.as-mobile-links\s*\{[^}]*display: flex/);
+  assert.match(css, /padding-top: clamp\(28px, 4\.4vh, 38px\)/);
+  assert.match(css, /padding-bottom: max\(59px/);
+});
+test('mobile chat keeps its entire message history and permits touch scrolling', () => {
+  assert.match(deckHtml, /touch-action: pan-y/);
+  assert.match(deckHtml, /-webkit-overflow-scrolling: touch/);
+  assert.match(deckHtml, /overflow-y: auto; overscroll-behavior: contain/);
+  assert.doesNotMatch(deckHtml, /\.as-msgs > :not\(:nth-last-child\(-n\+2\)\) \{ display: none;/);
+});
+test('slide 5 introduction has a staggered left-to-right wipe on the canonical text', () => {
+  const css = fixture().styles.get('deck-intro-story').textContent;
+  assert.match(css, /@keyframes as-story-sweep/);
+  assert.match(css, /clip-path: inset\(0 100% 0 0\)/);
+  assert.match(css, /\.as-host\.as-copy-sweeping \.story-title/);
+  assert.match(css, /\.as-host\.as-copy-sweeping \.story-roadmap-lines > span/);
+  assert.match(css, /\.as-host\.as-copy-sweeping \.story-powered/);
+  assert.match(css, /\.as-host\.as-copy-sweeping \.as-copy \{ --as-copy-alpha: 1 !important; \}/);
+  assert.match(css, /html\.deck-motion-off \.as-host\.as-copy-sweeping/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(networkSource, /const astridSweep = s\.matches\('\.as-host'\) && !still && !context\.direct && !context\.rest/);
+  assert.match(networkSource, /context\.transitionLater\(beginSweep, delay\)/);
+  assert.match(networkSource, /context\.transitionDefer\(\(\) => s\.classList\.remove\('as-copy-sweeping'\)\)/);
+  assert.match(networkSource, /if \(astridSweep\) s\.classList\.remove\('as-copy-sweeping'\)/);
 });

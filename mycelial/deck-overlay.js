@@ -173,8 +173,82 @@
         html[data-ver="f"] .st-host.story-refined .story-lead { margin-top: 12px; font-size: 1.05rem; }
         html[data-ver="f"] .st-host.story-refined .story-note { margin-top: 10px; font-size: .9rem; }
       }
-      @media (prefers-reduced-motion: reduce) { .as-host[data-settled] .story-astrid { animation: none; } }
+      /* Slide 5 shares the deck's arrival language: a soft left-to-right ink sweep
+         in grouped beats, instead of fading all text at once. The canonical heading
+         remains in place; no extra copy nodes or clone masks are introduced. */
+      .as-mobile-links { display: none; }
+      html[data-ver="f"] .as-host.as-copy-sweeping .as-copy { --as-copy-alpha: 1 !important; }
+      @keyframes as-story-sweep {
+        from { clip-path: inset(0 100% 0 0); transform: translateX(-12px); }
+        to { clip-path: inset(0 0 0 0); transform: translateX(0); }
+      }
+      .as-host.as-copy-sweeping .as-copy > .num,
+      .as-host.as-copy-sweeping .story-title,
+      .as-host.as-copy-sweeping .story-links,
+      .as-host.as-copy-sweeping .story-roadmap-lines > span,
+      .as-host.as-copy-sweeping .story-brace,
+      .as-host.as-copy-sweeping .story-bridge,
+      .as-host.as-copy-sweeping .story-powered {
+        animation: as-story-sweep 850ms cubic-bezier(.22,.72,.2,1) both;
+      }
+      .as-host.as-copy-sweeping .as-copy > .num { animation-duration: 620ms; }
+      .as-host.as-copy-sweeping .story-title { animation-delay: 40ms; }
+      .as-host.as-copy-sweeping .story-links { animation-delay: 190ms; }
+      .as-host.as-copy-sweeping .story-roadmap-lines > span:first-child { animation-delay: 160ms; }
+      .as-host.as-copy-sweeping .story-roadmap-lines > span:last-child { animation-delay: 280ms; }
+      .as-host.as-copy-sweeping .story-brace,
+      .as-host.as-copy-sweeping .story-bridge { animation-delay: 365ms; }
+      .as-host.as-copy-sweeping .story-powered { animation-delay: 460ms; }
+      @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px) {
+        html[data-ver="f"] .as-host.story-refined {
+          padding-top: clamp(28px, 4.4vh, 38px);
+          padding-bottom: max(59px, calc(env(safe-area-inset-bottom) + 51px));
+        }
+        html[data-ver="f"] .as-host.story-refined h1 { gap: clamp(9px, 1.6vh, 15px); }
+        html[data-ver="f"] .as-host.story-refined .as { margin-top: 10px; }
+        .as-host.story-refined .story-intro > .story-links { display: none; }
+        html[data-ver="f"] .as-host.story-refined .as-mobile-links {
+          display: flex; flex: none; align-items: center; justify-content: center;
+          position: relative; z-index: 2; margin: 9px auto 0; padding: 0;
+          width: fit-content; font-size: 1rem; line-height: 1.4; opacity: 0;
+        }
+        .as-host[data-settled] .as-mobile-links { opacity: 1 !important; }
+        .as-host.as-copy-sweeping .as-mobile-links {
+          animation: as-mobile-links-appear 750ms ease 430ms both;
+        }
+        @keyframes as-mobile-links-appear {
+          from { opacity: 0; clip-path: inset(0 100% 0 0); }
+          to { opacity: 1; clip-path: inset(0 0 0 0); }
+        }
+      }
+      @media (max-width: 760px) and (orientation: portrait) and (max-height: 740px) {
+        html[data-ver="f"] .as-host.story-refined {
+          padding-top: 25px; padding-bottom: max(54px, calc(env(safe-area-inset-bottom) + 48px));
+        }
+        html[data-ver="f"] .as-host.story-refined h1 { gap: 8px; }
+        html[data-ver="f"] .as-host.story-refined .as { margin-top: 7px; }
+        html[data-ver="f"] .as-host.story-refined .as-mobile-links { margin-top: 6px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .as-host[data-settled] .story-astrid { animation: none; }
+        .as-host.as-copy-sweeping .as-copy > .num,
+        .as-host.as-copy-sweeping .story-title,
+        .as-host.as-copy-sweeping .story-links,
+        .as-host.as-copy-sweeping .story-roadmap-lines > span,
+        .as-host.as-copy-sweeping .story-brace,
+        .as-host.as-copy-sweeping .story-bridge,
+        .as-host.as-copy-sweeping .story-powered,
+        .as-host.as-copy-sweeping .as-mobile-links { animation: none !important; }
+      }
       html.deck-motion-off .as-host[data-settled] .story-astrid { animation: none; }
+      html.deck-motion-off .as-host.as-copy-sweeping .as-copy > .num,
+      html.deck-motion-off .as-host.as-copy-sweeping .story-title,
+      html.deck-motion-off .as-host.as-copy-sweeping .story-links,
+      html.deck-motion-off .as-host.as-copy-sweeping .story-roadmap-lines > span,
+      html.deck-motion-off .as-host.as-copy-sweeping .story-brace,
+      html.deck-motion-off .as-host.as-copy-sweeping .story-bridge,
+      html.deck-motion-off .as-host.as-copy-sweeping .story-powered,
+      html.deck-motion-off .as-host.as-copy-sweeping .as-mobile-links { animation: none !important; }
     `;
     document.head.appendChild(style);
   }
@@ -187,6 +261,17 @@
     const fallback = host.querySelector('.body');
     if (fallback) { fallback.textContent = ''; fallback.hidden = true; }
     host.classList.add('story-refined');
+  }
+  // Mobile puts App | Vision after the editor and its timeline, not between the
+  // introduction and the demo. Keep the existing heading links on desktop.
+  const demoSlide = document.querySelector('.as-host');
+  const headingLinks = demoSlide?.querySelector('.story-intro > .story-links');
+  if (headingLinks && !demoSlide.querySelector('.as-mobile-links') && demoSlide.querySelector('.as')) {
+    const mobileLinks = headingLinks.cloneNode(true);
+    mobileLinks.classList.add('as-mobile-links');
+    mobileLinks.querySelectorAll('a').forEach(link =>
+      link.addEventListener('click', event => event.stopPropagation()));
+    demoSlide.appendChild(mobileLinks);
   }
 })();
 

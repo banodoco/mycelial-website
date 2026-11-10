@@ -668,8 +668,16 @@
     .as { margin: 12px 0 0; } /* the slide's own 90 px foot already clears the footer */
     .as-stage { width: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, .82fr) minmax(0, 1.5fr); } /* chat and editor share the seat's old space */
     .as-chat { grid-column: 1; grid-row: 1; } .as-edit { grid-column: 1; grid-row: 2; padding: 6px; gap: 6px; }
-    .as-msgs { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14px); mask-image: linear-gradient(to bottom, transparent, #000 14px); } /* an older message slides out under a soft edge */
-    .as-msgs > :not(:nth-last-child(-n+2)) { display: none; } /* the latest two messages, never a clipped third */
+    /* Full conversation remains in the DOM and scrolls by touch, just like desktop.
+       The soft upper edge indicates history without hiding older messages. */
+    .as-msgs {
+      justify-content: flex-start; overflow-y: auto; overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch; touch-action: pan-y;
+      pointer-events: auto; scrollbar-width: thin; scrollbar-color: var(--as-line) transparent;
+      -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14px);
+      mask-image: linear-gradient(to bottom, transparent, #000 14px);
+    }
+    .as-msgs > :first-child { margin-top: auto; }
     .as-tl { --as-hcol: 78px; } .as-th { gap: 5px; padding-right: 6px; padding-left: 6px; } .as-th span { display: none; } .as-th em { display: block; overflow: hidden; }
     .as-msg, .as-step { font-size: 10px; } .as-composer { display: none; }
     /* Three compact rows keep the 14-second scene, frames and output visible together. */

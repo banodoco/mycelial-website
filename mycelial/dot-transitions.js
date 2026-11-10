@@ -1023,7 +1023,22 @@
   };
   const reveal = (s, at, delay = 0, context = window.deckNav, timing = null) => {
     if (context.terminal) return [];
+    // Slide 5 uses a directional left-to-right ink sweep across its real text,
+    // coordinated with the same network reveal clock as the surrounding slides.
+    // This replaces its exceptional flat fade only while actively entering.
+    const astridSweep = s.matches('.as-host') && !still && !context.direct && !context.rest;
     const state = copy.hide(s, context, at, delay + revealDuration(s, at, context) + (timing ? Math.max(0, context.textDeadline - context.now()) : 0) + 400);
+    if (astridSweep) {
+      // Start with the network's own reveal delay, so the sweep follows the
+      // arriving threads rather than running before they reach the copy.
+      const beginSweep = () => {
+        if (context.isTransitionCurrent() && copyStates.get(s) === state)
+          s.classList.add('as-copy-sweeping');
+      };
+      if (delay) context.transitionLater(beginSweep, delay);
+      else beginSweep();
+      context.transitionDefer(() => s.classList.remove('as-copy-sweeping'));
+    }
     if (state) state.phase = 'revealing';
     const tw = [];
     for (const el of textOf(s)) {
@@ -1052,7 +1067,10 @@
       tw.push(run);
     }
     Promise.all(tw).then((results) => {
-      if (copyStates.get(s) === state && results.every((result) => result === 'completed') && context.isCurrent() && !context.terminal) copy.show(s);
+      if (copyStates.get(s) === state && results.every((result) => result === 'completed') && context.isCurrent() && !context.terminal) {
+        copy.show(s);
+        if (astridSweep) s.classList.remove('as-copy-sweeping');
+      }
     });
     return tw;
   };
