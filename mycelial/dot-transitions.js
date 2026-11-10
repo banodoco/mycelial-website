@@ -774,13 +774,30 @@
   // circle reveals it from the node outward, shrinking it draws it back in.
   const SOFT = 150;
   const masks = new WeakMap();
+  // Own every masked surface, not just clones. A canonical wheel root maps
+  // to itself so finishNetwork() and resize() can retire its mask as well.
   const overlays = new Map();
+  const copyTrace = window.__deckDebug ? [] : null;
+  const traceCopy = (operation, slide, context = window.deckNav) => {
+    if (!copyTrace) return;
+    copyTrace.push({ operation, generation: context?.generation ?? null,
+      selected: context?.to ?? null, slide: slides.indexOf(slide),
+      active: !!slide?.classList.contains('on'), settled: !!slide?.hasAttribute('data-settled'),
+      surfaces: overlays.size,
+      roots: slide ? textOf(slide).map((el) => ({
+        hidden: el.classList.contains('dt-copy-hidden'),
+        mask: el.style.maskImage || el.style.webkitMaskImage || '',
+        registered: overlays.has(el),
+      })) : [],
+    });
+    if (copyTrace.length > 96) copyTrace.shift();
+  };
   const removeOverlay = (el) => {
     const overlay = overlays.get(el);
-    if (overlay) overlay.remove();
+    if (overlay && overlay !== el) overlay.remove();
     overlays.delete(el);
     masks.delete(el);
-    if (liveCopy(el)) {
+    if (overlay === el || liveCopy(el)) {
       el.style.removeProperty('mask-image');
       el.style.removeProperty('-webkit-mask-image');
     }
@@ -795,6 +812,7 @@
     clearOverlays(slide);
     // If this visit is cancelled without a successor, the active copy remains readable.
     if (slide.classList.contains('on')) textOf(slide).forEach((el) => paintCopy(el, null, 0));
+    traceCopy('cancel', slide, state?.context);
   };
   // Keep the real copy in the layout and reserve masks for disposable paint layers.
   const overlayFor = (el) => {
@@ -910,6 +928,7 @@
       // Identical radius, soft edge and timing; only the paint target differs.
       const canonical = liveCopy(el);
       const surface = canonical ? copyContent(el) : overlayFor(el);
+      if (canonical) overlays.set(el, surface);
       surface.style.webkitMaskImage = surface.style.maskImage = value;
       copyContent(el).classList.toggle('dt-copy-hidden', !canonical);
     } else {
@@ -935,6 +954,7 @@
         copy.show(slide);
       }, deadline, context);
       textOf(slide).forEach((el) => paintCopy(el, at, 0, !at, context?.geometry?.box(el)));
+      traceCopy('hide', slide, context);
       return state;
     },
     pending(slide, context) {
@@ -954,6 +974,7 @@
         catch (error) { complete = false; console.error('Deck copy restoration failed', error); }
       });
       state?.resolve?.(complete ? 'completed' : 'cancelled');
+      traceCopy('show', slide);
       return complete;
     },
     retire(slide) {
@@ -963,9 +984,14 @@
       state?.resolve?.('cancelled');
       copyStates.set(slide, { phase: 'retired' });
       textOf(slide).forEach((el) => paintCopy(el, null, 0, true));
+      traceCopy('retire', slide);
     },
     paint(el, at, r, bounds) { paintCopy(el, at, r, false, bounds); },
-    get liveCloneCount() { return overlays.size; },
+    get liveCloneCount() {
+      let count = 0;
+      for (const [el, surface] of overlays) if (surface !== el) count++;
+      return count;
+    },
   };
   const reach = (el, at, bounds) => {
     const b = bounds || el.getBoundingClientRect();
@@ -1141,13 +1167,14 @@
   let current = null, visit = null;
   const finishNetwork = (context) => {
     if (context.isCurrent()) {
-      // A completed network visit owns no disposable copy paint.
+      // A completed network visit owns no copy masks or disposable clones.
       for (const el of [...overlays.keys()]) {
         const slide = el.closest('.slide');
         if (slide === slides[context.to]) copy.show(slide);
         else if (slide) copy.retire(slide);
         else removeOverlay(el);
       }
+      traceCopy('finish', slides[context.to], context);
       if (visit?.context === context) visit.resolve('completed');
     }
   };
@@ -1732,6 +1759,21 @@
     return complete && !failed;
   };
   window.deckCopy = copy;
+  // Opt-in diagnostics only. Read after capturing a failing screen: this getter
+  // reports computed paint state without mutating it or scheduling repairs.
+  if (window.__deckDebug) Object.defineProperty(window.__deckDebug, 'copy', { get: () => ({
+    trace: copyTrace.slice(), surfaces: overlays.size, clones: copy.liveCloneCount,
+    wheel: slides.filter((slide) => slide.matches('.fw-host')).map((slide) => ({
+      slide: slides.indexOf(slide), active: slide.classList.contains('on'),
+      settled: slide.hasAttribute('data-settled'), phase: copyStates.get(slide)?.phase,
+      roots: textOf(slide).map((el) => {
+        const style = getComputedStyle(el);
+        return { hidden: el.classList.contains('dt-copy-hidden'), registered: overlays.has(el),
+          mask: style.maskImage || style.webkitMaskImage, visibility: style.visibility,
+          opacity: style.opacity, transform: style.transform };
+      }),
+    })),
+  }) });
 
   window.deckRegisterNetwork({ enter, resize, finish: finishText, copyRects, geometry });
 })();
