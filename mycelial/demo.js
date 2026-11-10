@@ -91,6 +91,7 @@
   const guide = root.querySelector('.as-media .as-guide-media');
   const guidePoster = root.querySelector('.as-guide-poster');
   const finalPoster = root.querySelector('.as-final-poster');
+  const notes = window.createAstridDemoNotes?.(root, [sceneEl, anchorEls[1], resultEl]);
   // Mobile browsers may wait for play() before decoding their first frame.
   // Request playback at the production gate, rather than waiting for the frame
   // that only that request can produce. A denied or stalled film falls back to
@@ -120,7 +121,7 @@
   };
 
   // The preview
-  // mode: none | still | play.
+  // mode: none | still | guide | guide-hold | play | final-hold.
   const view = { mode: 'none', i: -1, seq: -1, rate: 1, seekPending: false };
   let pdpr = 1;
   // The preview is redrawn only when what it shows can have changed: a playing film or a new still.
@@ -164,11 +165,11 @@
     const cw = picCW < 0 ? pic.clientWidth : picCW, ch = picCH < 0 ? pic.clientHeight : picCH;
     if (Math.abs(cw * pdpr - pic.width) > 1 || Math.abs(ch * pdpr - pic.height) > 1) sizePic();
     const src = view.mode === 'still' ? anchors[view.i] : (view.mode === 'guide' || view.mode === 'guide-hold')
-      ? (mediaStates.get(guide)?.failed ? guidePoster : guide) : view.mode === 'play'
-        ? (mediaStates.get(videos[0])?.failed ? finalPoster : videos[0]) : null;
+      ? (mediaStates.get(guide)?.failed ? guidePoster : guide) : (view.mode === 'play' || view.mode === 'final-hold')
+        ? (mediaStates.get(videos[0])?.failed || (view.mode === 'final-hold' && (videos[0].readyState < 2 || videos[0].seeking)) ? finalPoster : videos[0]) : null;
     const ready = !!src && (src.tagName === 'VIDEO' ? src.readyState >= 2 && !src.seeking : src.complete && src.naturalWidth > 0);
     root.classList.toggle('has-frame', ready || hasPicFrame);
-    const key = picFade || ((view.mode === 'play' || view.mode === 'guide') && ready) ? '' : `${view.mode}|${view.i}|${ready}`;
+    const key = picFade || ((view.mode === 'play' || view.mode === 'guide') && ready) ? '' : `${view.mode}|${view.i}|${ready}|${src?.tagName}`;
     if (key && key === picKey) return; // the same picture as last frame
     picKey = key;
     const w = pic.width, h = pic.height;
@@ -195,6 +196,11 @@
     requestPlay(guide);
   };
   const playFrom = (seqT, rate, prepared = false) => { if (view.mode === 'still') picFade = null; else fadePic(); view.mode = 'play'; primingVideo = null; view.seq = seqT; view.rate = rate; view.i = -2; view.seekPending = !prepared; };
+  const finishVideo = () => {
+    view.mode = 'final-hold'; view.seq = SPAN; view.seekPending = false;
+    videos[0].pause(); root.classList.remove('is-playing');
+    headTo(SPAN, true);
+  };
   const stepPlay = (dt) => {
     if (view.mode === 'guide') {
       if (mediaUnavailable(guide)) {
@@ -213,8 +219,10 @@
     if (view.mode !== 'play') return;
     const video = videos[0];
     if (mediaUnavailable(video)) {
-      view.seq = (Math.max(0, view.seq) + dt * view.rate) % SPAN;
-      headTo(view.seq, true); return;
+      view.seq = Math.min(SPAN, Math.max(0, view.seq) + dt * view.rate);
+      headTo(view.seq, true);
+      if (view.seq >= SPAN) finishVideo();
+      return;
     }
     if (video.readyState < 1) { headTo(view.seq, true); return; }
     if (view.i !== 0) {
@@ -226,10 +234,10 @@
       view.seekPending = false;
     }
     if (video.readyState < 2 || video.seeking) { headTo(view.seq, true); return; }
-    if (!video.paused) {
-      view.seq = video.currentTime;
-      if (view.seq >= SPAN) { view.seq = 0; view.seekPending = true; video.pause(); }
-    } else requestPlay(video);
+    const end = Number.isFinite(video.duration) && video.duration > 0 ? Math.min(SPAN, video.duration) : SPAN;
+    if (video.ended || video.currentTime >= end - 0.04) { finishVideo(); return; }
+    if (!video.paused) view.seq = video.currentTime;
+    else requestPlay(video);
     headTo(view.seq, true);
   };
 
@@ -310,6 +318,7 @@
     return el;
   };
   const clearAll = () => {
+    notes?.reset();
     clearPicFade();
     if (pg) { pg.setTransform(1, 0, 0, 1, 0, 0); pg.clearRect(0, 0, pic.width, pic.height); }
     root.classList.remove('has-frame');
@@ -330,7 +339,8 @@
     const typeEnd = b.at + b.ask.length / CPS, send = typeEnd + 0.25, reply = send + THINK;
     return { typeEnd, send, reply, act: reply + 0.2, done: reply + 0.2 + b.dur };
   };
-  // Let the completed result keep playing for ten seconds, then use the existing one-second reset fade.
+  // The final gate waits for the whole film, then holds its last frame and
+  // all three timeline notes for ten seconds before the one-second reset fade.
   const RESET = beatTimes(BEATS[BEATS.length - 1]).done + FINISHED_HOLD, LOOP = RESET + 1;
   // Every event is visited in order, even after a long frame. A production gate
   // consumes no further story time until the corresponding media is decodable.
@@ -338,7 +348,7 @@
   BEATS.forEach((b, bi) => {
     const T = beatTimes(b);
     [b.at, T.send, T.reply, T.act].forEach((at) => events.push({ at }));
-    events.push({ at: T.done, guideEnd: bi === 0 });
+    events.push({ at: T.done, guideEnd: bi === 0, finalEnd: bi === 2 });
     const offsets = bi === 0 ? [0.65, 1.2] : bi === 1
       ? FRAMES.flatMap((_, i) => [i * FRAME_STEP, i * FRAME_STEP + 0.32, i * FRAME_STEP + 0.5]) : [0.55];
     offsets.forEach((offset) => events.push({ at: T.act + offset, bi, offset }));
@@ -351,6 +361,7 @@
   let imageGate = null, imageGateWait = 0;
   let videoGateSeeking = false, guideGateSeeking = false;
   const gateReady = (event, dt = 0) => {
+    if (event.finalEnd) return view.mode === 'final-hold';
     if (event.guideEnd) return guide.ended || (mediaUnavailable(guide) && view.mode === 'guide-hold');
     if (event.bi === 0 && event.offset === 0.65) {
       primingVideo = guide;
@@ -409,7 +420,7 @@
       if (next >= T.act && was < T.done + 0.5) act(bi, next - T.act, was - T.act);
       if (passed(T.done) && rows[bi]) { rows[bi].classList.remove('is-active'); rows[bi].classList.add('is-done'); root.classList.remove('is-working'); }
     });
-    if (passed(RESET)) root.classList.add('is-resetting');
+    if (passed(RESET)) { root.classList.add('is-resetting'); notes?.reset(); }
   };
   // The compact chat has no composer, so its typing animation is invisible.
   // Start with the first message sent instead of showing an empty chat.
@@ -422,7 +433,10 @@
     if (eventIndex < 0) eventIndex = events.length;
   };
   const stepBeats = (dt) => {
-    if (td < 0) return false;
+    if (td < 0 || motionOff()) return false;
+    // Keep the timeline and note under the pointer stable while it is read.
+    // An in-progress film may finish; the ten-second reading hold does not run down.
+    if (notes?.isOpen()) { stepPlay(dt); stepHead(dt); return true; }
     if (wait > 0) { const used = Math.min(wait, dt); wait -= used; dt -= used; }
     let target = td + dt;
     while (eventIndex < events.length && events[eventIndex].at <= target) {
@@ -450,17 +464,18 @@
   // What each beat does to the editor, a seconds into its work (p: where it was last frame).
   const act = (bi, a, p) => {
     const at = (x) => p < x - 1e-8 && a >= x - 1e-8;
-    const touch = (el, on) => el.classList.toggle('is-touched', on);
+    let changed = false;
+    const touch = (el, on) => { changed = true; el.classList.toggle('is-touched', on); };
     if (bi === 0) {
       if (at(0)) { sceneEl.style.opacity = ''; sceneEl.classList.add('is-generating'); touch(sceneEl, true); total = SPAN; headTo(0, true); }
-      if (at(0.65)) { sceneEl.classList.remove('is-generating'); sceneEl.classList.add('is-ready', 'is-animated'); showGuide(); headTo(0, true); }
+      if (at(0.65)) { changed = true; sceneEl.classList.remove('is-generating'); sceneEl.classList.add('is-ready', 'is-animated'); showGuide(); headTo(0, true); }
       if (at(1.2)) touch(sceneEl, false);
     }
     if (bi === 1) {
       FRAMES.forEach((frame, i) => {
         const el = anchorEls[i], start = i * FRAME_STEP;
         if (at(start)) { el.style.opacity = ''; el.classList.add('is-generating'); touch(el, true); }
-        if (at(start + 0.32)) { el.classList.remove('is-generating'); el.classList.add('is-ready'); headTo(frame.at, true); showStill(i); total = SPAN; }
+        if (at(start + 0.32)) { changed = true; el.classList.remove('is-generating'); el.classList.add('is-ready'); headTo(frame.at, true); showStill(i); total = SPAN; }
         if (at(start + 0.5)) touch(el, false);
       });
     }
@@ -468,6 +483,7 @@
       if (at(0)) { resultEl.style.opacity = ''; resultEl.classList.add('is-generating'); touch(resultEl, true); total = SPAN; }
       if (at(0.55)) { resultEl.classList.remove('is-generating'); resultEl.classList.add('is-ready', 'is-animated'); touch(resultEl, false); headTo(0, true); playFrom(0, 1, true); root.classList.add('is-playing'); }
     }
+    if (changed) notes?.update();
   };
   const settledState = () => { // everything as it ends, for reduced motion
     clearAll();
@@ -482,11 +498,10 @@
     anchorEls.forEach((el) => { el.style.opacity = ''; el.classList.add('is-ready'); kind(el, 'Qwen'); });
     resultEl.style.opacity = ''; resultEl.classList.add('is-ready', 'is-animated');
     total = SPAN;
-    if (still) {
-      view.mode = 'play'; view.i = 0; view.seq = 4;
-      try { videos[0].currentTime = 4; } catch { /* not loaded */ }
-    } else playFrom(4, 1);
-    headTo(4, true); stepHead(0);
+    view.mode = 'final-hold'; view.i = 0; view.seq = 4;
+    try { videos[0].currentTime = 4; } catch { /* not loaded */ }
+    videos.forEach((v) => v.pause());
+    headTo(4, true); stepHead(0); notes?.update();
   };
 
   // Two Core rings unfold into the live panel frames, with Astrid flying to
@@ -730,6 +745,7 @@
     wake();
   };
   const stop = () => {
+    notes?.reset();
     clearPicFade();
     running = false;
     clearMediaHandlers();
