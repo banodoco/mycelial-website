@@ -1,0 +1,81 @@
+name: Product story review
+on:
+  push:
+    branches: [polish/product-story-20261110]
+    paths:
+      - .github/workflows/product-story-review.yml
+      - review/product-story.patch
+      - review/check-product-story.mjs
+permissions:
+  contents: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: polish/product-story-20261110
+          sparse-checkout: |
+            mycelial
+            assets/astrid
+            assets/fonts/deck
+            assets/brand
+            tools/deck
+            review
+            .github/workflows
+      - name: Apply reviewed source patch
+        if: hashFiles('review/product-story.patch') != ''
+        run: |
+          if git apply --check review/product-story.patch; then
+            git apply review/product-story.patch
+          elif git apply --reverse --check review/product-story.patch; then
+            echo 'Patch already applied.'
+          else
+            echo 'Source changed; refusing to overwrite it.' >&2
+            exit 1
+          fi
+          git diff --check
+      - uses: actions/setup-node@v4
+        if: hashFiles('review/check-product-story.mjs') != ''
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install browser checks
+        if: hashFiles('review/check-product-story.mjs') != ''
+        run: |
+          npm ci --ignore-scripts
+          npx playwright-core install --with-deps chromium
+      - name: Check revised slides
+        if: hashFiles('review/check-product-story.mjs') != ''
+        run: |
+          PORT=8240 python3 serve.py > /tmp/deck-server.log 2>&1 &
+          for i in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8240/mycelial/index.html >/dev/null && break; sleep 1; done
+          node review/check-product-story.mjs
+      - name: Save tested source on review branch only
+        if: hashFiles('review/product-story.patch') != ''
+        run: |
+          if ! git diff --quiet -- mycelial/index.html; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add mycelial/index.html
+            git commit -m 'Refine solution, Astrid introduction and extensibility slides'
+            git push origin HEAD:polish/product-story-20261110
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: product-story-review
+          retention-days: 3
+          path: |
+            mycelial/
+            assets/astrid/
+            assets/fonts/deck/
+            assets/brand/
+            tools/deck/
+            package.json
+            package-lock.json
+            serve.py
+            requirements.txt
+            review/
+            outputs/
