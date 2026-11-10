@@ -3,9 +3,9 @@
 // We fly slowly forward through an endless field of specialist tools, LoRAs, LUTs,
 // workflows, threads and guides: each appears faint at the vanishing point,
 // grows as it nears, slides past the edges and comes round again far ahead.
-// Whatever approaches nearest the middle carries its name. The mouse steers a
-// little (near things shift more than far ones) and scrolling flies you through
-// it, forward or back, as far as you like; hovering a dot shows what it is,
+// Whatever approaches nearest the middle carries its name. Pointer motion only
+// inspects items; it never steers the field. Scrolling flies you through it,
+// forward or back, as far as you like; hovering a dot shows what it is,
 // clicking pulls it forward. Every named resource has a recorded source;
 // short titles describe the useful technique rather than reproduce repository names.
 // Arriving from slide 1, its films come apart into motes of their own colours
@@ -126,23 +126,37 @@
   labelMeasure.innerHTML = '<span class="sf-where"></span><span class="sf-name"></span>';
   root.appendChild(labelMeasure);
   const labelSizes = new Map();
-  const labelHeight = (item) => {
+  const labelSize = (item) => {
     if (!labelSizes.has(item)) {
       fill(labelMeasure, item, false);
-      labelSizes.set(item, labelMeasure.offsetHeight);
+      labelSizes.set(item, { width: labelMeasure.offsetWidth, height: labelMeasure.offsetHeight });
     }
     return labelSizes.get(item);
   };
   const labelScale = (item) => 0.9 + 0.12 * clamp(item.p / 2);
 
   let w = 0, h = 0, dpr = 1, F = 1, cx = 0, cy = 0;
-  let speed = 1, boost = 0, glide = 0, since = 9, roll = 0, camX = 0, camY = 0, steerX = 0, steerY = 0, leadX = 0, leadY = 0, settled = 1;
+  let speed = 1, boost = 0, glide = 0, since = 9, roll = 0, settled = 1;
   // Arriving from slide 1 the vanishing point starts at the collage, holds, then glides home.
   let shift = { x: 0, y: 0, age: 9 };
-  let resting = false, restAt = null;
   let pointer = null, touched = false, hot = null, front = null, f = 0, shown = null, keyHover = null, keyLock = null, lastLit;
   let featured = null, held = 0, live = 0, clock = 0, running = false, last = 0, frameRaf = 0, holdFor = 0, busy = -9, back = false, entryCtx = null, fontHandler = null;
-  const tags = labels.map((el) => ({ el, item: null }));
+  const FEATURE_HOLD = 2.6, LABEL_FADE = 0.75, READ_WINDOW = FEATURE_HOLD + LABEL_FADE;
+  let skipOpeningFeature = false, mutedFeature = false;
+  const tags = labels.map((el) => ({ el, item: null, box: null, until: 0 }));
+  const clearHighlights = () => {
+    pointer = hot = front = shown = featured = null;
+    live = held = f = 0; back = false; keyHover = null; lastLit = null;
+    tags.forEach((tag) => {
+      tag.item = tag.box = null; tag.until = 0;
+      tag.el.style.transitionDuration = '120ms';
+      tag.el.classList.remove('is-on', 'is-back', 'is-hush');
+    });
+    card.style.transitionDuration = '120ms';
+    card.classList.remove('is-on', 'is-front');
+    keys.forEach((key) => key.classList.remove('is-lit'));
+    slide.style.cursor = '';
+  };
 
   // Names and cards live in the lower screen: below the headline (floor) and
   // above the legend (ceil), never behind either.
@@ -223,7 +237,7 @@
   const P = { x: 0, y: 0, p: 1, a: 0 };
   let cosR = 1, sinR = 0;
   const place = (o) => {
-    const x = o.x * cosR - o.y * sinR - camX, y = o.x * sinR + o.y * cosR - camY;
+    const x = o.x * cosR - o.y * sinR, y = o.x * sinR + o.y * cosR;
     const p = 1 / o.z;
     P.x = cx + x * p * F; P.y = cy + y * p * F; P.p = p;
     P.a = clamp((FAR - o.z) / 1.8) * clamp((o.z - NEAR) / 0.35);
@@ -234,8 +248,51 @@
   const travel = (o, dz) => {
     o.z -= dz;
     if (rewind && dz < 0) return; // gathering back into slide 1, the field recedes into the distance and is put back after
-    if (dz >= 0 && (o.z < NEAR || P.x < -80 || P.x > w + 80 || P.y < -80 || P.y > h + 80)) scatter(o, FAR - rnd() * 0.5);
+    // Test this body, never the previous body's shared projection scratchpad.
+    const q = place(o);
+    if (dz >= 0 && (o.z < NEAR || q.x < -80 || q.x > w + 80 || q.y < -80 || q.y > h + 80)) scatter(o, FAR - rnd() * 0.5);
     else if (o.z > FAR) scatter(o, NEAR + 0.3 + rnd() * 1.2);
+  };
+
+  // A label must fit for its reading beat AND fade, not just this frame.
+  // With pointer steering removed, its future projection is deterministic.
+  const shiftWeight = (age) => {
+    if (age < 0) return 1;
+    const g = age * 1.8;
+    return (1 + g + g * g / 2) * Math.exp(-g);
+  };
+  const labelBox = (item, seconds = 0) => {
+    const t = motionOff() ? 0 : seconds;
+    // Bound the glide by its slowest decay; scroll momentum uses its own decay.
+    const distance = 0.36 * (t + boost * (1 - Math.exp(-2.2 * t)) / 2.2
+      + Math.max(0, glide) * (1 - Math.exp(-0.95 * t)) / 0.95);
+    const z = item.z - distance;
+    if (z < NEAR + 0.22 || z > FAR - 1.08) return null;
+    const p = 1 / z, a = roll + t * 0.025;
+    const offset = shiftWeight(shift.age + t) - shiftWeight(shift.age);
+    const sx = cx + shift.x * offset + (item.x * Math.cos(a) - item.y * Math.sin(a)) * p * F;
+    const sy = cy + shift.y * offset + (item.x * Math.sin(a) + item.y * Math.cos(a)) * p * F;
+    const rad = clamp(4.6 * p * (SIZE[item.type] || 1), 0.9, 15) * Math.sqrt(F / 240);
+    const scale = labelScale({ p }), size = labelSize(item), width = size.width * scale, height = size.height * scale;
+    const leftEdge = below() ? 8 : w * 0.5 + 8;
+    if (width > w - leftEdge - 8 || sx - rad < leftEdge || sx + rad > w - 8) return null;
+    const x = clamp(sx, leftEdge + width / 2, w - 8 - width / 2), y = sy - rad - 8;
+    return { left: x - width / 2, right: x + width / 2, top: y - height,
+      bottom: sy + rad, x, y, scale };
+  };
+  const boxFits = (box) => !!box && box.top >= (below() ? floor + 8 : 8) && box.bottom <= ceil - 8;
+  const apart = (a, b) => {
+    const gap = clamp(w * 0.02, 18, 28);
+    return a.right + gap <= b.left || b.right + gap <= a.left || a.bottom + gap <= b.top || b.bottom + gap <= a.top;
+  };
+  const canIntroduce = (item) => {
+    // Reserve the old label's measured rectangle until its fade is complete.
+    // It stays at that rectangle rather than following a recycled/offscreen dot.
+    return [0, 0.25, 0.5, 0.75, 1.5, 2.4, READ_WINDOW].every((t) => {
+      const box = labelBox(item, t);
+      return boxFits(box) && tags.every((tag) => tag.item === item || !tag.box
+        || tag.until <= clock + t || apart(box, tag.box));
+    });
   };
 
   const frame = (now, visitCtx = entryCtx) => {
@@ -266,17 +323,10 @@
     }
     const vel = rewind ? rewindSpeed() : speed + boost + glide, dz = dt * 0.36 * vel;
     clock += elapsed; shift.age += elapsed;
-    if (!hot && !front && clock - busy > 0.5) held += elapsed; // a name's time runs only while it shows
     roll += dt * 0.025 * speed;
-    // Steering stays where the mouse left it; no snap back to centre. It eases
-    // in two stages (no lurch when the mouse first moves), and just after an
-    // arrival it wakes gradually, so the flight settles before the hand steers.
+    // Arrival readiness only: the pointer never changes camera coordinates.
     settled = Math.min(1, settled + dt / 2.5);
-    // Below the legend (on the way to the footer) the hand steers no lower than the legend's line.
-    if (pointer) { steerX = (pointer.x / w - 0.5) * 0.9; steerY = ((raised ? pointer.y : Math.min(pointer.y, ceil)) / h - 0.5) * 0.6; }
-    const sr = 3.2 * settled * settled * (3 - 2 * settled);
-    leadX += (steerX - leadX) * ease(sr); camX += (leadX - camX) * ease(sr);
-    leadY += (steerY - leadY) * ease(sr); camY += (leadY - camY) * ease(sr);
+    const highlightsAllowed = slide.classList.contains('on') && !rewind;
     // Labels and hovering stay in the lower screen, clear of the headline.
     const low = below();
     const clear = (n) => (low ? n.sy > floor + 6 && (!raised || n.sy < ceil) : n.sx > w * 0.5);
@@ -291,7 +341,7 @@
     // Hover: the dot under the pointer, nearer bodies winning ties. Not while
     // still arriving: a pointer resting where it clicked shouldn't brake the flight.
     hot = null;
-    if (pointer && settled > 0.7) {
+    if (highlightsAllowed && pointer && settled > 0.7) {
       let best = Infinity;
       for (const n of named) {
         if (!n.vis || !clear(n)) continue;
@@ -302,7 +352,7 @@
     }
     slide.style.cursor = hot ? 'pointer' : '';
 
-    const lit = keyHover || keyLock || (hot && hot.type) || null;
+    const lit = highlightsAllowed ? keyHover || keyLock || (hot && hot.type) || null : null;
     if (lit !== lastLit) {
       keys.forEach((k) => k.classList.toggle('is-lit', k.dataset.type === lit));
       lastLit = lit;
@@ -314,7 +364,6 @@
     ctx.clearRect(0, 0, w, h);
     let paint = null;
     for (const o of dust) {
-      place(o);
       travel(o, dz);
       const q = place(o);
       if (q.a <= 0) continue;
@@ -387,60 +436,66 @@
     // It holds a moment before handing over, so the label never flickers, and
     // gives way after a couple of seconds so the names keep turning over at
     // an even, unhurried beat.
-    const tired = held > 2.6;
+    const quiet = highlightsAllowed && !hot && !front && clock - busy > 0.5 && (!motes.length || since >= 1.1);
+    if (featured && quiet) held += elapsed;
+    const tired = held > FEATURE_HOLD;
     let best = null, bestScore = 0;
     // The camera still glides from slide 1 when the first name appears. Choose
     // names around the usable text area's stable centre, not that moving origin.
     const focusX = low ? w / 2 : cx, focusY = low ? (floor + ceil) / 2 : cy;
     for (const n of named) {
       n.score = 0;
-      // A name needs room above its dot, under the headline and over the
-      // legend; a new one needs a little more, so it can travel before it must go.
-      const room = n === featured ? 0 : 8;
-      if (!n.vis || n.a < 0.6 || n.z > 3.2 || !clear(n) || (n.rest > clock && n !== featured)) continue;
-      const height = labelHeight(n) * labelScale(n), bottom = n.sy - n.rad - 8;
-      if (low ? bottom - height < floor + room || n.sy + n.rad > ceil - room : n.sx < w * 0.53) continue;
-      const dx = (n.sx - focusX) / (F * 0.55), dy = (bottom - height / 2 - focusY) / (F * 0.55);
+      if (!highlightsAllowed || !quiet || !n.vis || n.a < 0.6 || n.z > 3.2
+        || !clear(n) || (n.rest > clock && n !== featured)) continue;
+      const box = labelBox(n);
+      const returning = n === featured && !mutedFeature && !tags.some((tag) => tag.item === n && tag.el.classList.contains('is-on'));
+      if (!boxFits(box) || ((n !== featured || returning) && !canIntroduce(n))) continue;
+      const dx = (n.sx - focusX) / (F * 0.55), dy = ((box.top + box.y) / 2 - focusY) / (F * 0.55);
       n.score = n.p * Math.exp(-(dx * dx + dy * dy));
       if (n.score > bestScore && !(tired && n === featured)) { bestScore = n.score; best = n; }
     }
-    const keep = featured && !tired && featured.score > 0.05 && (featured.score > bestScore * 0.5 || held < 1.6);
-    if (!keep && best !== featured && (best || held > 1.6)) {
+    const keep = featured && !tired && boxFits(labelBox(featured)) && (!quiet || mutedFeature || featured.score > 0);
+    const freeTag = tags.find((tag) => !tag.box || tag.until <= clock);
+    if (quiet && !keep && best !== featured && (best || featured) && (!best || freeTag)) {
       if (featured) featured.rest = clock + 14; // let others have a turn
       featured = best; held = 0;
-      tags.push(tags.shift()); // the old label fades where it is; the new one takes over
-      if (featured) fill(tags[0].el, featured, false);
-      tags[0].item = featured;
+      // Desktop's first automatic beat is intentionally silent. Start with the
+      // second item; no resource is removed and mobile keeps its first beat.
+      mutedFeature = !!featured && skipOpeningFeature;
+      if (featured) skipOpeningFeature = false;
+      if (featured) {
+        tags.splice(tags.indexOf(freeTag), 1); tags.unshift(freeTag);
+        tags[0].box = null; tags[0].until = 0;
+      }
+      if (featured) { fill(tags[0].el, featured, false); tags[0].item = featured; }
     }
     // Let the first name surface just after the initial dissolve, while its remaining motes drift away. A pointer on
     // a dot (or a card in front) quietens the name at once; once it lets go, the name waits a moment (so passing over
     // dots never flickers it), then comes back slowly, wherever its dot has drifted to on its way, or the name of
     // whichever dot has taken its place meanwhile.
     if (hot || front) busy = clock;
-    const quiet = !hot && !front && clock - busy > 0.5 && (!motes.length || since >= 1.1);
     if (!quiet && clock - busy < 0.05) back = true; // put out by the pointer, not by the arrival
-    const liveTarget = quiet && featured ? 1 : 0;
+    const liveTarget = quiet && featured && !mutedFeature ? 1 : 0;
     live = motionOff() ? liveTarget : live + (liveTarget - live) * ease(3);
     tags.forEach((tag, i) => {
       const it = tag.item;
-      const on = i === 0 && quiet && !!it && it.vis;
+      const on = i === 0 && quiet && !mutedFeature && it === featured && !!it && it.vis && boxFits(labelBox(it));
       if (on && back && !tag.el.classList.contains('is-on')) { tag.el.classList.add('is-back'); back = false; held = Math.min(held, 0.6); } // and has its turn again
       if (!on || clock - busy > 2) tag.el.classList.remove('is-back');
       tag.el.classList.toggle('is-hush', !on && (!!hot || !!front));
       tag.el.classList.toggle('is-on', on);
-      if (!it || !it.vis) return;
-      // Centred above its dot, nudged inside the field rather than cut off.
-      const half = tag.el.offsetWidth / 2 + 6;
-      const lo = low ? half : w * 0.5 + half;
-      const x = clamp(it.sx, lo, Math.max(lo, w - half));
-      const scale = labelScale(it);
-      const y = Math.max((low ? floor + 2 : 4) + tag.el.offsetHeight * scale, it.sy - it.rad - 8);
-      tag.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%) scale(${scale.toFixed(3)})`;
+      if (!on) {
+        if (tag.until <= clock && tag.item !== featured) { tag.item = null; tag.box = null; }
+        return; // fading labels retain their last position and measured space
+      }
+      const box = labelBox(it);
+      tag.box = box; tag.until = clock + LABEL_FADE;
+      tag.el.style.transform = `translate(${box.x.toFixed(1)}px, ${box.y.toFixed(1)}px) translate(-50%, -100%) scale(${box.scale.toFixed(3)})`;
     });
 
     // The card: beside a hovered dot, or drawn to the centre when clicked.
     f = motionOff() ? (front ? 1 : 0) : f + ((front ? 1 : 0) - f) * ease(6);
-    const target = front || (f > 0.02 ? shown : hot);
+    const target = highlightsAllowed ? front || (f > 0.02 ? shown : hot) : null;
     if (target !== shown) { if (target) fill(card, target, true); shown = target; }
     card.classList.toggle('is-on', !!target);
     card.classList.toggle('is-front', !!front);
@@ -621,7 +676,7 @@
           const sx0 = x - base.left, sy0 = y - base.top, cw = Math.hypot(xb - xa, yb - ya), ch = Math.hypot(xd - xc, yd - yc);
           // Most motes sit close, so they stream past us; a few sit deep and stay on as stars.
           const z = (1.2 + Math.pow(rnd(), 2) * 3) * (1 + 0.9 * f.far);
-          const xr = ((sx0 - cx) / F) * z + camX, yr = ((sy0 - cy) / F) * z + camY;
+          const xr = ((sx0 - cx) / F) * z, yr = ((sy0 - cy) / F) * z;
           const shade = f.shade * (f.through ? f.through(x, y) : 1);
           const ink = px ? look(px[k], px[k + 1], px[k + 2], shade).map((c) => Math.round(c) | 7) : null; // a little coarse, so colours repeat
           motes.push({
@@ -743,13 +798,16 @@
   const sceneEnter = (ctx) => {
     const promise = completion(ctx, (fn) => { entryFinish = fn; }, () => stop());
     if (running) stop();
-    steerX = steerY = leadX = leadY = camX = camY = 0;
-    pointer = null; resting = true; restAt = null;
+    clearHighlights(); busy = clock - 1;
+    skipOpeningFeature = stage.clientWidth > 760 && !motionOff(); mutedFeature = false;
+    tags.forEach((tag) => { tag.el.style.transitionDuration = ''; });
+    card.style.transitionDuration = '';
     if (ctx.from === 0 && !motionOff() && !ctx.rest && !ctx.direct) dissolve(ctx);
     start(!ctx.rest, ctx);
     return promise;
   };
   const sceneExit = (ctx) => {
+    clearHighlights(); // dismiss immediately, before the reverse picture handoff
     if (ctx.to === 0 && ctx.back && !motionOff()) {
       const promise = completion(ctx, (fn) => { reverseFinish = fn; }, () => endRewind());
       regather(ctx);
@@ -779,27 +837,21 @@
     addEventListener('load', () => setTimeout(() => whenIdle(readStills), 6500), { once: true });
   }
   const syncMotion = () => {
-    if (motionOff() && slide.classList.contains('on')) { stop(); start(false); }
+    if (motionOff() && slide.classList.contains('on')) { skipOpeningFeature = mutedFeature = false; stop(); start(false); }
     else if (document.getElementById('overview')?.classList.contains('on')) stop();
     else if (slide.classList.contains('on')) { running = false; start(false); }
   };
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
 
-  // Mouse and pen steer; on touch a tap is the hover. The field is the slide's
+  // Mouse and pen inspect; on touch a tap is the hover. The field is the slide's
   // backdrop, so it listens on the slide itself.
   const locate = (e) => {
     const r = stage.getBoundingClientRect();
     pointer = { x: e.clientX - r.left, y: e.clientY - r.top };
   };
-  // A mouse at rest when the slide arrives steers nothing until it moves on from there.
   slide.addEventListener('pointermove', (e) => {
-    if (e.pointerType === 'touch') return;
-    if (resting) {
-      if (!restAt) { restAt = { x: e.clientX, y: e.clientY }; return; }
-      if (Math.hypot(e.clientX - restAt.x, e.clientY - restAt.y) < 30) return;
-      resting = false;
-    }
+    if (e.pointerType === 'touch' || !slide.classList.contains('on') || rewind) return;
     locate(e); if (motionOff()) scheduleFrame();
   });
   slide.addEventListener('pointerdown', (e) => { touched = e.pointerType === 'touch'; if (touched) { locate(e); if (motionOff()) scheduleFrame(); } });

@@ -1151,7 +1151,7 @@
     const clock = window.deckNow?.() ?? now;
     // The stat stays on its real node throughout the native radial reveal.
     const statPaint = countPending && hosts[0].querySelector('.fw-stat');
-    const revealingStat = statPaint && (statPaint.style.maskImage || statPaint.style.webkitMaskImage).startsWith('radial-gradient(');
+    const revealingStat = statPaint?.classList.contains('fw-spreading') && parseFloat(statPaint.style.getPropertyValue('--fw-outer')) > 0.01;
     if (countPending && activeStage === 0 && (countStarted !== null || revealingStat || hosts[0].hasAttribute('data-settled'))) {
       if (countStarted === null) countStarted = clock;
       const progress = clamp((clock - countStarted) / 2000);

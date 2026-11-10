@@ -1144,6 +1144,30 @@
   .fw-stat b { font-weight: 500; color: #ecc57e; }
   .fw-stat a { margin-left: .25em; color: #f0c67e; text-decoration: none; }
   .fw-stat a:hover, .fw-stat a:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
+  /* Canonical wheel text: the same glyph-ink reveal used by slides 3 and 5.
+     The wheel picture and question controls never own this text's visibility. */
+  .fw-copy, .fw-stat { --fw-copy-alpha: 1; }
+  .fw-copy h1 { color: rgb(239 230 214 / var(--fw-copy-alpha)); }
+  .fw-copy .num { color: rgb(224 171 94 / var(--fw-copy-alpha)); }
+  .fw-copy .act, .fw-copy .fw-sub, .fw-stat { color: rgb(184 169 143 / var(--fw-copy-alpha)); }
+  .fw-stat b { color: rgb(236 197 126 / var(--fw-copy-alpha)); }
+  .fw-stat a { color: rgb(240 198 126 / var(--fw-copy-alpha)); }
+  .fw-copy h1 em { background-image: linear-gradient(176deg,
+    rgb(251 231 189 / var(--fw-copy-alpha)) 0%, rgb(240 198 126 / var(--fw-copy-alpha)) 38%,
+    rgb(217 154 74 / var(--fw-copy-alpha)) 70%, rgb(185 119 47 / var(--fw-copy-alpha)) 100%); }
+  .fw-spreading .fw-plain, .fw-spreading h1 em, .fw-spreading .num,
+  .fw-spreading .act, .fw-spreading .fw-sub, .fw-stat.fw-spreading b, .fw-stat.fw-spreading a {
+    color: transparent; -webkit-background-clip: text; background-clip: text;
+    background-attachment: fixed;
+    background-image: radial-gradient(circle at var(--fw-x, 0px) var(--fw-y, 0px),
+      rgb(var(--fw-ink)) var(--fw-inner, 0px), transparent var(--fw-outer, 0px));
+  }
+  .fw-spreading .fw-plain { --fw-ink: 239 230 214; }
+  .fw-spreading h1 em, .fw-stat.fw-spreading a { --fw-ink: 240 198 126; }
+  .fw-spreading .num { --fw-ink: 224 171 94; }
+  .fw-spreading .act, .fw-spreading .fw-sub, .fw-stat.fw-spreading .fw-plain { --fw-ink: 184 169 143; }
+  .fw-stat.fw-spreading b { --fw-ink: 236 197 126; }
+
   /* Slide 11: three questions under the words (who, the money, the goal). Each opens a small card of its detail above
      it while hovered or focused (tapped, on a touch screen), one at a time; the card stays open while the pointer is on
      it. They share the final slide's text reveal; with animations off they are simply there. On desktop the questions
@@ -1155,8 +1179,7 @@
     margin-top: clamp(1.4rem, 3.4vh, 2.2rem); translate: -50% 0; white-space: nowrap;
     --ask-line: #f0c87740; --ask-fill: #120e0ac2; --ask-glow: 0 0 28px #e0ab5e12; /* the pill's own, shared with the phone's three */
     border: 1px solid var(--ask-line); border-radius: 999px; background: var(--ask-fill); box-shadow: var(--ask-glow);
-    opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s linear .3s; }
-  .slide.on[data-settled] .fw-asks, html.deck-motion-off .slide.on .fw-asks { opacity: 1; visibility: visible; transition: opacity 1.1s ease .45s, visibility 0s linear .45s; }
+    opacity: 0; visibility: visible; transition: none; } /* opacity and inert are owned by copy progress */
   /* Settled copy is always fully visible, even if a reveal was interrupted. */
   .slide.on[data-settled] > .split > :first-child,
   .slide.fw-raise.on[data-settled] > .split,
@@ -1165,7 +1188,6 @@
   .slide.fw-raise.on[data-settled]:not(:has(.fw-ask.is-open)) > .split > :first-child,
   .slide.fw-raise.on[data-settled] > .split,
   .slide.on[data-settled] > .fw-stat { opacity: 1 !important; }
-  .slide.fw-raise.on .fw-asks { opacity: 1; visibility: visible; transition: none; } /* revealed with the complete text block */
   .fw-ask { position: relative; }
   .fw-ask + .fw-ask { border-left: 1px solid #f0c87726; }
   .fw-ask-q { all: unset; position: relative; display: flex; align-items: center; gap: .9em; padding: 1.15em 1.35em 1.1em 1.45em; cursor: pointer;
@@ -1862,11 +1884,11 @@
 
     <section class="slide fw-host" data-v="f">
     <div class="fw-alt" role="img" aria-label="The community’s flywheel: artists on one side, model trainers, workflow and infrastructure builders and toolmakers on the other, joined by a ring turning round Astrid; the artists inspire everyone, and everyone equips the artists and each other"></div>
-    <p class="fw-stat"><b aria-label="23,932"><span aria-hidden="true">23,932</span></b> people · Banodoco Discord · <a href="https://discord.gg/NnFxGvx94b" target="_blank" rel="noopener">Join →</a></p>
+    <p class="fw-stat"><b aria-label="23,932"><span aria-hidden="true">23,932</span></b><span class="fw-plain"> people · Banodoco Discord · </span><a href="https://discord.gg/NnFxGvx94b" target="_blank" rel="noopener">Join →</a></p>
     <div class="num">09<span class="act">The community</span></div>
     <div class="split">
-      <div>
-        <h1>Astrid launches into a community we’ve spent years cultivating&nbsp;— and is designed to accelerate <em>its collective creative flywheel.</em></h1>
+      <div class="fw-copy">
+        <h1><span class="fw-plain">Astrid launches into a community we’ve spent years cultivating&nbsp;— and is designed to accelerate </span><em>its collective creative flywheel.</em></h1>
         <div class="body">Banodoco's Discord, events and competitions already connect artists, model trainers, builders and toolmakers — each building on the one before, with the art at the end inspiring the next turn. Astrid gives that loop a home, so every turn is faster. [n] members · [n] years · [n] events.</div>
       </div>
       <svg class="wheel" viewBox="0 0 400 420" role="img" aria-label="Flywheel: artists inspire, model trainers create, infrastructure and workflow builders build, toolmakers make tools, back to artists, with Astrid at the centre">
@@ -1893,8 +1915,8 @@
     <div class="fw-alt" role="img" aria-label="The flywheel grown wider round a glowing core, with six cards round it, each plugging energy into the ring: above, Arca Gidan, an open source AI art competition, ArtCompute, micro-grants for open AI work, and Astrid, a new kind of video editor; below, Banodoco, the community’s home with 23,932 people, 2RP, a publication coming soon, and ADOS, events that bring the community together"></div>
     <div class="num">10<span class="act">How we accelerate it</span></div>
 <div class="split">
-      <div>
-        <h1>Our initiatives give the ecosystem the tools, energy and incentives to <em>create more and think bigger.</em></h1>
+      <div class="fw-copy">
+        <h1><span class="fw-plain">Our initiatives give the ecosystem the tools, energy and incentives to </span><em>create more and think bigger.</em></h1>
     <div class="body">Prizes that reward ambition, compute for people whose ideas outrun their hardware, a stage for the best work — and a share of what they help build.</div>
       </div>
       <div class="vis"><div class="m-cards3">
@@ -1910,8 +1932,8 @@
     <div class="fw-alt" role="img" aria-label="The flywheel opened out into a halo round the words, with the six as icons on it: Arca Gidan, ArtCompute and Astrid above, Banodoco, 2RP and ADOS below"></div>
     <div class="num">11<span class="act">The raise</span></div>
     <div class="split">
-      <div>
-        <h1>Join us: we’re raising $1M from angels and small funds <em>who want the open ecosystem to win.</em></h1>
+      <div class="fw-copy">
+        <h1><span class="fw-plain">Join us: we’re raising $1M from angels and small funds </span><em>who want the open ecosystem to win.</em></h1>
         <p class="fw-sub">We believe a thriving open-source ecosystem can profoundly improve humanity’s relationship with AI.</p>
         <div class="body">[What it gets us to — e.g. Astrid opened up as a platform, the first community-built tools, N active creators — and over what timeframe.]</div>
       </div>
@@ -1927,7 +1949,7 @@
         </div>
         <p class="cap">Use of funds and the milestones it buys — real splits and dates needed.</p>
       </div>
-      <div class="fw-asks">
+      <div class="fw-asks" inert>
         <div class="fw-ask">
           <button class="fw-ask-q" type="button" aria-expanded="false" aria-controls="fw-ask-who">Behind it</button>
           <div class="fw-ask-card fw-ask-who" id="fw-ask-who">
