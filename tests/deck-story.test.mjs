@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 const source = readFileSync(new URL('../mycelial/deck-overlay.js', import.meta.url), 'utf8');
+const deckHtml = readFileSync(new URL('../mycelial/index.html', import.meta.url), 'utf8');
 
 class Element {
   constructor(tag = 'div', classes = '') {
@@ -104,14 +105,15 @@ function demo(options) {
 test('canonical headings preserve copy, external links and brace', () => {
   const f = fixture();
   const intro = f.hosts.get('.as-host').heading.innerHTML;
-  assert.match(intro, /Today, an extendible agent-powered video editor\./);
-  assert.match(intro, /Soon, a fully-adaptable multimodal creative suite\./);
+  assert.match(intro, /<strong class="story-era">Today,<\/strong> an extendible agent-powered video editor\./);
+  assert.match(intro, /<strong class="story-era">Soon,<\/strong> a fully-adaptable multimodal creative suite\./);
   assert.match(intro, /href="https:\/\/astrid\.haus\/" target="_blank"/);
   assert.match(intro, /href="https:\/\/astrid\.haus\/vision" target="_blank"/);
   assert.equal((intro.match(/rel="noopener noreferrer"/g) || []).length, 2);
   assert.match(intro, /<em class="story-astrid">Astrid<\/em>/);
   assert.doesNotMatch(intro, /<a[^>]*>[^<]*Astrid/);
-  assert.match(intro, /story-brace/); assert.match(intro, /All powered by/); assert.match(intro, /Open Models/);
+  assert.match(intro, /story-brace/); assert.match(intro, /story-bridge/); assert.match(intro, /All powered by/); assert.match(intro, /Open Models/);
+  assert.match(deckHtml, /<div class="num">05<span class="act">Introducing<\/span><\/div>/);
   assert.match(f.hosts.get('.st-host').heading.innerHTML, /^<span class="story-title">Astrid is <em>everyone’s to shape\.<\/em><\/span>/);
   assert.match(f.hosts.get('.pa-host').heading.innerHTML, /Builders grow the ecosystem; creators sustain it\./);
   for (const host of f.hosts.values()) { assert.equal(host.querySelector('h1'), host.heading); assert.equal(host.body.hidden, true); }
@@ -132,6 +134,12 @@ test('compact header uses content-sized tracks and keeps Meet Astrid on one line
   assert.match(css, /\.as-host\.story-refined \.story-astrid\s*\{\s*display: inline/);
   assert.doesNotMatch(css, /minmax\(0, \.20fr\)|minmax\(0, 1fr\) 18px 108px/);
   for (const value of ['var(--as-copy-alpha, 1)', 'max-width: 760px', 'max-height: 500px', 'prefers-reduced-motion: reduce']) assert.ok(css.includes(value));
+  assert.match(css, /\.story-roadmap-lines\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.story-roadmap-lines > span\s*\{[^}]*white-space: normal; text-align: center/);
+  assert.match(css, /\.story-brace\s*\{ display: none; \}/);
+  assert.match(css, /\.story-bridge\s*\{[^}]*display: block;/);
+  assert.match(css, /\.story-powered\s*\{[^}]*text-align: center;/);
+  assert.match(css, /\.story-links\s*\{ justify-content: center;/);
 });
 test('card appears first, chat marker at 500 ms, editor 850 ms after chat', () => {
   const f = demo(); f.addRows(1); f.targets[0].classList.add('is-ready'); f.notes.update();

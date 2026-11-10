@@ -3,7 +3,7 @@
 (() => {
   const stories = [
     { selector: '.ac-host', html: 'We’re building that place: <em>an agent-powered creative workspace</em> where anyone can unlock their creative potential with <span class="ac-nw">open-source AI.</span>' },
-    { selector: '.as-host', html: '<span class="story-intro"><span class="story-title">Meet <em class="story-astrid">Astrid</em></span><span class="story-links"><a class="as-link" href="https://astrid.haus/" target="_blank" rel="noopener noreferrer">App</a><span class="story-divider" aria-hidden="true">|</span><a href="https://astrid.haus/vision" target="_blank" rel="noopener noreferrer">Vision</a></span></span> <span class="story-roadmap-grid"><span class="story-roadmap-lines"><span>Today, an extendible agent-powered video editor.</span><span>Soon, a fully-adaptable multimodal creative suite.</span></span><svg class="story-brace" viewBox="0 0 20 76" fill="none" aria-hidden="true"><path d="M3 2C12 2 12 9 12 17V28C12 35 15 38 19 38C15 38 12 41 12 48V59C12 67 12 74 3 74" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg><span class="story-powered">All powered by <span>Open Models</span></span></span>' },
+    { selector: '.as-host', html: '<span class="story-intro"><span class="story-title">Meet <em class="story-astrid">Astrid</em></span><span class="story-links"><a class="as-link" href="https://astrid.haus/" target="_blank" rel="noopener noreferrer">App</a><span class="story-divider" aria-hidden="true">|</span><a href="https://astrid.haus/vision" target="_blank" rel="noopener noreferrer">Vision</a></span></span> <span class="story-roadmap-grid"><span class="story-roadmap-lines"><span><strong class="story-era">Today,</strong> an extendible agent-powered video editor.</span><span><strong class="story-era">Soon,</strong> a fully-adaptable multimodal creative suite.</span></span><svg class="story-brace" viewBox="0 0 20 76" fill="none" aria-hidden="true"><path d="M3 2C12 2 12 9 12 17V28C12 35 15 38 19 38C15 38 12 41 12 48V59C12 67 12 74 3 74" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg><svg class="story-bridge" viewBox="0 0 240 32" fill="none" aria-hidden="true"><path d="M12 3V10Q12 16 18 16H104Q120 16 120 29M228 3V10Q228 16 222 16H136Q120 16 120 29" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="story-powered">All powered by <span>Open Models</span></span></span>' },
     { selector: '.st-host', html: '<span class="story-title">Astrid is <em>everyone’s to shape.</em></span> <span class="story-lead">As you create, you and your agent <em>extend every layer</em> — from your workspace to its tools and models.</span> <span class="story-note">What you share becomes part of a community-built creative platform<span class="story-detail">, ready for others to use and build on</span>.</span>' },
     { selector: '.pa-host', html: '<span class="story-lead">Nerds run Astrid locally and extend it. Everyone else pays to create with <em>that same growing platform</em> through an accessible hosted version.</span><span class="story-note">Builders grow the ecosystem; creators sustain it.</span>' },
   ];
@@ -50,6 +50,8 @@
       .story-roadmap-lines { display: grid; gap: .8em; min-width: 0;
         font: 400 clamp(1.05rem, 1.75vw, 1.65rem)/1.24 "Cormorant Garamond", Georgia, serif; letter-spacing: -.015em; }
       .story-roadmap-lines > span { display: block; white-space: nowrap; }
+      .story-era { font-weight: 400; font-style: normal; }
+      .story-bridge { display: none; }
       .story-brace { width: 18px; height: 76px; color: rgb(224 171 94 / var(--as-copy-alpha, 1)); opacity: .65; }
       .story-powered { font: 400 clamp(.9rem, 1.1vw, 1.05rem)/1.35 "EB Garamond", Georgia, serif;
         color: rgb(184 169 143 / var(--as-copy-alpha, 1)); letter-spacing: 0; }
@@ -94,17 +96,43 @@
         .story-powered { font-size: .9rem; }
       }
       @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px) {
-        html[data-ver="f"] .as-host.story-refined { padding-inline: 24px; }
-        html[data-ver="f"] .as-host.story-refined h1 { grid-template-columns: minmax(0, 1fr); gap: 18px; }
-        html[data-ver="f"] .as-host.story-refined .story-title { font-size: clamp(2.2rem, 9.8vw, 3rem); }
+        /* Two equal roadmap columns feed an upward-facing fork into one shared platform caption. */
+        html[data-ver="f"] .as-host.story-refined { padding-inline: max(16px, 5vw); text-align: center; }
+        html[data-ver="f"] .as-host.story-refined > .split { justify-items: center; }
+        html[data-ver="f"] .as-host.story-refined h1 {
+          grid-template-columns: minmax(0, 1fr); gap: clamp(13px, 2.2vh, 20px); justify-items: center;
+        }
+        .story-intro { width: 100%; text-align: center; }
+        html[data-ver="f"] .as-host.story-refined .story-title { font-size: clamp(2.1rem, 9vw, 3rem); }
         html[data-ver="f"] .as-host.story-refined .story-astrid { display: inline; }
-        .story-links { margin-top: 9px; font-size: 1rem; }
-        .story-roadmap-grid { grid-template-columns: minmax(0, max-content) 14px; column-gap: 7px; row-gap: 6px; }
-        .story-roadmap-lines { font-size: clamp(.76rem, 3.65vw, 1.3rem); gap: .65em; letter-spacing: -.02em; }
-        .story-brace { width: 14px; height: 52px; }
-        .story-powered { grid-column: 1 / -1; text-align: right; font-size: .84rem; }
+        .story-links { justify-content: center; margin-top: 7px; font-size: 1rem; }
+        .story-roadmap-grid {
+          width: min(100%, 520px); grid-template-columns: minmax(0, 1fr);
+          column-gap: 0; row-gap: 0; justify-items: center; justify-content: center;
+        }
+        .story-roadmap-lines {
+          width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr));
+          column-gap: clamp(12px, 4vw, 24px); row-gap: 0; align-items: start;
+          font-size: clamp(1rem, 4.35vw, 1.35rem); line-height: 1.15; letter-spacing: -.015em;
+        }
+        .story-roadmap-lines > span {
+          white-space: normal; text-align: center; text-wrap: balance; overflow-wrap: normal;
+        }
+        .story-era {
+          display: block; margin-bottom: .12em; font-size: 1.12em;
+          font-style: italic; font-weight: 500; color: rgb(236 197 126 / var(--as-copy-alpha, 1));
+        }
+        .story-brace { display: none; }
+        .story-bridge {
+          display: block; width: min(70%, 260px); height: 30px; margin-top: 7px;
+          color: rgb(224 171 94 / var(--as-copy-alpha, 1)); opacity: .75;
+        }
+        .story-powered {
+          grid-column: 1; text-align: center; white-space: nowrap;
+          font-size: clamp(.96rem, 3.8vw, 1.1rem); line-height: 1.3;
+        }
         .story-powered > span { display: inline; }
-        html[data-ver="f"] .as-host.story-refined .as { margin-top: 18px; }
+        html[data-ver="f"] .as-host.story-refined .as { margin-top: 16px; }
         html[data-ver="f"] .ac-host.story-refined h1 { font-size: clamp(1.65rem, 6.7vw, 2rem); }
         html[data-ver="f"] .pa-host.story-refined h1 { font-size: clamp(1.45rem, 6.2vw, 2rem); max-width: 23ch; }
         html[data-ver="f"] .pa-host.story-refined .story-note { font-size: .95rem; margin-top: 12px; }
@@ -120,10 +148,13 @@
         html[data-ver="f"] .st-host.story-refined .story-note { margin-top: 12px; font-size: 1rem; line-height: 1.3; }
       }
       @media (max-width: 760px) and (orientation: portrait) and (max-height: 740px) {
-        html[data-ver="f"] .as-host.story-refined h1 { gap: 12px; }
+        html[data-ver="f"] .as-host.story-refined h1 { gap: 10px; }
         html[data-ver="f"] .as-host.story-refined .story-title { font-size: 2rem; }
-        .story-links { margin-top: 7px; }
-        html[data-ver="f"] .as-host.story-refined .as { margin-top: 14px; }
+        .story-links { margin-top: 6px; }
+        .story-roadmap-lines { font-size: clamp(.91rem, 3.9vw, 1.08rem); line-height: 1.11; }
+        .story-bridge { height: 22px; margin-top: 2px; }
+        .story-powered { font-size: .9rem; }
+        html[data-ver="f"] .as-host.story-refined .as { margin-top: 11px; }
         html[data-ver="f"] .st-host.story-refined .story-title { font-size: 1.7rem; }
         html[data-ver="f"] .st-host.story-refined .story-lead { margin-top: 10px; font-size: 1.05rem; }
         html[data-ver="f"] .st-host.story-refined .story-note { margin-top: 8px; font-size: .95rem; }
