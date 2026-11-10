@@ -30,9 +30,6 @@
   const setCommunityCount = (value) => {
     const text = Math.round(value).toLocaleString('en-US');
     if (communityCount) communityCount.textContent = text;
-    // During the copy reveal the visible stat is a temporary paint layer.
-    // Keep its number in step with the canonical, accessible text.
-    document.querySelectorAll('.fw-stat.dt-copy-overlay b span').forEach((span) => { span.textContent = text; });
   };
 
   // ---- The layer -------------------------------------------------------------------------
@@ -1152,9 +1149,8 @@
     raf = 0;
     if (!running || ctx !== entryCtx || !ctx?.isCurrent?.()) return;
     const clock = window.deckNow?.() ?? now;
-    // Start with the text reveal, including its temporary paint layer, so the
-    // number is already moving as it comes into view.
-    const statPaint = countPending && document.querySelector('.fw-stat.dt-copy-overlay');
+    // The stat stays on its real node throughout the native radial reveal.
+    const statPaint = countPending && hosts[0].querySelector('.fw-stat');
     const revealingStat = statPaint && (statPaint.style.maskImage || statPaint.style.webkitMaskImage).startsWith('radial-gradient(');
     if (countPending && activeStage === 0 && (countStarted !== null || revealingStat || hosts[0].hasAttribute('data-settled'))) {
       if (countStarted === null) countStarted = clock;

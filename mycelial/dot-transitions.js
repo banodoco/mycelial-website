@@ -467,6 +467,10 @@
   const safeZone = (elements, key) => { try { return zone(elements(), key); } catch { return null; } };
   // The text block of a slide: its column, the label included.
   const stableCopy = (column) => column.matches('.gap-copy, .as-copy');
+  // The wheel revisits and reverses one shared scene. Mask its real copy rather
+  // than exchanging a frozen clone for it at the end of every transition.
+  const liveCopy = (column) => !!column.closest('.fw-host');
+  const stationaryCopy = (column) => stableCopy(column) || liveCopy(column);
   const copyContent = (column) => column.matches('.gap-copy')
     ? column.querySelector(':scope > .gap-copy-content') : column;
   const lines = (s) => textOf(s).flatMap((col) => [...copyContent(col).children]);
@@ -776,6 +780,10 @@
     if (overlay) overlay.remove();
     overlays.delete(el);
     masks.delete(el);
+    if (liveCopy(el)) {
+      el.style.removeProperty('mask-image');
+      el.style.removeProperty('-webkit-mask-image');
+    }
   };
   const clearOverlays = (slide) => textOf(slide).forEach(removeOverlay);
   const cancelOverlay = (slide, state) => {
@@ -899,9 +907,11 @@
       const x = at.x - b.left, y = at.y - b.top;
       const value = r <= 0 ? 'linear-gradient(transparent, transparent)'
         : `radial-gradient(circle at ${x.toFixed(1)}px ${y.toFixed(1)}px, #000 ${Math.max(0, r - SOFT).toFixed(1)}px, transparent ${r.toFixed(1)}px)`;
-      const overlay = overlayFor(el);
-      overlay.style.webkitMaskImage = overlay.style.maskImage = value;
-      copyContent(el).classList.add('dt-copy-hidden');
+      // Identical radius, soft edge and timing; only the paint target differs.
+      const canonical = liveCopy(el);
+      const surface = canonical ? copyContent(el) : overlayFor(el);
+      surface.style.webkitMaskImage = surface.style.maskImage = value;
+      copyContent(el).classList.toggle('dt-copy-hidden', !canonical);
     } else {
       removeOverlay(el);
       copyContent(el).classList.toggle('dt-copy-hidden', hidden);
@@ -940,7 +950,7 @@
       put.x = NaN;
       let complete = true;
       textOf(slide).forEach((el) => {
-        try { if (!stableCopy(el)) el.style.transform = ''; paintCopy(el, null, 0); }
+        try { if (!stationaryCopy(el)) el.style.transform = ''; paintCopy(el, null, 0); }
         catch (error) { complete = false; console.error('Deck copy restoration failed', error); }
       });
       state?.resolve?.(complete ? 'completed' : 'cancelled');
@@ -1192,7 +1202,7 @@
     if (!(Math.abs(trail.x - put.x) < e && Math.abs(trail.y - put.y) < e)) {
       put.x = trail.x; put.y = trail.y;
       textOf(current).forEach((el) => {
-        if (!stableCopy(el)) el.style.transform = `translate(${trail.x.toFixed(2)}px, ${trail.y.toFixed(2)}px)`;
+        if (!stationaryCopy(el)) el.style.transform = `translate(${trail.x.toFixed(2)}px, ${trail.y.toFixed(2)}px)`;
       });
     }
   };
