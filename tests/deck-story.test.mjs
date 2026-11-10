@@ -7,6 +7,8 @@ import vm from 'node:vm';
 const source = readFileSync(new URL('../mycelial/deck-overlay.js', import.meta.url), 'utf8');
 const deckHtml = readFileSync(new URL('../mycelial/index.html', import.meta.url), 'utf8');
 const networkSource = readFileSync(new URL('../mycelial/dot-transitions.js', import.meta.url), 'utf8');
+const demoSource = readFileSync(new URL('../mycelial/demo.js', import.meta.url), 'utf8');
+const collageSource = readFileSync(new URL('../mycelial/collage.js', import.meta.url), 'utf8');
 
 class Element {
   constructor(tag = 'div', classes = '') {
@@ -250,18 +252,63 @@ test('mobile chat keeps its entire message history and permits touch scrolling',
   assert.match(deckHtml, /overflow-y: auto; overscroll-behavior: contain/);
   assert.doesNotMatch(deckHtml, /\.as-msgs > :not\(:nth-last-child\(-n\+2\)\) \{ display: none;/);
 });
-test('slide 5 introduction has a staggered left-to-right wipe on the canonical text', () => {
+test('slide 5 now uses the deck-native soft radial reveal and gather', () => {
   const css = fixture().styles.get('deck-intro-story').textContent;
-  assert.match(css, /@keyframes as-story-sweep/);
-  assert.match(css, /clip-path: inset\(0 100% 0 0\)/);
-  assert.match(css, /\.as-host\.as-copy-sweeping \.story-title/);
-  assert.match(css, /\.as-host\.as-copy-sweeping \.story-roadmap-lines > span/);
-  assert.match(css, /\.as-host\.as-copy-sweeping \.story-powered/);
-  assert.match(css, /\.as-host\.as-copy-sweeping \.as-copy \{ --as-copy-alpha: 1 !important; \}/);
-  assert.match(css, /html\.deck-motion-off \.as-host\.as-copy-sweeping/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(networkSource, /const astridSweep = s\.matches\('\.as-host'\) && !still && !context\.direct && !context\.rest/);
-  assert.match(networkSource, /context\.transitionLater\(beginSweep, delay\)/);
-  assert.match(networkSource, /context\.transitionDefer\(\(\) => s\.classList\.remove\('as-copy-sweeping'\)\)/);
-  assert.match(networkSource, /if \(astridSweep\) s\.classList\.remove\('as-copy-sweeping'\)/);
+  assert.match(css, /\.as-copy\.as-spreading \.story-title/);
+  assert.match(css, /\.as-copy\.as-spreading \.story-roadmap-lines > span/);
+  assert.match(css, /\.as-copy\.as-spreading \.story-powered/);
+  assert.match(css, /background-attachment: fixed/);
+  assert.match(css, /radial-gradient\(circle at var\(--as-x/);
+  assert.match(networkSource, /content\.classList\.toggle\('as-spreading', spreading\)/);
+  assert.match(networkSource, /const ink = at \? '1' : alpha;/);
+  assert.match(networkSource, /--as-inner/);
+  assert.match(networkSource, /--as-outer/);
+  assert.match(networkSource, /svg\.style\.maskImage = svg\.style\.webkitMaskImage = value/);
+  assert.doesNotMatch(css, /@keyframes as-story-sweep|as-copy-sweeping/);
+  assert.doesNotMatch(networkSource, /as-copy-sweeping/);
+});
+test('reverse visits fade the label and mobile links alongside the canonical copy', () => {
+  const css = fixture().styles.get('deck-intro-story').textContent;
+  assert.match(css, /\.as-copy \.num \{ color: rgb\(224 171 94 \/ var\(--as-copy-alpha, 1\)\)/);
+  assert.match(css, /\.as-copy\.as-spreading \.num/);
+  assert.match(css, /\.as-mobile-links \{ display: none; opacity: var\(--as-reveal-alpha, 1\); \}/);
+  assert.match(networkSource, /slide\.style\.setProperty\('--as-reveal-alpha', alpha\)/);
+  assert.doesNotMatch(css, /as-host\[data-settled\] \.as-mobile-links \{ opacity: 1 !important/);
+  assert.doesNotMatch(css, /as-mobile-links-appear/);
+});
+test('node drift eases up from the landing point instead of snapping on reverse', () => {
+  assert.match(networkSource, /let driftBlend = 0;/);
+  assert.match(networkSource, /driftBlend = Math\.min\(1, driftBlend \+ dt \/ 1\.7\)/);
+  assert.match(networkSource, /const blend = driftBlend \* driftBlend \* \(3 - 2 \* driftBlend\)/);
+  assert.match(networkSource, /driftBlend = 0;\s*\/\/ Other routes still grow/);
+  assert.match(networkSource, /driftBlend = 0;\s*anchor = targetSlide/);
+});
+test('timeline clip titles and outputs align vertically with the numbered markers', () => {
+  assert.match(deckHtml, /\.as-clip \.as-name \{[^}]*top: 50%; transform: translateY\(-50%\)/);
+  assert.match(deckHtml, /\.as-clip \.as-kind \{[^}]*top: 50%; transform: translateY\(-50%\)/);
+  assert.match(source, /Build with extensions[^}]*x: 0, y: \.5/);
+  assert.match(source, /Bring it all together[^}]*x: 1, y: \.5/);
+  assert.match(deckHtml, /\.as-host\.has-demo-notes \.as-result-clip \.as-kind/);
+});
+test('first live guide is primed before it appears and waits for active playback', () => {
+  assert.match(demoSource, /const primeFirstPreview = \(\) => \{/);
+  assert.match(demoSource, /primeFirstPreview\(\);\s*\}\s*if \(at\(0\.65\)\)/);
+  assert.match(demoSource, /primeFirstPreview\(\);\s*\/\/ Avoid showing a ready but stationary preview/);
+  assert.match(demoSource, /guide\.readyState >= 2 && !guide\.seeking && !guide\.paused/);
+  assert.match(demoSource, /if \(!guideGateSeeking && guide\.readyState >= 1\)/);
+  assert.doesNotMatch(deckHtml, /Ask Astrid to edit your project/);
+  assert.match(deckHtml, /<span class="as-typed"><\/span><i class="as-caret"><\/i>/);
+});
+test('more breathing room separates the editor from Open Models', () => {
+  const css = fixture().styles.get('deck-intro-story').textContent;
+  assert.match(css, /margin-top: clamp\(26px, 3\.7vh, 38px\)/);
+  assert.match(css, /\.as-host\.story-refined \.as \{ margin-top: 18px; \}/);
+});
+
+test('opening carousel primes the destination video before the front card lands', () => {
+  assert.match(collageSource, /const want = allowed\(\) && !opening\(\)/);
+  assert.match(collageSource, /arrival\.previewReady \? tiles\[frontOf\(arrival\.to\)\] : null/);
+  assert.match(collageSource, /if \(s >= 0\.55 && !arrival\.previewReady\) arrival\.previewReady = true;/);
+  assert.match(collageSource, /if \(active\(\)\) rest\(waitForPreview\(playing\?\.querySelector\('video'\)\)\);/);
+  assert.match(collageSource, /load\(tiles\[frontOf\(to\)\]\);/);
 });

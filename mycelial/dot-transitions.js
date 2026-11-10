@@ -857,8 +857,39 @@
           for (const property of ['--gap-x', '--gap-y', '--gap-inner', '--gap-outer']) content.style.removeProperty(property);
         }
       }
+      if (el.matches('.as-copy')) {
+        // Unlike the temporary CSS wipe, this uses exactly the same growing
+        // radial soft edge as the deck's other copy (including reverse gather).
+        // The heading stays canonical so the editor's WebKit paint path is stable.
+        const spreading = Boolean(at);
+        content.classList.toggle('as-spreading', spreading);
+        const props = ['--as-x', '--as-y', '--as-inner', '--as-outer'];
+        if (spreading) {
+          content.style.setProperty('--as-x', `${at.x.toFixed(1)}px`);
+          content.style.setProperty('--as-y', `${at.y.toFixed(1)}px`);
+          content.style.setProperty('--as-inner', `${Math.max(0, r - SOFT).toFixed(1)}px`);
+          content.style.setProperty('--as-outer', `${Math.max(0.01, r).toFixed(1)}px`);
+        } else props.forEach((property) => content.style.removeProperty(property));
+        // The mobile App | Vision links sit below the player, outside the
+        // text column. Feed them the same outgoing and incoming copy progress.
+        const slide = el.closest('.as-host');
+        if (slide) slide.style.setProperty('--as-reveal-alpha', alpha);
+        // SVG braces cannot clip text like glyphs: reveal them using the same
+        // node-centred radial mask, in their own coordinate system.
+        content.querySelectorAll('.story-brace, .story-bridge').forEach((svg) => {
+          if (!spreading) {
+            svg.style.maskImage = svg.style.webkitMaskImage = '';
+            return;
+          }
+          const rect = svg.getBoundingClientRect();
+          if (!rect.width || !rect.height) return;
+          const x = at.x - rect.left, y = at.y - rect.top;
+          const value = `radial-gradient(circle at ${x.toFixed(1)}px ${y.toFixed(1)}px, #000 ${Math.max(0, r - SOFT).toFixed(1)}px, transparent ${Math.max(0.01, r).toFixed(1)}px)`;
+          svg.style.maskImage = svg.style.webkitMaskImage = value;
+        });
+      }
       const property = el.matches('.gap-copy') ? '--gap-copy-alpha' : '--as-copy-alpha';
-      const ink = el.matches('.gap-copy') && at ? '1' : alpha;
+      const ink = at ? '1' : alpha;
       if (content.style.getPropertyValue(property) !== ink) content.style.setProperty(property, ink);
       return;
     }
@@ -1023,22 +1054,8 @@
   };
   const reveal = (s, at, delay = 0, context = window.deckNav, timing = null) => {
     if (context.terminal) return [];
-    // Slide 5 uses a directional left-to-right ink sweep across its real text,
-    // coordinated with the same network reveal clock as the surrounding slides.
-    // This replaces its exceptional flat fade only while actively entering.
-    const astridSweep = s.matches('.as-host') && !still && !context.direct && !context.rest;
+    // All slides now use the network-owned reveal/gather, including Astrid.
     const state = copy.hide(s, context, at, delay + revealDuration(s, at, context) + (timing ? Math.max(0, context.textDeadline - context.now()) : 0) + 400);
-    if (astridSweep) {
-      // Start with the network's own reveal delay, so the sweep follows the
-      // arriving threads rather than running before they reach the copy.
-      const beginSweep = () => {
-        if (context.isTransitionCurrent() && copyStates.get(s) === state)
-          s.classList.add('as-copy-sweeping');
-      };
-      if (delay) context.transitionLater(beginSweep, delay);
-      else beginSweep();
-      context.transitionDefer(() => s.classList.remove('as-copy-sweeping'));
-    }
     if (state) state.phase = 'revealing';
     const tw = [];
     for (const el of textOf(s)) {
@@ -1069,7 +1086,6 @@
     Promise.all(tw).then((results) => {
       if (copyStates.get(s) === state && results.every((result) => result === 'completed') && context.isCurrent() && !context.terminal) {
         copy.show(s);
-        if (astridSweep) s.classList.remove('as-copy-sweeping');
       }
     });
     return tw;
@@ -1142,6 +1158,10 @@
     return [[from.x, from.y], ...t.pts.slice(1, -1).reverse().map(([x, y]) => [x, y]), [to.x, to.y]];
   };
   let drift = { x: 0, y: 0 }, trail = { x: 0, y: 0 }, t = 0, last = 0;
+  // Each arrival restarts the tiny idle wander from its landing point.
+  // Otherwise the sine's current phase adds a visible 1–2px hop immediately
+  // after the motion finishes, particularly obvious on backward navigation.
+  let driftBlend = 0;
   const put = { x: NaN, y: NaN }; // where the idle text was last put (none since it was last cleared)
 
   // Idle: the node wanders a pixel or two; the text follows a beat behind.
@@ -1159,7 +1179,9 @@
     idleRaf = requestAnimationFrame(idle);
     if (turning || !anchor) return;
     t += dt;
-    drift = { x: 1.8 * Math.sin(t * 0.45), y: 1.3 * Math.sin(t * 0.31 + 1) };
+    driftBlend = Math.min(1, driftBlend + dt / 1.7);
+    const blend = driftBlend * driftBlend * (3 - 2 * driftBlend);
+    drift = { x: blend * 1.8 * Math.sin(t * 0.45), y: blend * 1.3 * Math.sin(t * 0.31 + 1) };
     const k = 1 - Math.exp(-1.6 * dt);
     trail.x += (drift.x * 0.7 - trail.x) * k;
     trail.y += (drift.y * 0.7 - trail.y) * k;
@@ -1390,7 +1412,7 @@
     if (active()) adopt(); else restore();
     [slides[context.from], slides[context.to]].filter(Boolean).forEach((sl) => context.present(sl, '', 'dt-leaving dt-release'));
     slides.forEach((sl) => sl === targetSlide ? copy.show(sl) : copy.retire(sl));
-    trail = { x: 0, y: 0 };
+    trail = { x: 0, y: 0 }; drift = { x: 0, y: 0 }; driftBlend = 0;
     anchor = targetSlide ? anchorOf(targetSlide) : null;
     const on = active() && !!anchor;
     dot.classList.toggle('is-on', on);
@@ -1479,7 +1501,7 @@
     const revealAt = Math.max(started + early, context.textDeadline);
     const copyVisit = copy.hide(next, context, to, Math.max(0, revealAt - context.now()) + revealDuration(next, to, context) + 400);
     anchor = to;
-    drift = { x: 0, y: 0 }; trail = { x: 0, y: 0 };
+    drift = { x: 0, y: 0 }; trail = { x: 0, y: 0 }; driftBlend = 0;
     // Other routes still grow the closing mark when the node arrives below.
 
     // The new text grows from its node while the old is still being drawn in (overlap), or once a picture crossing

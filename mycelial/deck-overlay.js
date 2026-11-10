@@ -56,7 +56,7 @@
       .story-powered { font: 400 clamp(.9rem, 1.1vw, 1.05rem)/1.35 "EB Garamond", Georgia, serif;
         color: rgb(184 169 143 / var(--as-copy-alpha, 1)); letter-spacing: 0; }
       .story-powered > span { display: block; color: rgb(236 197 126 / var(--as-copy-alpha, 1)); }
-      html[data-ver="f"] .as-host.story-refined .as { margin-top: clamp(20px, 3vh, 30px); }
+      html[data-ver="f"] .as-host.story-refined .as { margin-top: clamp(26px, 3.7vh, 38px); }
       html[data-ver="f"] .st-host.story-refined > .split { grid-template-columns: minmax(0, 36vw); }
       html[data-ver="f"] .st-host.story-refined h1 { max-width: none; text-wrap: initial; }
       html[data-ver="f"] .st-host.story-refined .story-title {
@@ -173,82 +173,65 @@
         html[data-ver="f"] .st-host.story-refined .story-lead { margin-top: 12px; font-size: 1.05rem; }
         html[data-ver="f"] .st-host.story-refined .story-note { margin-top: 10px; font-size: .9rem; }
       }
-      /* Slide 5 shares the deck's arrival language: a soft left-to-right ink sweep
-         in grouped beats, instead of fading all text at once. The canonical heading
-         remains in place; no extra copy nodes or clone masks are introduced. */
-      .as-mobile-links { display: none; }
-      html[data-ver="f"] .as-host.as-copy-sweeping .as-copy { --as-copy-alpha: 1 !important; }
-      @keyframes as-story-sweep {
-        from { clip-path: inset(0 100% 0 0); transform: translateX(-12px); }
-        to { clip-path: inset(0 0 0 0); transform: translateX(0); }
+      /* Slide 5 now shares the network's soft radial ink reveal/gather with slide 4.
+         The canonical text stays put for the editor's Safari/WebKit paint path. */
+      .as-mobile-links { display: none; opacity: var(--as-reveal-alpha, 1); }
+      .as-copy .num { color: rgb(224 171 94 / var(--as-copy-alpha, 1)); }
+      .as-copy .num .act { color: rgb(184 169 143 / var(--as-copy-alpha, 1)); }
+      .as-copy.as-spreading .num,
+      .as-copy.as-spreading .num .act,
+      .as-copy.as-spreading .story-title,
+      .as-copy.as-spreading .story-title .story-astrid,
+      .as-copy.as-spreading .story-links,
+      .as-copy.as-spreading .story-links a,
+      .as-copy.as-spreading .story-links .story-divider,
+      .as-copy.as-spreading .story-roadmap-lines > span,
+      .as-copy.as-spreading .story-roadmap-lines .story-era,
+      .as-copy.as-spreading .story-powered,
+      .as-copy.as-spreading .story-powered > span {
+        color: transparent; -webkit-text-fill-color: transparent;
+        -webkit-background-clip: text; background-clip: text; background-attachment: fixed;
+        background-image: radial-gradient(circle at var(--as-x, 0px) var(--as-y, 0px),
+          rgb(var(--as-ink)) var(--as-inner, 0px), transparent var(--as-outer, 0px));
       }
-      .as-host.as-copy-sweeping .as-copy > .num,
-      .as-host.as-copy-sweeping .story-title,
-      .as-host.as-copy-sweeping .story-links,
-      .as-host.as-copy-sweeping .story-roadmap-lines > span,
-      .as-host.as-copy-sweeping .story-brace,
-      .as-host.as-copy-sweeping .story-bridge,
-      .as-host.as-copy-sweeping .story-powered {
-        animation: as-story-sweep 850ms cubic-bezier(.22,.72,.2,1) both;
-      }
-      .as-host.as-copy-sweeping .as-copy > .num { animation-duration: 620ms; }
-      .as-host.as-copy-sweeping .story-title { animation-delay: 40ms; }
-      .as-host.as-copy-sweeping .story-links { animation-delay: 190ms; }
-      .as-host.as-copy-sweeping .story-roadmap-lines > span:first-child { animation-delay: 160ms; }
-      .as-host.as-copy-sweeping .story-roadmap-lines > span:last-child { animation-delay: 280ms; }
-      .as-host.as-copy-sweeping .story-brace,
-      .as-host.as-copy-sweeping .story-bridge { animation-delay: 365ms; }
-      .as-host.as-copy-sweeping .story-powered { animation-delay: 460ms; }
-      @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px) {
+      .as-copy.as-spreading .num { --as-ink: 224 171 94; }
+      .as-copy.as-spreading .num .act { --as-ink: 184 169 143; }
+      .as-copy.as-spreading .story-title { --as-ink: 239 230 214; }
+      .as-copy.as-spreading .story-title .story-astrid { --as-ink: 240 175 110; }
+      .as-copy.as-spreading .story-links, .as-copy.as-spreading .story-links a,
+      .as-copy.as-spreading .story-links .story-divider { --as-ink: 184 169 143; }
+      .as-copy.as-spreading .story-roadmap-lines > span { --as-ink: 239 230 214; }
+      .as-copy.as-spreading .story-roadmap-lines .story-era { --as-ink: 236 197 126; }
+      .as-copy.as-spreading .story-powered { --as-ink: 184 169 143; }
+      .as-copy.as-spreading .story-powered > span { --as-ink: 236 197 126; }
+            @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px) {
         html[data-ver="f"] .as-host.story-refined {
           padding-top: clamp(28px, 4.4vh, 38px);
           padding-bottom: max(59px, calc(env(safe-area-inset-bottom) + 51px));
         }
         html[data-ver="f"] .as-host.story-refined h1 { gap: clamp(9px, 1.6vh, 15px); }
-        html[data-ver="f"] .as-host.story-refined .as { margin-top: 10px; }
+        html[data-ver="f"] .as-host.story-refined .as { margin-top: 18px; }
         .as-host.story-refined .story-intro > .story-links { display: none; }
         html[data-ver="f"] .as-host.story-refined .as-mobile-links {
           display: flex; flex: none; align-items: center; justify-content: center;
           position: relative; z-index: 2; margin: 9px auto 0; padding: 0;
-          width: fit-content; font-size: 1rem; line-height: 1.4; opacity: 0;
+          width: fit-content; font-size: 1rem; line-height: 1.4;
+          opacity: var(--as-reveal-alpha, 1);
         }
-        .as-host[data-settled] .as-mobile-links { opacity: 1 !important; }
-        .as-host.as-copy-sweeping .as-mobile-links {
-          animation: as-mobile-links-appear 750ms ease 430ms both;
-        }
-        @keyframes as-mobile-links-appear {
-          from { opacity: 0; clip-path: inset(0 100% 0 0); }
-          to { opacity: 1; clip-path: inset(0 0 0 0); }
-        }
+
       }
       @media (max-width: 760px) and (orientation: portrait) and (max-height: 740px) {
         html[data-ver="f"] .as-host.story-refined {
           padding-top: 25px; padding-bottom: max(54px, calc(env(safe-area-inset-bottom) + 48px));
         }
         html[data-ver="f"] .as-host.story-refined h1 { gap: 8px; }
-        html[data-ver="f"] .as-host.story-refined .as { margin-top: 7px; }
+        html[data-ver="f"] .as-host.story-refined .as { margin-top: 12px; }
         html[data-ver="f"] .as-host.story-refined .as-mobile-links { margin-top: 6px; }
       }
       @media (prefers-reduced-motion: reduce) {
         .as-host[data-settled] .story-astrid { animation: none; }
-        .as-host.as-copy-sweeping .as-copy > .num,
-        .as-host.as-copy-sweeping .story-title,
-        .as-host.as-copy-sweeping .story-links,
-        .as-host.as-copy-sweeping .story-roadmap-lines > span,
-        .as-host.as-copy-sweeping .story-brace,
-        .as-host.as-copy-sweeping .story-bridge,
-        .as-host.as-copy-sweeping .story-powered,
-        .as-host.as-copy-sweeping .as-mobile-links { animation: none !important; }
       }
       html.deck-motion-off .as-host[data-settled] .story-astrid { animation: none; }
-      html.deck-motion-off .as-host.as-copy-sweeping .as-copy > .num,
-      html.deck-motion-off .as-host.as-copy-sweeping .story-title,
-      html.deck-motion-off .as-host.as-copy-sweeping .story-links,
-      html.deck-motion-off .as-host.as-copy-sweeping .story-roadmap-lines > span,
-      html.deck-motion-off .as-host.as-copy-sweeping .story-brace,
-      html.deck-motion-off .as-host.as-copy-sweeping .story-bridge,
-      html.deck-motion-off .as-host.as-copy-sweeping .story-powered,
-      html.deck-motion-off .as-host.as-copy-sweeping .as-mobile-links { animation: none !important; }
     `;
     document.head.appendChild(style);
   }
@@ -350,9 +333,9 @@ window.createAstridDemoNotes = function createAstridDemoNotes(root, targets) {
   const quiet = () => reduced.matches || window.deckStill?.();
   const CHAT_MARKER_DELAY = 500, EDITOR_MARKER_DELAY = 850;
   const definitions = [
-    { title: 'Build with extensions', text: 'Your agent uses extensions such as Three.js to turn your request into a scene on the timeline.', x: 0, y: 1 },
+    { title: 'Build with extensions', text: 'Your agent uses extensions such as Three.js to turn your request into a scene on the timeline.', x: 0, y: .5 },
     { title: 'Put open models to work', text: 'Your agent works out how to use open models on your machine. Here, Qwen turns the scene into reference images.', x: .5, y: .5 },
-    { title: 'Bring it all together', text: 'Your agent combines the scenes, images and motion guides on your timeline into finished creative work. You can keep editing every part.', x: 1, y: 0 },
+    { title: 'Bring it all together', text: 'Your agent combines the scenes, images and motion guides on your timeline into finished creative work. You can keep editing every part.', x: 1, y: .5 },
   ];
   const layer = document.createElement('div'); layer.className = 'as-notes';
   const card = document.createElement('div'); card.id = 'astrid-demo-note'; card.className = 'as-note-card'; card.hidden = true; card.setAttribute('role', 'tooltip');

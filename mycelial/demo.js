@@ -188,6 +188,17 @@
   };
   // Frame changes cut with the playhead: a dissolve would leave the old frame visible at the new time.
   const showStill = (i) => { picFade = null; view.mode = 'still'; view.i = i; view.seq = -1; videos.forEach((v) => v.pause()); };
+  const primeFirstPreview = () => {
+    // Begin muted playback while the first Three.js clip is finishing.
+    // By the time it appears in the viewer, the film is already moving.
+    primingVideo = guide;
+    guide.playbackRate = 2.5;
+    if (!guideGateSeeking && guide.readyState >= 1) {
+      try { if (guide.currentTime > 0.01) guide.currentTime = 0; guideGateSeeking = true; }
+      catch { /* metadata may arrive on the next gate check */ }
+    }
+    requestPlay(guide);
+  };
   const showGuide = () => {
     if (view.mode !== 'guide') fadePic();
     view.mode = 'guide'; view.i = -1; view.seq = 0; primingVideo = null;
@@ -364,13 +375,9 @@
     if (event.finalEnd) return view.mode === 'final-hold';
     if (event.guideEnd) return guide.ended || (mediaUnavailable(guide) && view.mode === 'guide-hold');
     if (event.bi === 0 && event.offset === 0.65) {
-      primingVideo = guide;
-      guide.playbackRate = 2.5;
-      if (!guideGateSeeking && guide.readyState >= 1) {
-        try { if (guide.currentTime > 0.01) guide.currentTime = 0; guideGateSeeking = true; } catch { /* retry after metadata */ }
-      }
-      requestPlay(guide);
-      return mediaUnavailable(guide) || (guide.readyState >= 2 && !guide.seeking);
+      primeFirstPreview();
+      // Avoid showing a ready but stationary preview while play() is pending.
+      return mediaUnavailable(guide) || (guide.readyState >= 2 && !guide.seeking && !guide.paused);
     }
     if (event.bi === 1) {
       const i = FRAMES.findIndex((_, n) => Math.abs(event.offset - (n * FRAME_STEP + 0.32)) < 1e-7);
@@ -467,7 +474,11 @@
     let changed = false;
     const touch = (el, on) => { changed = true; el.classList.toggle('is-touched', on); };
     if (bi === 0) {
-      if (at(0)) { sceneEl.style.opacity = ''; sceneEl.classList.add('is-generating'); touch(sceneEl, true); total = SPAN; headTo(0, true); }
+      if (at(0)) {
+        sceneEl.style.opacity = ''; sceneEl.classList.add('is-generating');
+        touch(sceneEl, true); total = SPAN; headTo(0, true);
+        primeFirstPreview();
+      }
       if (at(0.65)) { changed = true; sceneEl.classList.remove('is-generating'); sceneEl.classList.add('is-ready', 'is-animated'); showGuide(); headTo(0, true); }
       if (at(1.2)) touch(sceneEl, false);
     }

@@ -460,7 +460,12 @@
   // that brings it sets off (see turnTo), one at a time, never its neighbours'.
   const sync = () => {
     const f = frontOf(angle);
-    const want = allowed() && !opening() && !arrival ? tiles[f] : null;
+    // On the opening ring, preload at departure and start the destination
+    // preview during the last part of its arrival. The playing frame is already
+    // there when the card lands, instead of waiting for land() to call play().
+    const want = allowed() && !opening()
+      ? arrival ? (arrival.previewReady ? tiles[frontOf(arrival.to)] : null) : tiles[f]
+      : null;
     if (want === playing) return;
     if (playing) { preview(playing, false); playing.classList.remove('is-cue'); }
     playing = want;
@@ -539,7 +544,8 @@
   // motion: from further back, faint and already turning, it sweeps round half a turn and more and slows on a long
   // ease to rest on its front film, like something heavy coming to rest; its depth and light come in with it. Not
   // on the way back from slide 2, whose motes gather into the ring at rest; and with motion off it is simply there.
-  // Its hold, and the front film's preview, begin once it has landed.
+  // Its hold begins once landed; the front film's preview starts on the
+  // approach so motion is already visible on arrival.
   const ARRIVE = 2600, SWEEP = 0.55 * 2 * Math.PI;
   let arrival = null, parked = 0;
   const arrive = () => {
@@ -560,6 +566,9 @@
     G.sigma = 0.84 + 0.16 * e;
     root.style.opacity = (0.5 - 0.5 * Math.cos(Math.PI * clamp(s / 0.55))).toFixed(3);
     floor.style.transform = `scale(${G.sigma.toFixed(4)})`;
+    // About 1.2 seconds of head start for the muted preview after its source
+    // has spent the first part of arrival loading and decoding.
+    if (s >= 0.55 && !arrival.previewReady) arrival.previewReady = true;
     if (s >= 1) land();
   };
   // Landed (or cut short): at rest on the front film, the ring's own style handed back.
@@ -570,7 +579,7 @@
     G.sigma = 1;
     root.style.opacity = root.style.transition = floor.style.transform = '';
     pose();
-    if (active()) rest();
+    if (active()) rest(waitForPreview(playing?.querySelector('video')));
   };
   // Settled: hold the front, then turn on by one, unless something holds it.
   const rest = (ms = DWELL) => {
