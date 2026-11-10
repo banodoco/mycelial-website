@@ -466,18 +466,14 @@
   // Decoration must never hold up copy or transition completion.
   const safeZone = (elements, key) => { try { return zone(elements(), key); } catch { return null; } };
   // The text block of a slide: its column, the label included.
-  // Stable glyph ink is shared by Gap, Astrid and the three wheel slides.
-  // None of these text roots is cloned, translated, or masked as a surface.
-  const stableCopy = (column) => column.matches('.gap-copy, .as-copy, .fw-copy, .fw-stat');
+  const stableCopy = (column) => column.matches('.gap-copy, .as-copy');
+  // The wheel revisits and reverses one shared scene. Mask its real copy rather
+  // than exchanging a frozen clone for it at the end of every transition.
+  const liveCopy = (column) => !!column.closest('.fw-host');
+  const stationaryCopy = (column) => stableCopy(column) || liveCopy(column);
   const copyContent = (column) => column.matches('.gap-copy')
     ? column.querySelector(':scope > .gap-copy-content') : column;
-  const copyParts = (column) => {
-    const parts = [...copyContent(column).children];
-    const controls = column.matches('.fw-copy') && column.closest('.fw-raise')?.querySelector('.fw-asks');
-    if (controls) parts.push(controls);
-    return parts;
-  };
-  const lines = (s) => textOf(s).flatMap(copyParts);
+  const lines = (s) => textOf(s).flatMap((col) => [...copyContent(col).children]);
   // The deck's own chrome: the wordmark, the counter and its buttons.
   const chromeEls = () => [name, ...document.querySelectorAll('.chrome #count, .chrome button')];
   const soften = () => {
@@ -705,9 +701,9 @@
   });
   const restore = () => homes.forEach((s, num) => s.insertBefore(num, s.querySelector(':scope > .split')));
 
-  const textOf = (s) => [columnOf(s), s.querySelector(':scope > .fw-stat')].filter(Boolean);
+  const textOf = (s) => [s.matches('.fw-raise') ? s.querySelector(':scope > .split') : columnOf(s), s.querySelector(':scope > .fw-stat')].filter(Boolean);
   const copyRectsOf = (el) => {
-    const items = el.matches('.fw-stat') ? [el] : copyParts(el);
+    const items = el.matches('.fw-stat') ? [el] : el.matches('.split') ? [...el.children].flatMap((child, i) => i === 0 ? [...child.children] : [child]) : [...copyContent(el).children];
     return items.flatMap((item) => {
       if (getComputedStyle(item).display === 'none' || (item.matches('.num') && item.closest('.fw-raise'))) return [];
       if (item.matches('.fw-stat')) {
@@ -784,6 +780,10 @@
     if (overlay) overlay.remove();
     overlays.delete(el);
     masks.delete(el);
+    if (liveCopy(el)) {
+      el.style.removeProperty('mask-image');
+      el.style.removeProperty('-webkit-mask-image');
+    }
   };
   const clearOverlays = (slide) => textOf(slide).forEach(removeOverlay);
   const cancelOverlay = (slide, state) => {
@@ -793,9 +793,8 @@
     copyStates.set(slide, { phase: 'cancelled' });
     state?.resolve?.('cancelled');
     clearOverlays(slide);
-    // Cancellation leaves an explicit endpoint, never a half-painted old visit.
-    const hidden = !slide.classList.contains('on');
-    textOf(slide).forEach((el) => paintCopy(el, null, 0, hidden));
+    // If this visit is cancelled without a successor, the active copy remains readable.
+    if (slide.classList.contains('on')) textOf(slide).forEach((el) => paintCopy(el, null, 0));
   };
   // Keep the real copy in the layout and reserve masks for disposable paint layers.
   const overlayFor = (el) => {
@@ -851,19 +850,34 @@
       if (at) masks.set(el, { at: { ...at }, r });
       else masks.delete(el);
       const alpha = at ? String(clamp(r / reach(el, at, bounds))) : hidden ? '0' : '1';
-      const prefix = el.matches('.gap-copy') ? 'gap' : el.matches('.as-copy') ? 'as' : 'fw';
-      const spreading = Boolean(at);
-      content.classList.toggle(`${prefix}-spreading`, spreading);
-      if (spreading) {
-        // One node-centred radial edge, independent of wrapped text fragments.
-        content.style.setProperty(`--${prefix}-x`, `${at.x.toFixed(1)}px`);
-        content.style.setProperty(`--${prefix}-y`, `${at.y.toFixed(1)}px`);
-        content.style.setProperty(`--${prefix}-inner`, `${Math.max(0, r - SOFT).toFixed(1)}px`);
-        content.style.setProperty(`--${prefix}-outer`, `${Math.max(0.01, r).toFixed(1)}px`);
-      } else {
-        for (const name of ['x', 'y', 'inner', 'outer']) content.style.removeProperty(`--${prefix}-${name}`);
+      if (el.matches('.gap-copy')) {
+        const spreading = Boolean(at);
+        content.classList.toggle('gap-spreading', spreading);
+        if (spreading) {
+          // Use the same viewport origin, radius and soft edge as the regular
+          // copy mask. A fixed background shares one circle across wrapped
+          // inline fragments while the canonical text stays visible in place.
+          content.style.setProperty('--gap-x', `${at.x.toFixed(1)}px`);
+          content.style.setProperty('--gap-y', `${at.y.toFixed(1)}px`);
+          content.style.setProperty('--gap-inner', `${Math.max(0, r - SOFT).toFixed(1)}px`);
+          content.style.setProperty('--gap-outer', `${Math.max(0.01, r).toFixed(1)}px`);
+        } else {
+          for (const property of ['--gap-x', '--gap-y', '--gap-inner', '--gap-outer']) content.style.removeProperty(property);
+        }
       }
-      if (prefix === 'as') {
+      if (el.matches('.as-copy')) {
+        // Unlike the temporary CSS wipe, this uses exactly the same growing
+        // radial soft edge as the deck's other copy (including reverse gather).
+        // The heading stays canonical so the editor's WebKit paint path is stable.
+        const spreading = Boolean(at);
+        content.classList.toggle('as-spreading', spreading);
+        const props = ['--as-x', '--as-y', '--as-inner', '--as-outer'];
+        if (spreading) {
+          content.style.setProperty('--as-x', `${at.x.toFixed(1)}px`);
+          content.style.setProperty('--as-y', `${at.y.toFixed(1)}px`);
+          content.style.setProperty('--as-inner', `${Math.max(0, r - SOFT).toFixed(1)}px`);
+          content.style.setProperty('--as-outer', `${Math.max(0.01, r).toFixed(1)}px`);
+        } else props.forEach((property) => content.style.removeProperty(property));
         // The mobile App | Vision links sit below the player, outside the
         // text column. Feed them the same outgoing and incoming copy progress.
         const slide = el.closest('.as-host');
@@ -882,13 +896,7 @@
           svg.style.maskImage = svg.style.webkitMaskImage = value;
         });
       }
-      if (prefix === 'fw' && el.matches('.fw-copy')) {
-        // Questions are live controls, not part of a masked layout wrapper.
-        // They share the copy clock but never clip an open card or its text.
-        const controls = el.closest('.fw-host')?.querySelector('.fw-asks');
-        if (controls) { controls.style.opacity = alpha; controls.inert = spreading || hidden; }
-      }
-      const property = `--${prefix}-copy-alpha`;
+      const property = el.matches('.gap-copy') ? '--gap-copy-alpha' : '--as-copy-alpha';
       const ink = at ? '1' : alpha;
       if (content.style.getPropertyValue(property) !== ink) content.style.setProperty(property, ink);
       return;
@@ -899,9 +907,11 @@
       const x = at.x - b.left, y = at.y - b.top;
       const value = r <= 0 ? 'linear-gradient(transparent, transparent)'
         : `radial-gradient(circle at ${x.toFixed(1)}px ${y.toFixed(1)}px, #000 ${Math.max(0, r - SOFT).toFixed(1)}px, transparent ${r.toFixed(1)}px)`;
-      const overlay = overlayFor(el);
-      overlay.style.webkitMaskImage = overlay.style.maskImage = value;
-      copyContent(el).classList.add('dt-copy-hidden');
+      // Identical radius, soft edge and timing; only the paint target differs.
+      const canonical = liveCopy(el);
+      const surface = canonical ? copyContent(el) : overlayFor(el);
+      surface.style.webkitMaskImage = surface.style.maskImage = value;
+      copyContent(el).classList.toggle('dt-copy-hidden', !canonical);
     } else {
       removeOverlay(el);
       copyContent(el).classList.toggle('dt-copy-hidden', hidden);
@@ -940,7 +950,7 @@
       put.x = NaN;
       let complete = true;
       textOf(slide).forEach((el) => {
-        try { if (!stableCopy(el)) el.style.transform = ''; paintCopy(el, null, 0); }
+        try { if (!stationaryCopy(el)) el.style.transform = ''; paintCopy(el, null, 0); }
         catch (error) { complete = false; console.error('Deck copy restoration failed', error); }
       });
       state?.resolve?.(complete ? 'completed' : 'cancelled');
@@ -1192,7 +1202,7 @@
     if (!(Math.abs(trail.x - put.x) < e && Math.abs(trail.y - put.y) < e)) {
       put.x = trail.x; put.y = trail.y;
       textOf(current).forEach((el) => {
-        if (!stableCopy(el)) el.style.transform = `translate(${trail.x.toFixed(2)}px, ${trail.y.toFixed(2)}px)`;
+        if (!stationaryCopy(el)) el.style.transform = `translate(${trail.x.toFixed(2)}px, ${trail.y.toFixed(2)}px)`;
       });
     }
   };

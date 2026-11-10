@@ -259,10 +259,10 @@ test('slide 5 now uses the deck-native soft radial reveal and gather', () => {
   assert.match(css, /\.as-copy\.as-spreading \.story-powered/);
   assert.match(css, /background-attachment: fixed/);
   assert.match(css, /radial-gradient\(circle at var\(--as-x/);
-  assert.ok(networkSource.includes('content.classList.toggle(`${prefix}-spreading`, spreading)'));
+  assert.match(networkSource, /content\.classList\.toggle\('as-spreading', spreading\)/);
   assert.match(networkSource, /const ink = at \? '1' : alpha;/);
-  assert.ok(networkSource.includes('`--${prefix}-inner`'));
-  assert.ok(networkSource.includes('`--${prefix}-outer`'));
+  assert.match(networkSource, /--as-inner/);
+  assert.match(networkSource, /--as-outer/);
   assert.match(networkSource, /svg\.style\.maskImage = svg\.style\.webkitMaskImage = value/);
   assert.doesNotMatch(css, /@keyframes as-story-sweep|as-copy-sweeping/);
   assert.doesNotMatch(networkSource, /as-copy-sweeping/);
