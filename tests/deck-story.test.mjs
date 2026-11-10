@@ -112,7 +112,7 @@ test('canonical headings preserve copy, external links and brace', () => {
   assert.match(intro, /<em class="story-astrid">Astrid<\/em>/);
   assert.doesNotMatch(intro, /<a[^>]*>[^<]*Astrid/);
   assert.match(intro, /story-brace/); assert.match(intro, /All powered by/); assert.match(intro, /Open Models/);
-  assert.match(f.hosts.get('.st-host').heading.innerHTML, /everyone’s to shape/);
+  assert.match(f.hosts.get('.st-host').heading.innerHTML, /^<span class="story-title">Astrid is <em>everyone’s to shape\.<\/em><\/span>/);
   assert.match(f.hosts.get('.pa-host').heading.innerHTML, /Builders grow the ecosystem; creators sustain it\./);
   for (const host of f.hosts.values()) { assert.equal(host.querySelector('h1'), host.heading); assert.equal(host.body.hidden, true); }
 });
@@ -124,6 +124,8 @@ test('story initialization is idempotent and optional on other pages', () => {
 test('compact header uses content-sized tracks and keeps Meet Astrid on one line', () => {
   const css = fixture().styles.get('deck-intro-story').textContent;
   assert.match(css, /grid-template-columns: max-content max-content/);
+  assert.match(css, /--story-column-gap: clamp\(24px, 2\.8vw, 40px\)/);
+  assert.match(css, /\.story-roadmap-grid \{[^}]*column-gap: var\(--story-column-gap\)/);
   assert.match(css, /grid-template-columns: max-content 18px max-content/);
   assert.match(css, /justify-content: start/);
   assert.match(css, /\.as-host\.story-refined \.story-title\s*\{[^}]*white-space: nowrap/);

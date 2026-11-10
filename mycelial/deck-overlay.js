@@ -4,7 +4,7 @@
   const stories = [
     { selector: '.ac-host', html: 'We’re building that place: <em>an agent-powered creative workspace</em> where anyone can unlock their creative potential with <span class="ac-nw">open-source AI.</span>' },
     { selector: '.as-host', html: '<span class="story-intro"><span class="story-title">Meet <em class="story-astrid">Astrid</em></span><span class="story-links"><a class="as-link" href="https://astrid.haus/" target="_blank" rel="noopener noreferrer">App</a><span class="story-divider" aria-hidden="true">|</span><a href="https://astrid.haus/vision" target="_blank" rel="noopener noreferrer">Vision</a></span></span> <span class="story-roadmap-grid"><span class="story-roadmap-lines"><span>Today, an extendible agent-powered video editor.</span><span>Soon, a fully-adaptable multimodal creative suite.</span></span><svg class="story-brace" viewBox="0 0 20 76" fill="none" aria-hidden="true"><path d="M3 2C12 2 12 9 12 17V28C12 35 15 38 19 38C15 38 12 41 12 48V59C12 67 12 74 3 74" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg><span class="story-powered">All powered by <span>Open Models</span></span></span>' },
-    { selector: '.st-host', html: '<span class="story-title">And Astrid is <em>everyone’s to shape.</em></span> <span class="story-lead">As you create, you and your agent <em>extend every layer</em> — from your workspace to its tools and models.</span> <span class="story-note">What you share becomes part of a community-built creative platform<span class="story-detail">, ready for others to use and build on</span>.</span>' },
+    { selector: '.st-host', html: '<span class="story-title">Astrid is <em>everyone’s to shape.</em></span> <span class="story-lead">As you create, you and your agent <em>extend every layer</em> — from your workspace to its tools and models.</span> <span class="story-note">What you share becomes part of a community-built creative platform<span class="story-detail">, ready for others to use and build on</span>.</span>' },
     { selector: '.pa-host', html: '<span class="story-lead">Nerds run Astrid locally and extend it. Everyone else pays to create with <em>that same growing platform</em> through an accessible hosted version.</span><span class="story-note">Builders grow the ecosystem; creators sustain it.</span>' },
   ];
   const hosts = stories.map(story => ({ ...story, host: document.querySelector(story.selector) }));
@@ -25,7 +25,7 @@
       html[data-ver="f"] .as-host.story-refined h1 {
         /* Keep the introduction, roadmap and brace together; surplus space stays right. */
         display: grid; grid-template-columns: max-content max-content;
-        column-gap: clamp(24px, 2.8vw, 40px); align-items: center; justify-content: start;
+        --story-column-gap: clamp(24px, 2.8vw, 40px); column-gap: var(--story-column-gap); align-items: center; justify-content: start;
         width: 100%; max-width: none; margin: 0; text-wrap: initial;
       }
       .story-intro { display: block; min-width: 0; }
@@ -46,7 +46,7 @@
       .story-links a:focus-visible { outline: 1px solid #e0ab5e; outline-offset: 5px; border-radius: 2px; }
       .story-links .as-link::after { display: none; }
       .story-divider { opacity: .4; }
-      .story-roadmap-grid { display: grid; grid-template-columns: max-content 18px max-content; align-items: center; justify-content: start; gap: 12px; min-width: 0; }
+      .story-roadmap-grid { display: grid; grid-template-columns: max-content 18px max-content; align-items: center; justify-content: start; column-gap: var(--story-column-gap); min-width: 0; }
       .story-roadmap-lines { display: grid; gap: .8em; min-width: 0;
         font: 400 clamp(1.05rem, 1.75vw, 1.65rem)/1.24 "Cormorant Garamond", Georgia, serif; letter-spacing: -.015em; }
       .story-roadmap-lines > span { display: block; white-space: nowrap; }
@@ -88,7 +88,7 @@
       .as-host.has-demo-notes .as-step { padding-right: 34px; }
       @media (pointer: coarse) { .as-note-pin { width: 44px; height: 44px; } }
       @media (max-width: 1100px) and (min-width: 761px) {
-        .story-roadmap-grid { grid-template-columns: max-content 15px max-content; gap: 10px; }
+        .story-roadmap-grid { grid-template-columns: max-content 15px max-content; }
         .story-roadmap-lines { font-size: 1.65vw; }
         .story-brace { width: 15px; }
         .story-powered { font-size: .9rem; }
