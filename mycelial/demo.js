@@ -266,7 +266,7 @@
     if (c !== clock) { clock = c; timeEl.textContent = c; }
   };
 
-  const CPS = 30, FINISHED_HOLD = 10;
+  const CPS = 30, FINISHED_HOLD = 30;
   // The three beats replay the source tour prompts in order; later starts follow the prior act's done beat.
   // Each Qwen frame holds about a second in the preview before the next one is generated.
   const FRAME_STEP = 1.1;
@@ -340,7 +340,7 @@
     return { typeEnd, send, reply, act: reply + 0.2, done: reply + 0.2 + b.dur };
   };
   // The final gate waits for the whole film, then holds its last frame and
-  // all three timeline notes for ten seconds before the one-second reset fade.
+  // all three timeline notes for thirty seconds before the one-second reset fade.
   const RESET = beatTimes(BEATS[BEATS.length - 1]).done + FINISHED_HOLD, LOOP = RESET + 1;
   // Every event is visited in order, even after a long frame. A production gate
   // consumes no further story time until the corresponding media is decodable.

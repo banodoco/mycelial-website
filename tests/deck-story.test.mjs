@@ -63,9 +63,16 @@ function fixture({ reduced = false, selectors = ['.ac-host', '.as-host', '.st-ho
     },
   });
   const run = () => vm.runInContext(source, context); run();
+  // Process nested timers at their actual deadline, not at the end of a large tick.
   const tick = milliseconds => {
-    now += milliseconds;
-    for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); if (!timer.ctx || timer.ctx.isCurrent()) timer.fn(); }
+    const end = now + milliseconds;
+    for (;;) {
+      const entry = [...timers].filter(([, timer]) => timer.at <= end).sort((a, b) => a[1].at - b[1].at)[0];
+      if (!entry) break;
+      const [id, timer] = entry; now = timer.at; timers.delete(id);
+      if (!timer.ctx || timer.ctx.isCurrent()) timer.fn();
+    }
+    now = end;
   };
   const dispatch = (type, extra = {}) => {
     const event = { prevented: false, stopped: false, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, ...extra };
@@ -94,7 +101,7 @@ function demo(options) {
   return { ...f, slide, root, msgs, targets, notes, addRows, pin, card: root.querySelector('.as-note-card') };
 }
 
-test('canonical headings carry the requested copy, links and brace', () => {
+test('canonical headings preserve copy, external links and brace', () => {
   const f = fixture();
   const intro = f.hosts.get('.as-host').heading.innerHTML;
   assert.match(intro, /Today, an extendible agent-powered video editor\./);
@@ -114,23 +121,32 @@ test('story initialization is idempotent and optional on other pages', () => {
   assert.equal(f.hosts.get('.as-host').heading, heading); assert.equal(f.styles.get('deck-intro-story'), style); assert.equal(f.styles.size, 1);
   const absent = fixture({ selectors: [] }); assert.equal(absent.styles.size, 0); assert.equal(typeof absent.window.deckOverlay.register, 'function');
 });
-test('header keeps alpha contract, unwrapped roadmap lines and reduced-motion rules', () => {
+test('compact header uses content-sized tracks and keeps Meet Astrid on one line', () => {
   const css = fixture().styles.get('deck-intro-story').textContent;
-  for (const value of ['var(--as-copy-alpha, 1)', 'white-space: nowrap', 'max-width: 760px', 'max-height: 500px', 'prefers-reduced-motion: reduce']) assert.ok(css.includes(value));
+  assert.match(css, /grid-template-columns: max-content max-content/);
+  assert.match(css, /grid-template-columns: max-content 18px max-content/);
+  assert.match(css, /justify-content: start/);
+  assert.match(css, /\.as-host\.story-refined \.story-title\s*\{[^}]*white-space: nowrap/);
+  assert.match(css, /\.as-host\.story-refined \.story-astrid\s*\{\s*display: inline/);
+  assert.doesNotMatch(css, /minmax\(0, \.20fr\)|minmax\(0, 1fr\) 18px 108px/);
+  for (const value of ['var(--as-copy-alpha, 1)', 'max-width: 760px', 'max-height: 500px', 'prefers-reduced-motion: reduce']) assert.ok(css.includes(value));
 });
-test('chat marker appears first; editor follows at 600 ms with one pulse each', () => {
+test('card appears first, chat marker at 500 ms, editor 850 ms after chat', () => {
   const f = demo(); f.addRows(1); f.targets[0].classList.add('is-ready'); f.notes.update();
-  assert.equal(f.pin(0, 'chat').hidden, false); assert.equal(f.pin(0, 'editor').hidden, true);
-  f.tick(599); assert.equal(f.pin(0, 'editor').hidden, true); f.tick(1); assert.equal(f.pin(0, 'editor').hidden, false);
+  assert.equal(f.pin(0, 'chat').hidden, true); assert.equal(f.pin(0, 'editor').hidden, true);
+  f.tick(499); assert.equal(f.pin(0, 'chat').hidden, true);
+  f.tick(1); assert.equal(f.pin(0, 'chat').hidden, false); assert.equal(f.pin(0, 'editor').hidden, true);
+  f.tick(849); assert.equal(f.pin(0, 'editor').hidden, true);
+  f.tick(1); assert.equal(f.pin(0, 'editor').hidden, false);
   for (const location of ['chat', 'editor']) assert.equal(f.pin(0, location).children[0].animations.length, 1);
   f.notes.update(); f.notes.update(); assert.equal(f.pin(0, 'editor').children[0].animations.length, 1);
 });
-test('editor marker does not precede actual output', () => {
-  const f = demo(); f.addRows(1); f.tick(600); assert.equal(f.pin(0, 'editor').hidden, true);
+test('editor marker still waits for its actual output after both delays', () => {
+  const f = demo(); f.addRows(1); f.tick(1350); assert.equal(f.pin(0, 'editor').hidden, true);
   f.targets[0].classList.add('is-ready'); f.notes.update(); assert.equal(f.pin(0, 'editor').hidden, false);
 });
 test('all three pairs share their respective tooltip content', () => {
-  const f = demo(); f.addRows(3); f.targets.forEach(target => target.classList.add('is-ready')); f.notes.update(); f.tick(600);
+  const f = demo(); f.addRows(3); f.targets.forEach(target => target.classList.add('is-ready')); f.notes.update(); f.tick(1350);
   assert.equal(f.root.querySelectorAll('.as-note-pin').length, 6);
   for (let i = 0; i < 3; i++) {
     f.pin(i, 'chat').emit('focus'); const content = f.card.children.map(el => el.textContent).join(' ');
@@ -139,27 +155,61 @@ test('all three pairs share their respective tooltip content', () => {
     assert.equal(f.pin(i, 'editor').getAttribute('aria-expanded'), 'true');
   }
 });
-test('reset cancels delayed reveals and permits a fresh pair on replay', () => {
+test('reset before chat cancels both reveals and replay waits again', () => {
   const f = demo(); f.addRows(1); f.targets[0].classList.add('is-ready'); f.notes.reset();
-  f.tick(1000); assert.equal(f.pin(0, 'editor').hidden, true); assert.equal(f.pin(0, 'chat').hidden, true);
-  f.notes.update(); assert.equal(f.pin(0, 'chat').hidden, false); f.tick(600); assert.equal(f.pin(0, 'editor').hidden, false);
+  f.tick(2000); assert.equal(f.pin(0, 'editor').hidden, true); assert.equal(f.pin(0, 'chat').hidden, true); assert.equal(f.timers.size, 0);
+  f.notes.update(); assert.equal(f.pin(0, 'chat').hidden, true); f.tick(500); assert.equal(f.pin(0, 'chat').hidden, false);
+  f.tick(850); assert.equal(f.pin(0, 'editor').hidden, false);
 });
-test('leaving the slide cannot reveal a pending marker', () => {
-  const f = demo(); f.addRows(1); f.targets[0].classList.add('is-ready'); f.slide.classList.remove('on'); f.tick(600);
-  assert.equal(f.pin(0, 'editor').hidden, true);
+test('reset after chat also cancels the pending editor reveal', () => {
+  const f = demo(); f.addRows(1); f.targets[0].classList.add('is-ready'); f.tick(500);
+  assert.equal(f.pin(0, 'chat').hidden, false); assert.equal(f.timers.size, 1);
+  f.notes.reset(); f.tick(2000);
+  assert.equal(f.pin(0, 'chat').hidden, true); assert.equal(f.pin(0, 'editor').hidden, true); assert.equal(f.timers.size, 0);
+});
+test('leaving before either delay cannot reveal a pending marker', () => {
+  for (const elapsed of [0, 500]) {
+    const f = demo(); f.addRows(1); f.targets[0].classList.add('is-ready'); f.tick(elapsed);
+    f.slide.classList.remove('on'); f.tick(2000);
+    assert.equal(f.pin(0, 'editor').hidden, true); assert.equal(f.timers.size, 0);
+    if (elapsed === 0) assert.equal(f.pin(0, 'chat').hidden, true);
+  }
+});
+test('expired visit callbacks cannot reveal notes even if the slide remains visible', () => {
+  const f = demo(); f.addRows(1); f.targets[0].classList.add('is-ready');
+  f.window.deckNav.isCurrent = () => false; f.tick(2000);
+  assert.equal(f.pin(0, 'chat').hidden, true); assert.equal(f.pin(0, 'editor').hidden, true);
+});
+test('repeated update does not restart the initial delay', () => {
+  const f = demo(); f.addRows(1); f.targets[0].classList.add('is-ready');
+  f.tick(400); f.notes.update(); f.tick(100); assert.equal(f.pin(0, 'chat').hidden, false);
+  f.notes.update(); f.tick(850); assert.equal(f.pin(0, 'editor').hidden, false);
+});
+test('a stale timer cannot affect a new replay generation', () => {
+  const f = demo(); f.addRows(1); const oldCallback = [...f.timers.values()][0].fn;
+  f.notes.reset(); f.notes.update(); oldCallback();
+  assert.equal(f.pin(0, 'chat').hidden, true); assert.equal(f.pin(0, 'editor').hidden, true);
 });
 test('chat pins track scroll visibility and close an offscreen tooltip', () => {
-  const f = demo(); f.addRows(1); f.pin(0, 'chat').emit('focus'); assert.equal(f.notes.isOpen(), true);
+  const f = demo(); f.addRows(1); f.tick(500); f.pin(0, 'chat').emit('focus'); assert.equal(f.notes.isOpen(), true);
   f.msgs.children[0].rect.top = -100; f.msgs.emit('scroll'); assert.equal(f.pin(0, 'chat').hidden, true); assert.equal(f.notes.isOpen(), false);
   f.msgs.children[0].rect.top = 80; f.msgs.emit('scroll'); assert.equal(f.pin(0, 'chat').hidden, false);
+  assert.equal(f.pin(0, 'chat').children[0].animations.length, 1);
 });
-test('reduced motion shows both sets without delay or pulse', () => {
+test('reduced motion shows both sets without delays or pulses', () => {
   const f = demo({ reduced: true }); f.targets.forEach(target => target.classList.add('is-ready')); f.addRows(3); f.notes.update();
   for (const pin of f.root.querySelectorAll('.as-note-pin')) { assert.equal(pin.hidden, false); assert.equal(pin.children[0].animations.length, 0); }
   assert.equal(f.timers.size, 0);
 });
+test('switching animations off clears either timer and reveals the ready pair', () => {
+  for (const elapsed of [0, 500]) {
+    const f = demo(); f.addRows(1); f.targets[0].classList.add('is-ready'); f.tick(elapsed);
+    f.window.deckStill = () => true; f.dispatch('deck-motion');
+    assert.equal(f.pin(0, 'chat').hidden, false); assert.equal(f.pin(0, 'editor').hidden, false); assert.equal(f.timers.size, 0);
+  }
+});
 test('Escape and outside click dismiss notes; arrows still navigate', () => {
-  const f = demo(); f.addRows(1); f.pin(0, 'chat').emit('click');
+  const f = demo(); f.addRows(1); f.tick(500); f.pin(0, 'chat').emit('click');
   const inside = f.dispatch('click', { target: f.card }); assert.equal(inside.prevented, false); assert.equal(f.notes.isOpen(), true);
   const escape = f.dispatch('keydown', { key: 'Escape' }); assert.equal(escape.prevented, true); assert.equal(f.notes.isOpen(), false);
   f.pin(0, 'chat').emit('click'); const arrow = f.dispatch('keydown', { key: 'ArrowRight' }); assert.equal(arrow.prevented, false); assert.equal(f.notes.isOpen(), false);

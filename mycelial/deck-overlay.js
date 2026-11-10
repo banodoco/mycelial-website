@@ -23,16 +23,17 @@
       html[data-ver="f"] .as-host.story-refined > .split { width: 100%; }
       html[data-ver="f"] .as-host.story-refined .as-copy { width: min(1180px, 100%); }
       html[data-ver="f"] .as-host.story-refined h1 {
-        display: grid; grid-template-columns: minmax(0, .20fr) minmax(0, .80fr);
-        column-gap: clamp(24px, 3vw, 42px); align-items: center;
+        /* Keep the introduction, roadmap and brace together; surplus space stays right. */
+        display: grid; grid-template-columns: max-content max-content;
+        column-gap: clamp(24px, 2.8vw, 40px); align-items: center; justify-content: start;
         width: 100%; max-width: none; margin: 0; text-wrap: initial;
       }
       .story-intro { display: block; min-width: 0; }
       html[data-ver="f"] .as-host.story-refined .story-title {
-        font-size: clamp(2.7rem, min(5vw, 7.5vh), 4.4rem); line-height: .98; letter-spacing: -.025em;
+        font-size: clamp(2.4rem, min(4.3vw, 7vh), 3.6rem); line-height: 1.04; letter-spacing: -.025em; white-space: nowrap;
       }
       html[data-ver="f"] .as-host.story-refined .story-astrid {
-        display: block; width: fit-content; font-style: italic;
+        display: inline; font-style: italic;
         background-image: linear-gradient(175deg, rgb(255 216 158 / var(--as-copy-alpha, 1)), rgb(235 145 71 / var(--as-copy-alpha, 1)));
       }
       .as-host[data-settled] .story-astrid { animation: story-name-glow 1.8s ease-in-out .15s both; }
@@ -45,7 +46,7 @@
       .story-links a:focus-visible { outline: 1px solid #e0ab5e; outline-offset: 5px; border-radius: 2px; }
       .story-links .as-link::after { display: none; }
       .story-divider { opacity: .4; }
-      .story-roadmap-grid { display: grid; grid-template-columns: minmax(0, 1fr) 18px 108px; align-items: center; gap: 14px; min-width: 0; }
+      .story-roadmap-grid { display: grid; grid-template-columns: max-content 18px max-content; align-items: center; justify-content: start; gap: 12px; min-width: 0; }
       .story-roadmap-lines { display: grid; gap: .8em; min-width: 0;
         font: 400 clamp(1.05rem, 1.75vw, 1.65rem)/1.24 "Cormorant Garamond", Georgia, serif; letter-spacing: -.015em; }
       .story-roadmap-lines > span { display: block; white-space: nowrap; }
@@ -87,7 +88,7 @@
       .as-host.has-demo-notes .as-step { padding-right: 34px; }
       @media (pointer: coarse) { .as-note-pin { width: 44px; height: 44px; } }
       @media (max-width: 1100px) and (min-width: 761px) {
-        .story-roadmap-grid { grid-template-columns: minmax(0, 1fr) 15px 87px; gap: 10px; }
+        .story-roadmap-grid { grid-template-columns: max-content 15px max-content; gap: 10px; }
         .story-roadmap-lines { font-size: 1.65vw; }
         .story-brace { width: 15px; }
         .story-powered { font-size: .9rem; }
@@ -98,7 +99,7 @@
         html[data-ver="f"] .as-host.story-refined .story-title { font-size: clamp(2.2rem, 9.8vw, 3rem); }
         html[data-ver="f"] .as-host.story-refined .story-astrid { display: inline; }
         .story-links { margin-top: 9px; font-size: 1rem; }
-        .story-roadmap-grid { grid-template-columns: minmax(0, 1fr) 14px; column-gap: 7px; row-gap: 6px; }
+        .story-roadmap-grid { grid-template-columns: minmax(0, max-content) 14px; column-gap: 7px; row-gap: 6px; }
         .story-roadmap-lines { font-size: clamp(.76rem, 3.65vw, 1.3rem); gap: .65em; letter-spacing: -.02em; }
         .story-brace { width: 14px; height: 52px; }
         .story-powered { grid-column: 1 / -1; text-align: right; font-size: .84rem; }
@@ -132,7 +133,7 @@
         html[data-ver="f"] .as-host.story-refined { padding-top: 34px; }
         html[data-ver="f"] .as-host.story-refined .story-title { font-size: clamp(1.8rem, 3.8vw, 2.8rem); }
         .story-links { margin-top: 7px; font-size: .9rem; }
-        .story-roadmap-grid { grid-template-columns: minmax(0, 1fr) 14px 78px; gap: 8px; }
+        .story-roadmap-grid { grid-template-columns: max-content 14px max-content; gap: 8px; }
         .story-roadmap-lines { font-size: 1.6vw; }
         .story-brace { width: 14px; height: 52px; }
         .story-powered { font-size: .8rem; }
@@ -225,12 +226,13 @@
   window.deckNow = () => { const now = nativeNow(); elapsed += Math.max(0, now - previous) * rate(); previous = now; return elapsed; };
 })();
 
-// Two instances of each explanation: chat first, the matching timeline marker
-// 600 ms later (and never before its output exists). No changes to demo playback.
+// Let each card arrive before its chat marker pulses; the matching timeline
+// marker follows 850 ms later, and never before its output exists.
 window.createAstridDemoNotes = function createAstridDemoNotes(root, targets) {
   const slide = root.closest('.slide'), msgs = root.querySelector('.as-msgs');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const quiet = () => reduced.matches || window.deckStill?.();
+  const CHAT_MARKER_DELAY = 500, EDITOR_MARKER_DELAY = 850;
   const definitions = [
     { title: 'Build with extensions', text: 'Your agent uses extensions such as Three.js to turn your request into a scene on the timeline.', x: 0, y: 1 },
     { title: 'Put open models to work', text: 'Your agent works out how to use open models on your machine. Here, Qwen turns the scene into reference images.', x: .5, y: .5 },
@@ -279,7 +281,7 @@ window.createAstridDemoNotes = function createAstridDemoNotes(root, targets) {
     button.addEventListener('click', event => { event.stopPropagation(); if (active === pin && pinned) close(); else { show(pin); pinned = true; } });
     layer.appendChild(button); return pin;
   };
-  const groups = definitions.map((_, index) => ({ chat: makePin(index, 'chat'), editor: makePin(index, 'editor'), row: null, started: false, due: false, timer: null }));
+  const groups = definitions.map((_, index) => ({ chat: makePin(index, 'chat'), editor: makePin(index, 'editor'), row: null, started: false, chatDue: false, due: false, chatTimer: null, editorTimer: null }));
   const reveal = (pin, visible) => {
     pin.button.hidden = !visible;
     if (!visible) { if (active === pin) close(); return; }
@@ -300,7 +302,7 @@ window.createAstridDemoNotes = function createAstridDemoNotes(root, targets) {
     const visible = enabled && isHere() && host.width > 0 && host.height > 0;
     groups.forEach((group, index) => {
       const row = group.row?.isConnected ? group.row.getBoundingClientRect() : null;
-      const chatVisible = !!(visible && row && row.height > 0 && row.top >= chatBox.top - 1 && row.bottom <= chatBox.bottom + 1);
+      const chatVisible = !!(visible && group.chatDue && row && row.height > 0 && row.top >= chatBox.top - 1 && row.bottom <= chatBox.bottom + 1);
       if (chatVisible) positionPin(group.chat, row.right - 16, row.top + row.height / 2, host);
       reveal(group.chat, chatVisible);
       // The image-row explanation appears as soon as that row starts producing
@@ -325,12 +327,21 @@ window.createAstridDemoNotes = function createAstridDemoNotes(root, targets) {
       group.row = rows[index] || null;
       if (!group.row || group.started) return;
       group.started = true;
-      if (quiet()) { group.due = true; return; }
+      if (quiet()) { group.chatDue = group.due = true; return; }
       const visit = generation, ctx = window.deckNav;
-      group.timer = window.deckLater(() => {
-        if (generation !== visit || !enabled || !isHere() || !ctx?.isCurrent()) return;
-        group.timer = null; group.due = true; place();
-      }, 600, ctx);
+      const current = () => generation === visit && enabled && isHere() && ctx?.isCurrent();
+      group.chatTimer = window.deckLater(() => {
+        group.chatTimer = null;
+        if (!current()) return;
+        group.chatDue = true; place();
+        // Schedule from the chat reveal, not the row insertion, so a late
+        // callback cannot collapse both pulses into the same frame.
+        group.editorTimer = window.deckLater(() => {
+          group.editorTimer = null;
+          if (!current()) return;
+          group.due = true; place();
+        }, EDITOR_MARKER_DELAY, ctx);
+      }, CHAT_MARKER_DELAY, ctx);
     });
     place();
   };
@@ -345,8 +356,9 @@ window.createAstridDemoNotes = function createAstridDemoNotes(root, targets) {
   window.addEventListener('deck-motion', () => {
     if (!quiet()) return;
     groups.forEach(group => {
-      if (group.started) group.due = true;
-      window.deckCancelLater(group.timer); group.timer = null;
+      if (group.started) group.chatDue = group.due = true;
+      window.deckCancelLater(group.chatTimer); group.chatTimer = null;
+      window.deckCancelLater(group.editorTimer); group.editorTimer = null;
       [group.chat, group.editor].forEach(pin => pin.animation?.cancel());
     });
     place();
@@ -358,7 +370,9 @@ window.createAstridDemoNotes = function createAstridDemoNotes(root, targets) {
       // Discard queued old-row notifications when a visit or tour is retired.
       chatObserver.takeRecords();
       groups.forEach(group => {
-        window.deckCancelLater(group.timer); group.timer = null; group.row = null; group.started = false; group.due = false;
+        window.deckCancelLater(group.chatTimer); group.chatTimer = null;
+        window.deckCancelLater(group.editorTimer); group.editorTimer = null;
+        group.row = null; group.started = false; group.chatDue = false; group.due = false;
         [group.chat, group.editor].forEach(pin => { pin.button.hidden = true; pin.revealed = false; pin.animation?.cancel(); pin.animation = null; });
       });
     },
