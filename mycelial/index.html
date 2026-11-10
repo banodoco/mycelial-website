@@ -1157,14 +1157,8 @@
     border: 1px solid var(--ask-line); border-radius: 999px; background: var(--ask-fill); box-shadow: var(--ask-glow);
     opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s linear .3s; }
   .slide.on[data-settled] .fw-asks, html.deck-motion-off .slide.on .fw-asks { opacity: 1; visibility: visible; transition: opacity 1.1s ease .45s, visibility 0s linear .45s; }
-  /* Settled copy is always fully visible, even if a reveal was interrupted. */
-  .slide.on[data-settled] > .split > :first-child,
-  .slide.fw-raise.on[data-settled] > .split,
-  .slide.on[data-settled] > .fw-stat { mask-image: none !important; -webkit-mask-image: none !important; visibility: visible !important; }
-  .slide.on[data-settled]:not(.fw-raise) > .split > :first-child,
-  .slide.fw-raise.on[data-settled]:not(:has(.fw-ask.is-open)) > .split > :first-child,
-  .slide.fw-raise.on[data-settled] > .split,
-  .slide.on[data-settled] > .fw-stat { opacity: 1 !important; }
+  /* Text endpoints are owned by deckCopy, not inferred from data-settled.
+     Keep the independent question-card emphasis rules below. */
   .slide.fw-raise.on .fw-asks { opacity: 1; visibility: visible; transition: none; } /* revealed with the complete text block */
   .fw-ask { position: relative; }
   .fw-ask + .fw-ask { border-left: 1px solid #f0c87726; }

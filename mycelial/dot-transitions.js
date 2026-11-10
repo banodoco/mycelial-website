@@ -804,15 +804,15 @@
   };
   const clearOverlays = (slide) => textOf(slide).forEach(removeOverlay);
   const cancelOverlay = (slide, state) => {
-    if (state?.timer) window.deckCancelLater(state.timer);
-    if (copyStates.get(slide) !== state) return;
-    // Revoke the owner before cleanup, including continuations already queued.
-    copyStates.set(slide, { phase: 'cancelled' });
-    state?.resolve?.('cancelled');
-    clearOverlays(slide);
-    // If this visit is cancelled without a successor, the active copy remains readable.
-    if (slide.classList.contains('on')) textOf(slide).forEach((el) => paintCopy(el, null, 0));
-    traceCopy('cancel', slide, state?.context);
+    if (copyStates.get(slide) !== state || !['hidden', 'revealing', 'gathering'].includes(state.phase)) return;
+    if (state.timer) window.deckCancelLater(state.timer);
+    state.timer = null;
+    state.phase = 'interrupted';
+    state.resolve?.('cancelled');
+    // Revoke the writer without inventing a visible endpoint. The next owner
+    // gathers from this exact mask (including radius zero). Terminal recovery
+    // explicitly reconciles all slides, rather than using cancellation to show.
+    traceCopy('interrupt', slide, state.context);
   };
   // Keep the real copy in the layout and reserve masks for disposable paint layers.
   const overlayFor = (el) => {
@@ -937,56 +937,90 @@
     }
   };
   const copyStates = new WeakMap();
+  const ownsCopy = (slide, state, transient = false) => !!state &&
+    copyStates.get(slide) === state && state.context?.isCurrent() &&
+    (!transient || (state.context.isTransitionCurrent() &&
+      ['hidden', 'revealing', 'gathering'].includes(state.phase)));
+  const claimCopy = (slide, context, phase) => {
+    if (!context?.isTransitionCurrent() ||
+        (slide !== slides[context.from] && slide !== slides[context.to])) return null;
+    const old = copyStates.get(slide);
+    if (old?.timer) window.deckCancelLater(old.timer);
+    old?.resolve?.('cancelled');
+    let resolve;
+    const state = { slide, context, phase, timer: null,
+      done: new Promise(r => { resolve = r; }), resolve: null };
+    state.resolve = resolve;
+    copyStates.set(slide, state);
+    context.transitionDefer(() => cancelOverlay(slide, state));
+    return state;
+  };
+  // Only this endpoint operation may discard a reveal and publish shown/retired.
+  // Transient callbacks must supply their state; terminal reconciliation supplies
+  // the current navigation. A registry entry is never a visibility decision.
+  const endCopy = (slide, hidden, context, expected = null) => {
+    if (!slide || !context?.isCurrent() ||
+        hidden === (slide === slides[context.to]) ||
+        (expected && !ownsCopy(slide, expected))) return false;
+    const old = copyStates.get(slide);
+    if (old?.timer) window.deckCancelLater(old.timer);
+    const state = { context, slide, phase: hidden ? 'retired' : 'shown' };
+    copyStates.set(slide, state); // revoke all old writers before changing paint
+    put.x = NaN;
+    let complete = true;
+    textOf(slide).forEach(el => {
+      try {
+        if (!stationaryCopy(el)) el.style.transform = '';
+        paintCopy(el, null, 0, hidden);
+      } catch (error) { complete = false; console.error('Deck copy restoration failed', error); }
+    });
+    if (!complete) state.phase = 'failed';
+    old?.resolve?.(complete && !hidden ? 'completed' : 'cancelled');
+    traceCopy(hidden ? 'retire' : 'show', slide, context);
+    return complete;
+  };
   const copy = {
     hide(slide, context, at = anchorOf(slide), deadline = 0) {
+      if (slide !== slides[context?.to] || !context?.isTransitionCurrent()) return null;
       const old = copyStates.get(slide);
-      if (old?.timer) window.deckCancelLater(old.timer);
-      const reuse = old?.context === context && old.phase !== 'shown';
-      if (!reuse) { old?.resolve?.('cancelled'); clearOverlays(slide); }
-      let resolve;
-      const state = reuse ? old : { context, phase: 'hidden', timer: null, done: new Promise((r) => { resolve = r; }) };
-      if (!reuse) state.resolve = resolve;
-      copyStates.set(slide, state);
-      if (!reuse && context) context.transitionDefer(() => cancelOverlay(slide, state));
-      if (deadline && context) state.timer = window.deckLater(() => {
-        if (copyStates.get(slide) !== state || !context.isTransitionCurrent()) return;
-        stopText(context);
-        copy.show(slide);
+      const reuse = old?.context === context && ['hidden', 'revealing'].includes(old.phase);
+      const state = reuse ? old : claimCopy(slide, context, 'hidden');
+      if (!state) return null;
+      if (state.timer) window.deckCancelLater(state.timer);
+      state.timer = null;
+      if (!reuse) clearOverlays(slide);
+      if (deadline) state.timer = window.deckLater(() => {
+        if (!ownsCopy(slide, state, true)) return;
+        // Failure recovery belongs to the existing terminal transaction. It
+        // stops writers, reconciles scenes and copy, then declares settlement.
+        window.deckTransaction('recover', context);
       }, deadline, context);
-      textOf(slide).forEach((el) => paintCopy(el, at, 0, !at, context?.geometry?.box(el)));
+      textOf(slide).forEach(el => paintCopy(el, at, 0, !at, context.geometry?.box(el)));
       traceCopy('hide', slide, context);
       return state;
     },
+    gather(slide, context) { return claimCopy(slide, context, 'gathering'); },
     pending(slide, context) {
       const state = copyStates.get(slide);
-      return state?.context === context && state.phase !== 'shown';
+      return state?.context === context && ['hidden', 'revealing'].includes(state.phase);
     },
     completion(slide) { return copyStates.get(slide)?.done || Promise.resolve('completed'); },
-    show(slide) {
-      if (!slide) return false;
-      const state = copyStates.get(slide);
-      if (state?.timer) window.deckCancelLater(state.timer);
-      copyStates.set(slide, { phase: 'shown' });
-      put.x = NaN;
+    show(slide, context = window.deckNav, expected = null) { return endCopy(slide, false, context, expected); },
+    retire(slide, context = window.deckNav, expected = null) { return endCopy(slide, true, context, expected); },
+    reconcile(context) {
+      if (!context?.isCurrent()) return false;
       let complete = true;
-      textOf(slide).forEach((el) => {
-        try { if (!stationaryCopy(el)) el.style.transform = ''; paintCopy(el, null, 0); }
-        catch (error) { complete = false; console.error('Deck copy restoration failed', error); }
-      });
-      state?.resolve?.(complete ? 'completed' : 'cancelled');
-      traceCopy('show', slide);
+      slides.forEach(slide => { if (!endCopy(slide, slide !== slides[context.to], context)) complete = false; });
+      // Orphaned surfaces can be disposed, never promoted to selected copy.
+      for (const el of [...overlays.keys()]) if (!el.closest('.slide')) removeOverlay(el);
       return complete;
     },
-    retire(slide) {
-      if (!slide) return;
-      const state = copyStates.get(slide);
-      if (state?.timer) window.deckCancelLater(state.timer);
-      state?.resolve?.('cancelled');
-      copyStates.set(slide, { phase: 'retired' });
-      textOf(slide).forEach((el) => paintCopy(el, null, 0, true));
-      traceCopy('retire', slide);
+    paint(el, at, r, bounds, state) {
+      const slide = el.closest('.slide');
+      if (!ownsCopy(slide, state, true)) return false;
+      paintCopy(el, at, r, false, bounds);
+      return true;
     },
-    paint(el, at, r, bounds) { paintCopy(el, at, r, false, bounds); },
     get liveCloneCount() {
       let count = 0;
       for (const [el, surface] of overlays) if (surface !== el) count++;
@@ -1089,10 +1123,11 @@
     };
   };
   const reveal = (s, at, delay = 0, context = window.deckNav, timing = null) => {
-    if (context.terminal) return [];
-    // All slides now use the network-owned reveal/gather, including Astrid.
+    if (!context.isTransitionCurrent()) return [];
+    // All slides use the same owner and their existing rendering paths.
     const state = copy.hide(s, context, at, delay + revealDuration(s, at, context) + (timing ? Math.max(0, context.textDeadline - context.now()) : 0) + 400);
-    if (state) state.phase = 'revealing';
+    if (!state) return [];
+    state.phase = 'revealing';
     const tw = [];
     for (const el of textOf(s)) {
       const bounds = context.geometry?.box(el);
@@ -1101,7 +1136,7 @@
       const origin = el.matches('.gap-copy') && context.from === 1
         ? { x: (bounds || el.getBoundingClientRect()).right, y: at.y }
         : at;
-      copy.paint(el, origin, 0, bounds);
+      copy.paint(el, origin, 0, bounds, state);
       const far = reach(el, origin, bounds);
       const duration = clamp(far / 0.62, 1100, 1600) + copyExtra(context);
       if (!still) {
@@ -1115,13 +1150,13 @@
       const run = tween(motion?.duration || duration, motion?.ease || seep, (k) => {
         if (!s.classList.contains('on')) return;
         if (copyStates.get(s) !== state) return;
-        copy.paint(el, origin, k * far, context.geometry?.box(el));
+        copy.paint(el, origin, k * far, context.geometry?.box(el), state);
       }, delay, context);
       tw.push(run);
     }
     Promise.all(tw).then((results) => {
       if (copyStates.get(s) === state && results.every((result) => result === 'completed') && context.isCurrent() && !context.terminal) {
-        copy.show(s);
+        copy.show(s, context, state);
       }
     });
     return tw;
@@ -1131,26 +1166,22 @@
   const GATHER = 400;
   const gather = (s, at, context) => {
     const tw = [];
-    const old = copyStates.get(s);
-    if (old?.timer) window.deckCancelLater(old.timer);
-    old?.resolve?.('cancelled');
-    const state = { context, phase: 'gathering' };
-    copyStates.set(s, state);
-    context.transitionDefer(() => cancelOverlay(s, state));
+    const state = copy.gather(s, context);
+    if (!state) return tw;
     for (const el of textOf(s)) {
       const bounds = context.geometry?.box(el);
       const saved = masks.get(el), centre = saved?.at || at, far = saved?.r ?? reach(el, at, bounds);
-      copy.paint(el, centre, far, bounds);
+      copy.paint(el, centre, far, bounds, state);
       for (const p of spots(el, 6, bounds)) {
         hypha(wander(p, at), { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38, owner: context });
       }
       const run = tween(GATHER, easeIn, (k) => {
-        if (copyStates.get(s) === state && !s.classList.contains('on')) copy.paint(el, centre, (1 - k) * far, context.geometry?.box(el));
+        if (copyStates.get(s) === state && !s.classList.contains('on')) copy.paint(el, centre, (1 - k) * far, context.geometry?.box(el), state);
       }, 0, context);
       tw.push(run);
     }
     Promise.all(tw).then((results) => {
-      if (copyStates.get(s) === state && results.every((result) => result === 'completed') && context.isCurrent() && !s.classList.contains('on')) copy.retire(s);
+      if (copyStates.get(s) === state && results.every((result) => result === 'completed') && context.isCurrent() && !s.classList.contains('on')) copy.retire(s, context, state);
     });
     return tw;
   };
@@ -1167,13 +1198,8 @@
   let current = null, visit = null;
   const finishNetwork = (context) => {
     if (context.isCurrent()) {
-      // A completed network visit owns no copy masks or disposable clones.
-      for (const el of [...overlays.keys()]) {
-        const slide = el.closest('.slide');
-        if (slide === slides[context.to]) copy.show(slide);
-        else if (slide) copy.retire(slide);
-        else removeOverlay(el);
-      }
+      // Network completion reports its milestone only. The controller's terminal
+      // transaction owns settlement; no resource collection can show/hide text.
       traceCopy('finish', slides[context.to], context);
       if (visit?.context === context) visit.resolve('completed');
     }
@@ -1448,7 +1474,7 @@
     stopText(context);
     if (active()) adopt(); else restore();
     [slides[context.from], slides[context.to]].filter(Boolean).forEach((sl) => context.present(sl, '', 'dt-leaving dt-release'));
-    slides.forEach((sl) => sl === targetSlide ? copy.show(sl) : copy.retire(sl));
+    copy.reconcile(context);
     trail = { x: 0, y: 0 }; drift = { x: 0, y: 0 }; driftBlend = 0;
     anchor = targetSlide ? anchorOf(targetSlide) : null;
     const on = active() && !!anchor;
@@ -1498,7 +1524,7 @@
         done = true;
         landed?.('cancelled');
         tweens.forEach((tw) => tw.stop());
-        if (!prev.classList.contains('on')) copy.retire(prev);
+        // Cancellation stops this turn; copy ownership transfers without repainting.
         anims.forEach((a) => a.cancel());
         // Retire only this interrupted turn's transient drawing, not ambient growth.
         hyphae = hyphae.filter((h) => h.owner !== context);
@@ -1569,8 +1595,8 @@
       timers.push(window.deckLater(() => {
         if (prev.classList.contains('on')) return;
         context.present(prev, '', 'dt-leaving dt-release');
-        copy.retire(prev);
-      }, 700));
+        copy.retire(prev, context);
+      }, 700, context));
       landed('completed');
     };
 
@@ -1751,10 +1777,8 @@
     attempt(() => stopText(context));
     const destination = slides[context.to];
     if (!destination) return false;
-    const source = slides[context.from];
-    if (source && source !== destination) attempt(() => copy.retire(source));
     let complete = false;
-    attempt(() => { complete = copy.show(destination); });
+    attempt(() => { complete = copy.reconcile(context); });
     if (complete) finishNetwork(context);
     return complete && !failed;
   };
