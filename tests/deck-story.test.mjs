@@ -1,116 +1,172 @@
-// Dependency-free checks for the synchronous intro enhancement and overlay API.
-// Run from the repository root: node --test tests/deck-story.test.mjs
+// Dependency-free regression checks; full visual/browser checks remain separate.
+// Run: node --test tests/deck-story.test.mjs
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
-
 const source = readFileSync(new URL('../mycelial/deck-overlay.js', import.meta.url), 'utf8');
-function fixture(selectors = ['.ac-host', '.as-host', '.st-host']) {
+
+class Element {
+  constructor(tag = 'div', classes = '') {
+    this.tagName = tag.toUpperCase(); this.children = []; this.style = {}; this.attrs = {};
+    this.listeners = new Map(); this.hidden = false; this.isConnected = true; this.innerHTML = ''; this.textContent = '';
+    this.className = classes; this.rect = { left: 0, top: 0, width: 100, height: 30 }; this.animations = [];
+    this.classList = {
+      contains: name => this.className.split(' ').includes(name),
+      add: (...names) => { this.className = [...new Set([...this.className.split(' '), ...names])].join(' ').trim(); },
+      remove: (...names) => { this.className = this.className.split(' ').filter(name => !names.includes(name)).join(' '); },
+    };
+  }
+  setAttribute(key, value) { this.attrs[key] = String(value); }
+  getAttribute(key) { return this.attrs[key]; }
+  removeAttribute(key) { delete this.attrs[key]; }
+  append(...nodes) { nodes.forEach(node => { node.parentElement = this; this.children.push(node); }); }
+  appendChild(node) { this.append(node); return node; }
+  addEventListener(type, fn) { if (!this.listeners.has(type)) this.listeners.set(type, []); this.listeners.get(type).push(fn); }
+  emit(type, extra = {}) { const event = { target: this, stopPropagation() {}, preventDefault() {}, ...extra }; (this.listeners.get(type) || []).forEach(fn => fn(event)); }
+  contains(node) { return node === this || this.children.some(child => child.contains(node)); }
+  matches(selector) { if (selector.startsWith(':')) return false; return selector.split('.').slice(1).every(name => this.classList.contains(name)); }
+  closest(selector) { return this.matches(selector) ? this : this.parentElement?.closest(selector); }
+  querySelectorAll(selector) {
+    if (selector === '.story-links a') return [];
+    return this.children.flatMap(child => [...(child.matches(selector) ? [child] : []), ...child.querySelectorAll(selector)]);
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  getBoundingClientRect() { const r = this.rect; return { ...r, right: r.left + r.width, bottom: r.top + r.height }; }
+  get offsetWidth() { return this.rect.width; }
+  get offsetHeight() { return this.rect.height; }
+  animate(frames, options) { const animation = { frames, options, cancelled: false, cancel() { this.cancelled = true; } }; this.animations.push(animation); return animation; }
+}
+function fixture({ reduced = false, selectors = ['.ac-host', '.as-host', '.st-host', '.pa-host'] } = {}) {
   const hosts = new Map(selectors.map(selector => {
-    const classes = new Set();
-    const heading = { innerHTML: 'Old headline' };
-    const body = { textContent: 'Old body', hidden: false };
-    return [selector, { heading, body, classList: {
-      contains: name => classes.has(name), add: name => classes.add(name),
-    }, querySelector: name => name === 'h1' ? heading : name === '.body' ? body : null }];
+    const host = new Element('section', `slide ${selector.slice(1)}`), heading = new Element('h1'), body = new Element('div', 'body');
+    heading.innerHTML = 'Old'; body.textContent = 'Old body'; host.append(heading, body); host.heading = heading; host.body = body;
+    host.querySelector = selector => selector === 'h1' ? heading : selector === '.body' ? body : null;
+    return [selector, host];
   }));
-  const styles = new Map();
-  const listeners = new Map();
+  const styles = new Map(), listeners = new Map(), timers = new Map(), observers = [];
+  let now = 0, nextId = 1;
+  const schedule = (fn, ms, ctx) => { const id = nextId++; timers.set(id, { fn, at: now + ms, ctx }); return id; };
+  const window = {
+    addEventListener(type, fn) { if (!listeners.has(type)) listeners.set(type, []); listeners.get(type).push(fn); },
+    deckNow: () => now, deckStill: () => reduced,
+    deckNav: { to: 4, direct: false, rest: false, back: false, isCurrent: () => true, isTransitionCurrent: () => false },
+    deckLater: schedule, deckCancelLater: id => timers.delete(id),
+  };
   const context = vm.createContext({
-    console,
+    console, window, matchMedia: () => ({ matches: reduced }), setTimeout: schedule, clearTimeout: id => timers.delete(id),
+    ResizeObserver: class { constructor(fn) { this.fn = fn; } observe() {} },
+    MutationObserver: class { constructor(fn) { this.fn = fn; observers.push(this); } observe() {} takeRecords() { return []; } },
     document: {
-      querySelector: name => hosts.get(name) || null,
-      getElementById: id => styles.get(id) || null,
-      createElement: tag => { assert.equal(tag, 'style'); return {}; },
-      head: { appendChild: element => styles.set(element.id, element) },
+      querySelector: selector => hosts.get(selector) || null, getElementById: id => styles.get(id),
+      createElement: tag => new Element(tag), head: { appendChild: style => styles.set(style.id, style) },
     },
-    window: { addEventListener: (type, fn) => listeners.set(type, fn) },
   });
-  const run = () => vm.runInContext(source, context);
-  run();
-  const event = extra => ({ prevented: false, stopped: false,
-    preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, ...extra });
-  return { hosts, styles, listeners, context, run, event };
+  const run = () => vm.runInContext(source, context); run();
+  const tick = milliseconds => {
+    now += milliseconds;
+    for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); if (!timer.ctx || timer.ctx.isCurrent()) timer.fn(); }
+  };
+  const dispatch = (type, extra = {}) => {
+    const event = { prevented: false, stopped: false, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, ...extra };
+    (listeners.get(type) || []).forEach(fn => fn(event)); return event;
+  };
+  return { hosts, styles, context, window, observers, timers, run, tick, dispatch };
+}
+function demo(options) {
+  const f = fixture(options), slide = new Element('section', 'slide as-host on'), root = new Element('div', 'as');
+  root.rect = { left: 0, top: 0, width: 1000, height: 560 }; slide.append(root);
+  const msgs = new Element('div', 'as-msgs'); msgs.rect = { left: 0, top: 20, width: 300, height: 420 };
+  const timeline = new Element('div', 'as-tl'); root.append(msgs, timeline);
+  const targets = [0, 1, 2].map(index => {
+    const lane = new Element('div', 'as-lane'), target = new Element('div', index === 1 ? 'as-frame-clip' : 'as-clip');
+    lane.rect = { left: 340, top: 400 + index * 40, width: 600, height: 32 }; target.rect = { ...lane.rect };
+    lane.append(target); timeline.append(lane); return target;
+  });
+  const notes = f.window.createAstridDemoNotes(root, targets);
+  const addRows = count => {
+    for (let i = msgs.children.length; i < count; i++) {
+      const row = new Element('div', 'as-step'); row.rect = { left: 12, top: 70 + i * 70, width: 275, height: 46 }; msgs.append(row);
+    }
+    f.observers.forEach(observer => observer.fn());
+  };
+  const pin = (index, location) => root.querySelectorAll('.as-note-pin').find(pin => pin.getAttribute('data-note') === String(index + 1) && pin.getAttribute('data-location') === location);
+  return { ...f, slide, root, msgs, targets, notes, addRows, pin, card: root.querySelector('.as-note-card') };
 }
 
-test('updates the three canonical headings synchronously, without replacing them', () => {
+test('canonical headings carry the requested copy, links and brace', () => {
   const f = fixture();
-  for (const host of f.hosts.values()) {
-    assert.equal(host.querySelector('h1'), host.heading);
-    assert.ok(host.classList.contains('story-refined'));
-    assert.equal(host.body.textContent, '');
-    assert.equal(host.body.hidden, true);
-  }
-  assert.match(f.hosts.get('.ac-host').heading.innerHTML, /agent-powered creative workspace/);
   const intro = f.hosts.get('.as-host').heading.innerHTML;
-  assert.match(intro, /Meet /);
-  assert.match(intro, /href="https:\/\/astrid\.haus\/"/);
-  assert.match(intro, /open AI community’s models, tools and knowledge/);
-  assert.match(intro, /We start with video/);
-  assert.doesNotMatch(intro, /No installs|OpenAI models/);
-  const stack = f.hosts.get('.st-host').heading.innerHTML;
-  assert.match(stack, /yours to shape/);
-  assert.match(stack, /extend every layer/);
-  assert.match(stack, /community-built creative platform/);
-  assert.equal(f.styles.size, 1);
+  assert.match(intro, /Today, an extendible agent-powered video editor\./);
+  assert.match(intro, /Soon, a fully-adaptable multimodal creative suite\./);
+  assert.match(intro, /href="https:\/\/astrid\.haus\/" target="_blank"/);
+  assert.match(intro, /href="https:\/\/astrid\.haus\/vision" target="_blank"/);
+  assert.equal((intro.match(/rel="noopener noreferrer"/g) || []).length, 2);
+  assert.match(intro, /<em class="story-astrid">Astrid<\/em>/);
+  assert.doesNotMatch(intro, /<a[^>]*>[^<]*Astrid/);
+  assert.match(intro, /story-brace/); assert.match(intro, /All powered by/); assert.match(intro, /Open Models/);
+  assert.match(f.hosts.get('.st-host').heading.innerHTML, /everyone’s to shape/);
+  assert.match(f.hosts.get('.pa-host').heading.innerHTML, /Builders grow the ecosystem; creators sustain it\./);
+  for (const host of f.hosts.values()) { assert.equal(host.querySelector('h1'), host.heading); assert.equal(host.body.hidden, true); }
 });
-
-test('re-entry neither duplicates styles nor replaces canonical nodes', () => {
-  const f = fixture();
-  const heading = f.hosts.get('.as-host').heading;
-  const style = f.styles.get('deck-intro-story');
-  f.run();
-  assert.equal(f.styles.size, 1);
-  assert.equal(f.styles.get('deck-intro-story'), style);
-  assert.equal(f.hosts.get('.as-host').heading, heading);
+test('story initialization is idempotent and optional on other pages', () => {
+  const f = fixture(), heading = f.hosts.get('.as-host').heading, style = f.styles.get('deck-intro-story'); f.run();
+  assert.equal(f.hosts.get('.as-host').heading, heading); assert.equal(f.styles.get('deck-intro-story'), style); assert.equal(f.styles.size, 1);
+  const absent = fixture({ selectors: [] }); assert.equal(absent.styles.size, 0); assert.equal(typeof absent.window.deckOverlay.register, 'function');
 });
-
-test('other pages can use overlays without any intro slides', () => {
-  const f = fixture([]);
-  assert.equal(f.styles.size, 0);
-  assert.equal(typeof f.context.window.deckOverlay.register, 'function');
-});
-
-test('CSS keeps the existing alpha contract and includes narrow/short layouts', () => {
+test('header keeps alpha contract, unwrapped roadmap lines and reduced-motion rules', () => {
   const css = fixture().styles.get('deck-intro-story').textContent;
-  assert.match(css, /var\(--as-copy-alpha, 1\)/);
-  assert.match(css, /max-width: 760px/);
-  assert.match(css, /max-height: 500px/);
-  assert.match(css, /max-width: 1100px/);
-  assert.doesNotMatch(css, /(?:animation|transition)\s*:/);
+  for (const value of ['var(--as-copy-alpha, 1)', 'white-space: nowrap', 'max-width: 760px', 'max-height: 500px', 'prefers-reduced-motion: reduce']) assert.ok(css.includes(value));
 });
-
-test('Escape dismisses a detail without navigating, while arrows still navigate', () => {
-  const f = fixture();
-  const reasons = [];
-  f.context.window.deckOverlay.register({ isOpen: () => true, contains: () => false,
-    close: reason => reasons.push(reason) });
-  const escape = f.event({ key: 'Escape' });
-  f.listeners.get('keydown')(escape);
-  assert.equal(reasons.pop(), 'escape');
-  assert.equal(escape.prevented, true);
-  assert.equal(escape.stopped, true);
-  const arrow = f.event({ key: 'ArrowRight' });
-  f.listeners.get('keydown')(arrow);
-  assert.equal(reasons.pop(), 'navigation');
-  assert.equal(arrow.prevented, false);
+test('chat marker appears first; editor follows at 600 ms with one pulse each', () => {
+  const f = demo(); f.addRows(1); f.targets[0].classList.add('is-ready'); f.notes.update();
+  assert.equal(f.pin(0, 'chat').hidden, false); assert.equal(f.pin(0, 'editor').hidden, true);
+  f.tick(599); assert.equal(f.pin(0, 'editor').hidden, true); f.tick(1); assert.equal(f.pin(0, 'editor').hidden, false);
+  for (const location of ['chat', 'editor']) assert.equal(f.pin(0, location).children[0].animations.length, 1);
+  f.notes.update(); f.notes.update(); assert.equal(f.pin(0, 'editor').children[0].animations.length, 1);
 });
-
-test('inside clicks are preserved, outside clicks dismiss only the open detail', () => {
-  const f = fixture();
-  const inside = {};
-  const reasons = [];
-  const unregister = f.context.window.deckOverlay.register({ isOpen: () => true,
-    contains: target => target === inside, close: reason => reasons.push(reason) });
-  const internal = f.event({ target: inside });
-  f.listeners.get('click')(internal);
-  assert.equal(reasons.length, 0);
-  const outside = f.event({ target: {} });
-  f.listeners.get('click')(outside);
-  assert.deepEqual(reasons, ['outside']);
-  assert.equal(outside.prevented, true);
-  unregister();
-  f.listeners.get('click')(f.event({ target: {} }));
-  assert.equal(reasons.length, 1);
+test('editor marker does not precede actual output', () => {
+  const f = demo(); f.addRows(1); f.tick(600); assert.equal(f.pin(0, 'editor').hidden, true);
+  f.targets[0].classList.add('is-ready'); f.notes.update(); assert.equal(f.pin(0, 'editor').hidden, false);
+});
+test('all three pairs share their respective tooltip content', () => {
+  const f = demo(); f.addRows(3); f.targets.forEach(target => target.classList.add('is-ready')); f.notes.update(); f.tick(600);
+  assert.equal(f.root.querySelectorAll('.as-note-pin').length, 6);
+  for (let i = 0; i < 3; i++) {
+    f.pin(i, 'chat').emit('focus'); const content = f.card.children.map(el => el.textContent).join(' ');
+    assert.equal(f.notes.isOpen(), true); f.pin(i, 'editor').emit('focus');
+    assert.equal(f.card.children.map(el => el.textContent).join(' '), content);
+    assert.equal(f.pin(i, 'editor').getAttribute('aria-expanded'), 'true');
+  }
+});
+test('reset cancels delayed reveals and permits a fresh pair on replay', () => {
+  const f = demo(); f.addRows(1); f.targets[0].classList.add('is-ready'); f.notes.reset();
+  f.tick(1000); assert.equal(f.pin(0, 'editor').hidden, true); assert.equal(f.pin(0, 'chat').hidden, true);
+  f.notes.update(); assert.equal(f.pin(0, 'chat').hidden, false); f.tick(600); assert.equal(f.pin(0, 'editor').hidden, false);
+});
+test('leaving the slide cannot reveal a pending marker', () => {
+  const f = demo(); f.addRows(1); f.targets[0].classList.add('is-ready'); f.slide.classList.remove('on'); f.tick(600);
+  assert.equal(f.pin(0, 'editor').hidden, true);
+});
+test('chat pins track scroll visibility and close an offscreen tooltip', () => {
+  const f = demo(); f.addRows(1); f.pin(0, 'chat').emit('focus'); assert.equal(f.notes.isOpen(), true);
+  f.msgs.children[0].rect.top = -100; f.msgs.emit('scroll'); assert.equal(f.pin(0, 'chat').hidden, true); assert.equal(f.notes.isOpen(), false);
+  f.msgs.children[0].rect.top = 80; f.msgs.emit('scroll'); assert.equal(f.pin(0, 'chat').hidden, false);
+});
+test('reduced motion shows both sets without delay or pulse', () => {
+  const f = demo({ reduced: true }); f.targets.forEach(target => target.classList.add('is-ready')); f.addRows(3); f.notes.update();
+  for (const pin of f.root.querySelectorAll('.as-note-pin')) { assert.equal(pin.hidden, false); assert.equal(pin.children[0].animations.length, 0); }
+  assert.equal(f.timers.size, 0);
+});
+test('Escape and outside click dismiss notes; arrows still navigate', () => {
+  const f = demo(); f.addRows(1); f.pin(0, 'chat').emit('click');
+  const inside = f.dispatch('click', { target: f.card }); assert.equal(inside.prevented, false); assert.equal(f.notes.isOpen(), true);
+  const escape = f.dispatch('keydown', { key: 'Escape' }); assert.equal(escape.prevented, true); assert.equal(f.notes.isOpen(), false);
+  f.pin(0, 'chat').emit('click'); const arrow = f.dispatch('keydown', { key: 'ArrowRight' }); assert.equal(arrow.prevented, false); assert.equal(f.notes.isOpen(), false);
+  f.pin(0, 'chat').emit('click'); f.dispatch('click', { target: new Element() }); assert.equal(f.notes.isOpen(), false);
+});
+test('approved pacing only accelerates forward, unsettled slides 7 and 8', () => {
+  const f = fixture(), ctx = f.window.deckNav; ctx.isTransitionCurrent = () => true;
+  ctx.to = 6; assert.equal(f.window.deckStoryPacing.rate(), 1.45); ctx.to = 7; assert.equal(f.window.deckStoryPacing.rate(), 1.3);
+  ctx.back = true; assert.equal(f.window.deckStoryPacing.rate(), 1); ctx.back = false; ctx.isTransitionCurrent = () => false; assert.equal(f.window.deckStoryPacing.rate(), 1);
 });
