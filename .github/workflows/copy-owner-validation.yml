@@ -1,0 +1,56 @@
+name: Validate copy visibility ownership
+on:
+  push:
+    branches: [fix/copy-owner-20261110]
+permissions:
+  contents: write
+concurrency:
+  group: copy-owner-validation
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Apply the reviewed refactor on the pinned baseline
+        run: |
+          set -euo pipefail
+          mkdir -p copy-owner-results
+          git fetch --depth=1 origin a8747a10eb41a41255b8d69376f1499aa95fc1b0
+          git worktree add --detach /tmp/mycelial-copy-baseline a8747a10eb41a41255b8d69376f1499aa95fc1b0
+          node tools/deck/rebuild-copy-owner.mjs | tee copy-owner-results/apply.json
+          git diff --check
+          node --check mycelial/dot-transitions.js
+          node --test tests/deck-story.test.mjs tests/deck-copy-surfaces.test.mjs | tee copy-owner-results/unit.txt
+      - name: Install browser test engines
+        run: |
+          python3 -m venv /tmp/copy-owner-venv
+          /tmp/copy-owner-venv/bin/pip install playwright pillow numpy
+          /tmp/copy-owner-venv/bin/python -m playwright install --with-deps chromium webkit
+      - name: Check the complete deck in desktop and mobile browsers
+        run: |
+          set -euo pipefail
+          PORT=8240 python3 serve.py >copy-owner-results/server.log 2>&1 &
+          (cd /tmp/mycelial-copy-baseline && PORT=8241 python3 serve.py) >copy-owner-results/baseline-server.log 2>&1 &
+          for n in $(seq 1 30); do curl -sf http://127.0.0.1:8240/mycelial/index.html >/dev/null && break; sleep 1; done
+          /tmp/copy-owner-venv/bin/python tools/deck/check-copy-ownership.py --baseline http://127.0.0.1:8241/mycelial/index.html --out copy-owner-results | tee copy-owner-results/browser.txt
+      - name: Publish tested candidate without temporary validation scaffolding
+        run: |
+          set -euo pipefail
+          git read-tree a8747a10eb41a41255b8d69376f1499aa95fc1b0
+          git add mycelial/dot-transitions.js mycelial/index.html tests/deck-copy-surfaces.test.mjs tools/deck/check-copy-ownership.py docs/copy-ownership.md
+          TREE=$(git write-tree)
+          COMMIT=$(printf '%s\n' 'Centralize copy visibility ownership and preserve interrupted reveals' | git -c user.name='Copy ownership validation' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit-tree "$TREE" -p a8747a10eb41a41255b8d69376f1499aa95fc1b0)
+          git push origin "$COMMIT:refs/heads/candidate/copy-owner-20261110"
+          echo "CANDIDATE_SHA=$COMMIT" | tee copy-owner-results/candidate.txt
+          echo "Validated candidate: $COMMIT" >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: copy-owner-validation
+          path: copy-owner-results
+          retention-days: 7
