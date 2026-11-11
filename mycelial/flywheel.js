@@ -26,6 +26,8 @@
   const THREAD = '240,200,119', NODE = '255,217,145', CORE = '255,241,214';
   const TAU = Math.PI * 2, RAD = Math.PI / 180;
   const communityCount = hosts[0].querySelector('.fw-stat b span');
+  // Slide 9's head count runs up from an earlier figure to today's as its line is revealed.
+  const COUNT_FROM = 18932, COUNT_TO = 23932, COUNT_MS = 4000;
   let countStarted = null, countPending = false;
   const setCommunityCount = (value) => {
     const text = Math.round(value).toLocaleString('en-US');
@@ -1154,8 +1156,8 @@
     const revealingStat = statPaint && statPaint.classList.contains('fw-spreading') && parseFloat(statPaint.style.getPropertyValue('--fw-outer')) > 0.05;
     if (countPending && activeStage === 0 && (countStarted !== null || revealingStat || hosts[0].hasAttribute('data-settled'))) {
       if (countStarted === null) countStarted = clock;
-      const progress = clamp((clock - countStarted) / 2000);
-      setCommunityCount(20332 + 3600 * ease(progress));
+      const progress = clamp((clock - countStarted) / COUNT_MS);
+      setCommunityCount(COUNT_FROM + (COUNT_TO - COUNT_FROM) * ease(progress));
       if (progress === 1) countPending = false;
     }
     const stretch = ctx.from === 7 && ctx.to === 8 && !ctx.direct && !ctx.rest && hand && ta < HAND_END ? FLOWERS_HANDOFF_STRETCH : 1;
@@ -1295,7 +1297,7 @@
     if (ctx.to === 8) {
       countStarted = null;
       countPending = !motionOff() && !ctx.direct && !ctx.rest;
-      setCommunityCount(countPending ? 20332 : 23932);
+      setCommunityCount(countPending ? COUNT_FROM : COUNT_TO);
     } else countPending = false;
     let resolve;
     const done = new Promise((r) => { resolve = r; });
@@ -1453,7 +1455,7 @@
 
   const syncMotion = () => {
     if (motionOff() && activeStage >= 0) {
-      if (countPending) { countPending = false; setCommunityCount(23932); }
+      if (countPending) { countPending = false; setCommunityCount(COUNT_TO); }
       if (unhanding) endUnhand();
       stop();
       begun = false;

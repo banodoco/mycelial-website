@@ -1157,9 +1157,10 @@
     const tw = [];
     for (const el of textOf(s)) {
       const bounds = context.geometry?.box(el);
-      // The third slide's copy spreads from its upper right on every layout,
-      // even where the mobile label and the travelling node sit on the left.
-      const origin = el.matches('.gap-copy') && context.from === 1
+      // Where the third slide's copy is set right-aligned beside its chart, it
+      // spreads from its upper right. Stacked above the chart and left-aligned
+      // (a phone), it spreads from the node at its top left like every other slide.
+      const origin = el.matches('.gap-copy') && context.from === 1 && getComputedStyle(el).textAlign === 'right'
         ? { x: (bounds || el.getBoundingClientRect()).right, y: at.y }
         : at;
       copy.paint(el, origin, 0, bounds, state);
