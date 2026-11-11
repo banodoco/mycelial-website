@@ -10,15 +10,16 @@ import { arcLerp } from './camera-path.js';
  *  it falls back to the shipped linear map. Monotone by construction: the
  *  metric is a nonnegative per-segment sum; stationary departure samples
  *  consume no time. */
-function routePaceP(blend, e) {
+export function routePaceP(blend, e, raw = false) {
   if (e <= 0) return blend.routeFromP;
   if (e >= 1) return blend.routeTargetP;
   const pace = blend.routePace;
   if (!pace) {
     return blend.routeFromP + (blend.routeTargetP - blend.routeFromP) * e;
   }
-  const cum = pace.cum, n = cum.length - 1;
-  const u = e * pace.total;
+  // `raw` selects the floor-free table the CAMERA rides (see buildRoutePace)
+  const cum = raw ? pace.camCum : pace.cum, n = cum.length - 1;
+  const u = e * (raw ? pace.camTotal : pace.total);
   let lo = 0, hi = n;
   while (hi - lo > 1) {
     const m = (lo + hi) >> 1;
@@ -89,8 +90,9 @@ export function createCameraBlendStepper(sceneApi, director, lens, guarded, onEn
        every later frame reader can consume the same value. */
     if (blend.routeFaithful) {
       blend.presentedP = routePaceP(blend, e);
-      director.apply(blend.presentedP, dt);
-      guarded('lens', () => lens.setLookOverride(lens.lookOf(blend.presentedP)));
+      const camP = routePaceP(blend, e, true);
+      director.apply(camP, dt);
+      guarded('lens', () => lens.setLookOverride(lens.lookOf(camP)));
       if (f >= 1) onEnd(true);
       return;
     }

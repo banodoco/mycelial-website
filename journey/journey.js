@@ -1018,13 +1018,20 @@ export function boot(opts = {}) {
     if (!(pathLen > 1e-6)) return null;    // degenerate leg: linear fallback
     const departure = toP > fromP;
     const floor = departure ? 0 : (ROUTE_PACE_FLOOR * pathLen) / ROUTE_PACE_N;
+    /* The camera rides the RAW path metric; only the published coordinate
+       (presentedP) spends the floor. The floored table appends ~0.5 s of
+       fake length at the stationary end, so the camera's pose path ran out
+       while the ease was still at ~14% of peak and the Inspire -> Intro
+       return hard-stopped 0.5 s early (3.9 -> 0.03 u/s in 3 frames). A
+       departure has no floor, so both tables are then the same one. */
+    const camCum = floor ? Float64Array.from(cum) : cum;
     let total = 0, prevRaw = 0;
     for (let i = 1; i <= ROUTE_PACE_N; i++) {
       total += Math.max(cum[i] - prevRaw, floor);
       prevRaw = cum[i];
       cum[i] = total;
     }
-    return { cum, total, pathLen };
+    return { cum, total, pathLen, camCum, camTotal: pathLen };
   }
   /* Length of a skim-shaped flyby path — the same "priced by the path
      actually travelled" rule as buildRoutePace, sampled the same way,
