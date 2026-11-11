@@ -5436,3 +5436,51 @@ body.j-rail-on .j-hotspots { opacity: 1; }
 @media (hover: hover) and (pointer: fine) {
   .j-menu-x:hover { box-shadow: 0 0 14px rgba(240, 170, 60, 0.22); }
 }
+
+/* ============================================================
+   DESKTOP PANEL FITS ITS VIEWPORT (no scroll down to 760px tall).
+   The two thesis statements stay the panel's largest type but track
+   the viewport's height instead of holding a fixed 1.65rem, and the
+   rest of the height is recovered from spacing, not from the rows'
+   type. The first block is the COMPACT floor (a 760px-tall window,
+   with ~100px to spare so browser zoom has margin); the min-height
+   steps hand the air back as the window grows, up to the old rhythm.
+   Phones keep their own card layout (max-width: 620px), untouched.
+   ============================================================ */
+@media (min-width: 621px) {
+  .j-menu { padding: 0.9rem 2.2rem 1.4rem; }
+  .j-menu-head { margin-bottom: 0.6rem; }
+  .j-menu-list > li { padding-block: 0.14rem 0.4rem; }
+  .j-menu-item { padding-block: 0.52rem 0.4rem; }
+  .j-menu-list > li:last-child .j-menu-item { padding-bottom: 0.6rem; }
+  .j-menu-sub { padding-bottom: 0.3rem; }
+  .j-menu-row { margin-bottom: 0.2rem; line-height: 1.5; }
+  .j-menu-row-link { padding-block: 0.08rem; }
+  .j-menu-thesis {
+    margin: 0.2rem 0 0.15rem;
+    font-size: clamp(1.15rem, calc(1.15rem + (100vh - 760px) * 0.0133), 1.4rem);
+    line-height: 1.16;
+  }
+  .j-menu-legal { margin-top: 0.9rem; }
+}
+@media (min-width: 621px) and (min-height: 840px) {
+  .j-menu { padding-top: 1rem; padding-bottom: 1.6rem; }
+  .j-menu-head { margin-bottom: 0.75rem; }
+  .j-menu-list > li { padding-block: 0.16rem 0.44rem; }
+  .j-menu-item { padding-block: 0.58rem 0.48rem; }
+  .j-menu-list > li:last-child .j-menu-item { padding-bottom: 0.7rem; }
+  .j-menu-row { margin-bottom: 0.26rem; }
+  .j-menu-row-link { padding-block: 0.09rem; }
+  .j-menu-legal { margin-top: 0.95rem; }
+}
+@media (min-width: 621px) and (min-height: 940px) {
+  .j-menu { padding-bottom: 1.8rem; }
+  .j-menu-head { margin-bottom: 0.9rem; }
+  .j-menu-list > li { padding-block: 0.18rem 0.48rem; }
+  .j-menu-item { padding-block: 0.62rem 0.55rem; }
+  .j-menu-list > li:last-child .j-menu-item { padding-bottom: 0.82rem; }
+  .j-menu-row { margin-bottom: 0.32rem; }
+  .j-menu-row-link { padding-block: 0.1rem; }
+  .j-menu-thesis { margin: 0.3rem 0 0.2rem; }
+  .j-menu-legal { margin-top: 1rem; }
+}

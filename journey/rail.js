@@ -1070,7 +1070,21 @@ export function createRail({ onNav, ready = true } = {}) {
     const txt = el('span', 'j-menu-txt');
     if (section.number) txt.appendChild(el('span', 'j-menu-no', `${section.number}.`));
     if (section.heading) txt.appendChild(el('span', 'j-menu-name', section.heading));
-    if (section.thesis) txt.appendChild(el('span', 'j-menu-line j-menu-thesis', section.thesis));
+    if (section.thesis) {
+      const line = el('span', 'j-menu-line j-menu-thesis');
+      // "open-source" is one compound word: keep a wrap from splitting it at
+      // the hyphen (the text itself is unchanged, so copy and search are).
+      const parts = section.thesis.split('open-source');
+      parts.forEach((part, i) => {
+        if (i) {
+          const word = el('span', 'j-menu-nobreak', 'open-source');
+          word.style.whiteSpace = 'nowrap';
+          line.appendChild(word);
+        }
+        if (part) line.appendChild(document.createTextNode(part));
+      });
+      txt.appendChild(line);
+    }
     a.appendChild(txt);
     if (section.route) {
       itemsOwner.listen(a, 'click', (e) => {
