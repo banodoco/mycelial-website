@@ -9,8 +9,8 @@
 // seconds a mote runs round it into a side and fills the socket, and a new
 // socket appears next in line; now and then an extension is used and a pulse
 // runs up into the core. Slide 4's own network node feeds the lens from below.
-// Arriving from slide 3, the empty ring flies up (its question mark fading as
-// it lifts off) and becomes the core's bright node. Hovering (or tapping) an extension names it.
+// Arriving from slide 3, the tools gather in under the empty ring, which then
+// flies up (its question mark fading as it lifts off) and becomes the core's bright node. Hovering (or tapping) an extension names it.
 (() => {
   const root = document.querySelector('[data-astrid-core]');
   if (!root) return;
@@ -741,7 +741,8 @@
     if (seedEl) { seedEl.remove(); seedEl = null; }
     if (ring) ring.style.visibility = '';
   };
-  // From slide 3: the empty ring lifts off the chart and flies up to become the core's bright node.
+  // From slide 3: the empty ring holds while the tools gather in under it (gap.js), then lifts off the chart and
+  // flies up to become the core's bright node.
   const FLIGHT = 1.1;
   const launch = (back = false) => {
     if (!ring) return false;
@@ -757,22 +758,32 @@
     document.body.appendChild(seedEl);
     ring.style.visibility = 'hidden';
     const steps = 24;
+    // The flight's first stretch is the gathering: the ring holds, swelling a little as the tools slip under it.
+    const H = clamp((window.GapGather?.time ?? 0) / FLIGHT, 0, 0.5);
+    const of = (o) => H + (1 - H) * o; // an offset within the flight proper
     // Keep a positive playback rate so the deck's pace controller cannot
     // overwrite a pending reverse() rate before the first animation frame.
     const flight = { duration: FLIGHT * 1000, fill: 'forwards', direction: back ? 'reverse' : 'normal' };
-    seedEl.animate(Array.from({ length: steps + 1 }, (_, i) => {
-      const t = smooth(i / steps), u = 1 - t;
-      const x = u * u * from.x + 2 * u * t * c.x + t * t * to.x, y = u * u * from.y + 2 * u * t * c.y + t * t * to.y;
-      return { transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)` };
-    }), flight);
+    seedEl.animate([
+      ...(H > 0 ? [{ transform: `translate(${from.x.toFixed(1)}px, ${from.y.toFixed(1)}px)`, offset: 0 }] : []),
+      ...Array.from({ length: steps + 1 }, (_, i) => {
+        const t = smooth(i / steps), u = 1 - t;
+        const x = u * u * from.x + 2 * u * t * c.x + t * t * to.x, y = u * u * from.y + 2 * u * t * c.y + t * t * to.y;
+        return { transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`, offset: of(i / steps) };
+      }),
+    ], flight);
     seedEl.querySelector('i').animate([
       { transform: 'scale(1) rotate(0deg)', opacity: 1 },
-      { transform: 'scale(.5) rotate(50deg)', opacity: 0.9, offset: 0.6 },
+      ...(H > 0 ? [{ transform: 'scale(1.12) rotate(0deg)', opacity: 1, offset: H * 0.8 }, { transform: 'scale(1) rotate(0deg)', opacity: 1, offset: H, easing: 'ease-in' }] : []),
+      { transform: 'scale(.5) rotate(50deg)', opacity: 0.9, offset: of(0.6), easing: 'ease-in' },
       { transform: 'scale(.1) rotate(90deg)', opacity: 0 },
-    ], { ...flight, easing: 'ease-in' });
-    seedEl.querySelector('em').animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(.6)', offset: 0.4 }, { opacity: 0, transform: 'scale(.6)' }],
-      { ...flight, easing: 'ease-in' });
-    seedEl.querySelector('b').animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 0, transform: 'scale(.6)', offset: 0.45 }, { opacity: 1, transform: 'scale(1.3)' }],
+    ], { ...flight, easing: H > 0 ? 'linear' : 'ease-in' });
+    seedEl.querySelector('em').animate([
+      { opacity: 1, transform: 'scale(1)' },
+      ...(H > 0 ? [{ opacity: 1, transform: 'scale(1)', offset: H, easing: 'ease-in' }] : []),
+      { opacity: 0, transform: 'scale(.6)', offset: of(0.4) }, { opacity: 0, transform: 'scale(.6)' },
+    ], { ...flight, easing: H > 0 ? 'linear' : 'ease-in' });
+    seedEl.querySelector('b').animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 0, transform: 'scale(.6)', offset: of(0.45) }, { opacity: 1, transform: 'scale(1.3)' }],
       flight);
     return true;
   };
@@ -882,6 +893,7 @@
       html.classList.remove('ac-quiet');
       reverseCtx.present(slide, 'dt-rewound', 'dt-rewind');
       launch(true);
+      window.GapGather?.emerge(reverseCtx, FLIGHT); // the tools come out from under it once it has landed
     }
     if (u.seeded) {
       u.at += dt;
@@ -913,6 +925,7 @@
   const sceneExit = (ctx) => {
     if (ctx.to === 2 && ctx.back && ring && !motionOff() && rings.length && ta >= T.end) {
       const promise = completion(ctx, (fn) => { reverseFinish = fn; }, () => endUnbuild());
+      window.GapGather?.expect(ctx); // slide 3 waits, dark, for the ring
       unbuild(ctx);
       return promise;
     }

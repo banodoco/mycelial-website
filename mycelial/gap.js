@@ -135,12 +135,14 @@
   const idleSoon = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 100));
   const MORPH = 0.5; // seconds from landing to the settled logo
 
-  const reset = () => {
+  // keepGathered: a chart left gathered into its empty ring stays dark until it is next shown.
+  const reset = (keepGathered = false) => {
     retireForward(Boolean(backs.length || backRaf || departRaf));
     timers.forEach(window.deckCancelLater);
     timers = [];
     root.classList.remove('is-drawn', 'is-labelled');
     tools.forEach((el) => { el.classList.remove('is-in', 'is-open'); el.style.removeProperty('--m'); });
+    ungather(keepGathered);
     empty.classList.remove('is-open');
     focus(null);
   };
@@ -295,6 +297,78 @@
     else { g?.clearRect(0, 0, innerWidth, innerHeight); flying = false; if (!backs.length) show(false); entryFinish?.(ctx, 'completed'); }
   };
 
+  // ---- Into the empty corner, and out of it ----------------------------------
+  // On to slide 4: every tool rushes in under the empty ring, shrinking and fading as it slips beneath it, while
+  // the axes and labels fade; then the ring lifts off alone and becomes the core's bright eye (core.js). Back from
+  // slide 4 it is the same picture played backwards: the eye flies back down as the ring, and once it has landed
+  // the tools spill out from under it to their places as the axes and labels fade in round them.
+  const vis = root.parentElement;
+  const GATHER = 0.36; // seconds at the start of the ring's flight (the end, coming back) that the tools take
+  const SPREAD = 0.06; // the farthest set off this much sooner, so that they all arrive together
+  let gathered = [], awaiting = null;
+  const ungather = (keepGathered = false) => {
+    gathered.forEach((a) => a.cancel());
+    gathered = [];
+    awaiting = null;
+    vis?.classList.remove('gp-gathering');
+    if (!keepGathered) { root.classList.remove('is-gathered'); empty.style.visibility = ''; }
+  };
+  // Each disc's path to the middle of the ring, run forwards to gather it or backwards to let it out.
+  const gather = (back = false, wait = 0) => {
+    gathered.forEach((a) => a.cancel());
+    gathered = [];
+    const h = empty.querySelector('i').getBoundingClientRect();
+    const hx = h.left + h.width / 2, hy = h.top + h.height / 2;
+    const paths = tools.map((el) => {
+      const r = el.querySelector('i').getBoundingClientRect();
+      if (!r.width || (!back && !el.classList.contains('is-in'))) return null;
+      const base = getComputedStyle(el).transform;
+      return { el, dx: hx - (r.left + r.width / 2), dy: hy - (r.top + r.height / 2), base: base === 'none' ? '' : base };
+    });
+    const far = Math.max(1, ...paths.map((p) => (p ? Math.hypot(p.dx, p.dy) : 0)));
+    paths.forEach((p) => {
+      if (!p) return;
+      const lead = SPREAD * (1 - Math.hypot(p.dx, p.dy) / far);
+      const timing = { duration: (GATHER - SPREAD) * 1000, delay: (wait + (back ? SPREAD - lead : lead)) * 1000, fill: 'both', direction: back ? 'reverse' : 'normal' };
+      gathered.push(p.el.animate([
+        { transform: `translate(0px, 0px) ${p.base} scale(1)` },
+        { transform: `translate(${p.dx.toFixed(1)}px, ${p.dy.toFixed(1)}px) ${p.base} scale(.3)` },
+      ], { ...timing, easing: 'cubic-bezier(.55, 0, .85, .4)' })); // gathering pace, quickening into the ring
+      gathered.push(p.el.animate([{ opacity: 1 }, { opacity: 1, offset: 0.4 }, { opacity: 0 }], { ...timing, easing: 'ease-in' }));
+    });
+  };
+  // The chart holds its own layer up while the tools are in motion; everything but the tools and the ring fades.
+  const hold = () => { vis?.classList.add('gp-gathering'); root.classList.add('is-gathered'); };
+  // Back from slide 4: the chart waits, dark, for the ring to land (core.js says when its flight begins).
+  const await_ = (ctx) => {
+    visitCtx = ctx;
+    reset();
+    root.classList.add('is-drawn', 'is-labelled');
+    hold();
+    empty.style.visibility = 'hidden';
+    awaiting = ctx;
+  };
+  window.GapGather = {
+    time: GATHER,
+    expect: (ctx) => { expected = ctx; },
+    // The ring has begun its flight back, lasting `flight` seconds.
+    emerge: (ctx, flight) => {
+      if (awaiting !== ctx || !ctx.isCurrent()) return;
+      const at = (s, fn) => timers.push(window.deckLater(() => { if (awaiting === ctx && ctx.isTransitionCurrent()) fn(); }, Math.max(0, s) * 1000, ctx));
+      at(flight - 0.45, () => { root.classList.remove('is-gathered'); empty.style.visibility = ''; });
+      // The tools wait, hidden under the ring, and come out over the last of its flight.
+      tools.forEach((el) => el.classList.add('is-in'));
+      gather(true, Math.max(0, flight - GATHER));
+      const done = gathered.length ? Promise.all(gathered.map((a) => a.finished)) : Promise.resolve();
+      done.then(() => {
+        if (awaiting !== ctx) return;
+        ungather();
+        entryFinish?.(ctx, 'completed');
+      }, () => {});
+    },
+  };
+  let expected = null;
+
   // ---- Going back ----------------------------------------------------------
   // A step back to slide 2: the arrival from the field, played backwards. Each logo melts back into its orb, which
   // flies back along a curve to one of the field's dots, shrinking and taking on its colour as it goes; the dust
@@ -389,10 +463,13 @@
     return promise;
   };
   const sceneEnter = (ctx) => {
-    const promise = completion(ctx, (fn) => { entryFinish = fn; }, () => { retireForward(); if (waiting) { waiting.disconnect(); waiting = null; } });
+    const promise = completion(ctx, (fn) => { entryFinish = fn; }, () => { retireForward(); if (awaiting === ctx) ungather(); if (waiting) { waiting.disconnect(); waiting = null; } });
     visitCtx = ctx;
+    const ringBack = expected === ctx; // core.js is about to fly the ring back here
+    expected = null;
     if (backs.length || backRaf || departRaf) endDepart();
-    if (ctx.rest || ctx.direct) enter(0, ctx);
+    if (ringBack && ctx.back && !motionOff()) await_(ctx); // a step back lands at rest, but out of the ring
+    else if (ctx.rest || ctx.direct) enter(0, ctx);
     else if (ctx.from === 1) arrive(ctx);
     else begin(ctx);
     return promise;
@@ -409,9 +486,11 @@
       return promise;
     }
     retireForward();
+    // On to slide 4: the tools gather under the ring as it is lifted off.
+    if (ctx.to === 3 && !ctx.direct && !ctx.rest && !motionOff()) { hold(); gather(); }
     // A direct navigation can settle before this departure tail has elapsed.
     // Keep the cleanup visit-owned, just like the motion it retires.
-    timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) reset(); }, 700, ctx));
+    timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) reset(ctx.to === 3); }, 700, ctx));
   };
   // On a first load the Mycelial mark plays first (dot-transitions.js): the tools bloom once it has landed.
   const html = document.documentElement;
@@ -437,6 +516,7 @@
     retireForward(Boolean(backs.length || backRaf || departRaf));
     timers.forEach(window.deckCancelLater); timers = [];
     if (ctx.to !== 2) { reset(); return true; }
+    ungather();
     // Flight endpoints were measured in the old viewport. Finish at the new
     // chart instead of leaving old pixel coordinates suspended over it.
     show(false);
