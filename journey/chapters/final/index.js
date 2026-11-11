@@ -888,6 +888,7 @@ export function createFinal(sceneApi) {
   let retireCost = 0;               // bandSTo(here) — the light THIS retire carries
   let retireEff = 1;                // monotone fade, latched while retiring
   let floorHold = null;             // monotone restore, latched while retiring
+  let depArm = null;                // reach armed for the wrap departure's relight
   let lastReach = 1;                // the floor dim this chapter last RENDERED
 
   /* ---- §43. THE CEREMONIAL LAP'S ARRIVAL RIDES THE TICKET, NOT THE SWING
@@ -1032,6 +1033,7 @@ export function createFinal(sceneApi) {
     pointThreshold: 0.12,
   };
   const heroGroundDim = createHeroGroundDimClaim(sceneApi, groundDimOptions);
+  const MOTE_POP_REST = groundDimOptions.pointThreshold;
   // The field retires before the camera reaches Equip. Keep its borrowed
   // ground dim until that camera flight is over, otherwise restoring the hero
   // web lights a new carpet behind the specimen halfway through the move.
@@ -1055,8 +1057,9 @@ export function createFinal(sceneApi) {
       if (o.isPoints && o !== sceneApi.groups.spores) addDim(o, 0.0);
     }
   }
-  function applyHeroDim(reach) {
+  function applyHeroDim(reach, popAt = MOTE_POP_REST) {
     heroDimActive = reach > 0.001;
+    heroGroundDim.setPointThreshold(popAt);
     heroGroundDim.set(reach);
     if (sceneApi.setGroundNavPocket) {
       const dpr = window.devicePixelRatio || 1;
@@ -1076,7 +1079,7 @@ export function createFinal(sceneApi) {
       const f = 1 - reach * (1 - d.keep);
       if (d.u) d.u.value = d.base * f;
       else d.m.opacity = d.base * f;
-      d.o.visible = d.vis && (d.o.isPoints ? f > 0.12 : true);
+      d.o.visible = d.vis && (d.o.isPoints ? f > popAt : true);
     }
   }
   /** THE FLOOR'S RESTORATION HAS TO BE FITTED TOO (the epilogue race's
@@ -1132,7 +1135,35 @@ export function createFinal(sceneApi) {
     if (!(retireCost > 0) || retireCost >= BAND_S) return u;   // full band: bit-for-bit
     return bandInv(bandSTo(u) * (BAND_S / retireCost));
   }
+  /* THE DEPARTING LAP'S WEB/MOTE RELIGHT IS A WINDOW ON THE FLIGHT PHASE
+     (M3). Retiring on this chapter's own clock relit the Intro ground web in
+     0.8 s mid-lap, with the colony still half lit and the camera over the far
+     side — the "weird lighting change" on Purpose -> Intro. Forward, the same
+     web dim is hidden under the colony's kindle; backward nothing hides it.
+     So on a fitted wrap departure the floor keeps its armed dim until the
+     camera is past RELIGHT_FROM of the lap, then blooms home to land with it
+     (>= 1.8 s for 10-90%, after the colony has gone dark). The camera's phase
+     is a smootherstep of lap time; inverting it gives a time-linear
+     coordinate. Motes fade in from zero (no visibility flip) while it runs.
+     Off a wrap departure (no published phase) this is null and nothing
+     changes, so every rest and every other move is untouched. */
+  const RELIGHT_FROM = 0.52;
+  const MOTE_POP_FLIGHT = 0.004;
+  function relightOf() {
+    if (!(blending && retiring && retireScale < 1) || depArm === null) return null;
+    const fr = sceneApi.frame && sceneApi.frame();
+    const ph = fr && fr.transitionPhase;
+    if (!ph || ph.kind !== 'wrap' || !(ph.e >= 0)) return null;
+    let lo = 0, hi = 1;   // invert s(f) = f^3 (f (6f - 15) + 10)
+    for (let i = 0; i < 24; i++) {
+      const m = (lo + hi) / 2;
+      if (m * m * m * (m * (m * 6 - 15) + 10) < ph.e) lo = m; else hi = m;
+    }
+    const x = Math.max(0, Math.min(1, (lo - RELIGHT_FROM) / (1 - RELIGHT_FROM)));
+    return x * x * (3 - 2 * x);
+  }
   function restoreHeroDim() {
+    heroGroundDim.setPointThreshold(MOTE_POP_REST);
     heroGroundDim.clear();
     if (sceneApi.setGroundNavPocket) sceneApi.setGroundNavPocket();
     for (const d of heroDim) {
@@ -1387,7 +1418,15 @@ export function createFinal(sceneApi) {
         lagging = false;
         spreadTail = false;
       }
-      if (heroDimActive) restoreHeroDim();   // byte-exact hand-back
+      // A wrap departure's floor outlives the chapter's own close: the web
+      // relight rides the flight phase (relightOf), not this retire clock.
+      const tail = relightOf();
+      const tailReach = tail === null ? 0 : depArm * (1 - tail);
+      if (tailReach > 0.001) {
+        lastReach = tailReach;
+        applyHeroDim(tailReach, MOTE_POP_FLIGHT);
+        applyShedFog(tailReach);
+      } else if (heroDimActive) restoreHeroDim();   // byte-exact hand-back
       if (wasVisible) {
         // One last INACTIVE tick as the chapter goes dark, so the ring drops
         // any poke still ringing and the clone bodies retire their opacities
@@ -1480,12 +1519,14 @@ export function createFinal(sceneApi) {
     const reachT = Math.max(0, Math.min(1, (floorPullOf(pull) - 0.25) / 0.45));
     let reach = eff * reachT * reachT * (3 - 2 * reachT);
     if (retiring && retireScale < 1) {
-      if (floorHold === null) floorHold = lastReach;
+      if (floorHold === null) { floorHold = lastReach; if (depArm === null) depArm = lastReach; }
       if (reach < floorHold) floorHold = reach;
       reach = floorHold;
     }
+    const relight = relightOf();
+    if (relight !== null) reach = depArm * (1 - relight);
     lastReach = reach;
-    applyHeroDim(reach);
+    applyHeroDim(reach, relight !== null ? MOTE_POP_FLIGHT : MOTE_POP_REST);
     applyShedFog(reach);
     uniforms.uAmount.value = eff;
     bedUniforms.uAmount.value = bed;
@@ -1779,7 +1820,7 @@ export function createFinal(sceneApi) {
         spreadTail = lapArrive && lagging;
         lapArrive = false; lapHoldS = 0; arriveEff = 0;
         retiring = false; retireScale = 1; retireCost = 0; retireEff = 1;
-        floorHold = null; bedSpread = false;
+        floorHold = null; depArm = null; bedSpread = false;
         spreadSpan = PULL_MAX;
         return;
       }
