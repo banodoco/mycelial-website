@@ -97,9 +97,10 @@
   const rnd = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
   let machines = [], feeds = [], lens = null, lensLines = [], arcs = [], rays = [], boundary = null, cell = 3;
 
+  // A label hangs from its anchor by a share of its own box (a percentage, so a web font arriving late, and
+  // changing the text's width, moves the label's edges and never its centre).
   const put = (el, x, y, alignX, alignY) => {
-    const w = el.offsetWidth, h = el.offsetHeight;
-    el.style.transform = `translate(${(x - w * alignX).toFixed(1)}px, ${(y - h * alignY).toFixed(1)}px)`;
+    el.style.transform = `translate(calc(${x.toFixed(1)}px - ${alignX * 100}%), calc(${y.toFixed(1)}px - ${alignY * 100}%))`;
   };
   const layout = () => {
     const b = root.getBoundingClientRect();
@@ -163,7 +164,8 @@
     const lensL = { x: lens.c.x - lens.w / 2, y: lens.c.y }, lensR = portraitFlow ? { x: lens.c.x, y: lens.c.y - lens.h / 2 } : { x: lens.c.x + lens.w / 2, y: lens.c.y };
     // Its three strands, each side traced from the middle out (built once here, not every frame).
     lensLines = [[0, 1.2, 0.95], [6 * k, 0.9, 0.55], [-4 * k, 0.8, 0.35]].flatMap(([inset, w, a]) => [-1, 1].map((side) => ({ h: line(lensPts(side, 40, inset)), w, a })));
-    machines = [[213, 277, 'term'], [213, 424, 'gpu'], [213, 570, 'graph']].map(([x, y, kind], i) => ({ ...P(x, y), r: 52 * k, kind, i }));
+    // The three sit 146.5 either side of the lens's axis (reference y 415) when upright, so the GPU is directly under it.
+    machines = [[213, 277, 'term'], [213, 424, 'gpu'], [213, 570, 'graph']].map(([x, y, kind], i) => ({ ...P(x, portraitFlow ? 415 + (i - 1) * 146.5 : y), r: 52 * k, kind, i }));
     feeds = machines.map((m, i) => {
       const end = portraitFlow
         ? { x: lens.c.x + (i - 1) * 0.22 * lens.w, y: lens.c.y + lens.h / 2 + 2 * k }
@@ -188,7 +190,7 @@
       for (let row = 0; row < rows; row++) {
         const rr = r + (rows > 1 ? (row - 1) * 11 : 0), m = rows > 1 ? Math.round(n * (row === 1 ? 1.1 : 0.9)) : n;
         for (let j = 0; j < m; j++) {
-          const a = -span + (2 * span * (j + (rows > 1 ? rnd() * 0.6 : 0))) / (m - 1);
+          const a = -span + (2 * span * clamp(j + (rows > 1 ? rnd() * 0.6 - (portraitFlow ? 0.3 : 0) : 0), 0, m - 1)) / (m - 1); // upright, the scatter straddles each dot's place, so the band's two ends match
           const jit = rows > 1 ? (rnd() - 0.5) * 6 : 0;
           dots.push({ ...P(u + Math.cos(a) * (rr + jit), 415 + Math.sin(a) * (rr + jit)), a: a / span, r: rows > 1 ? 1.1 + rnd() * 0.8 : 1.7 + rnd() * 0.4, bright: rnd() < (rows > 1 ? 0.3 : 0.15) });
         }
