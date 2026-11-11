@@ -14,6 +14,10 @@ export const MIN_NAVIGATION_SECONDS = 2.6;
 export const NAVIGATION_SPEED = Object.freeze({
   'final|mission': 0.75,
   'connect|equip': 0.70,
+  // The one long continuous arc round the specimen: 1.2 s authored / 0.36 =
+  // 3.33 s on the quintic keeps peak speed ~13.5 u/s (as the old 2.67 s
+  // cubic had) with no launch kick. Symmetric on the way back.
+  'inspire|mission': 0.36,
 });
 
 export const NAVIGATION_DIRECTION_SPEED = Object.freeze({
