@@ -651,8 +651,12 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
     transition: --thread-hover .2s ease;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .j-manifesto.is-open .j-manifesto-line.shown .manifesto-phrase-thread { transition: none; }
+/* Reduced motion keeps the brighten (a state, not movement) but makes it
+   instant. This must repeat the :hover selector: the plain rule above is less
+   specific than the hover rule and used to lose to its 0.2 s transition. */
+@media (hover: hover) and (prefers-reduced-motion: reduce) {
+  .j-manifesto.is-open .j-manifesto-line.shown .manifesto-phrase-thread,
+  .j-manifesto.is-open .j-manifesto-line.shown .manifesto-phrase-thread:hover { transition: none; }
 }
 @keyframes manifesto-thread {
   0% { background-size: 0% 1px; --thread-strength: 0; }
