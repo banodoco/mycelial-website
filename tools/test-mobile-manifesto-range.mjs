@@ -18,6 +18,9 @@ for (let i = 1; i < counts.length; i++) {
 assert.deepEqual(reading.reveal, lineSecondsFor(counts), 'original text reveal beats are unchanged');
 const inkKeys = readFileSync(new URL('../journey/site.css', import.meta.url), 'utf8').split('@keyframes j-manifesto-ink {')[1];
 assert.match(inkKeys, new RegExp(`${Math.round(WORD_VISIBLE_FRACTION * 100)}%\\s*\\{\\s*opacity:\\s*1;`), 'readability clock follows the actual CSS opacity key');
+// the reveal actually painted (mycelial.css replaces the keyframes by name)
+const liveInk = readFileSync(new URL('../mycelial.css', import.meta.url), 'utf8').split('@keyframes j-manifesto-ink-light {')[1];
+assert.match(liveInk, new RegExp(`${Math.round(WORD_VISIBLE_FRACTION * 100)}%\\s*\\{\\s*opacity:\\s*1;`), 'readability clock follows the live CSS opacity key');
 assert.equal(reading.seconds, reading.reveal.at(-1) + beats.at(-1) * WORD_STAGGER_SECONDS + WORD_REVEAL_SECONDS,
   'mobile camera endpoint is the last complete word fade');
 const end = manifestoPose(from, CAMERA_SECONDS, aspect);

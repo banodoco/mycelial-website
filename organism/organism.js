@@ -317,6 +317,8 @@ class TemporalAccumulatePass extends Pass {
   }
   dispose() { this.history.dispose(); this.quad.dispose(); }
 }
+// below this history share the pass is skipped outright (taaFrame)
+const TAA_MIN_WEIGHT = 0.02;
 const taaPass = new TemporalAccumulatePass(_dbSize.width, _dbSize.height);
 // ?notaa=1 disables the accumulation, for A/B measuring it
 // (parsed once, in ../flags.js — THE flag registry)
@@ -368,11 +370,22 @@ function taaFrame() {
   // ~2.5 frames of history: the lightest touch that still holds the moiré
   // down, keeping the sway's motion trail well under a pixel
   taaPass.weight = 0.6 * Math.exp(-motion * 150);
+  // NO PASS WHILE IT CANNOT CONTRIBUTE (2026-11 — Manifesto stutter, esp.
+  // phones). Through a flight the weight sits near 0, yet the pass still ran
+  // its 10-tap blend and history copy at full resolution every frame. Below
+  // TAA_MIN_WEIGHT it now stands aside (the composer hands the frame straight
+  // to the OutputPass); its history is then stale, so the first frame back
+  // starts a fresh average (validHistory false: blend weight 0, history
+  // seeded from this frame) — the same restart a resize or a lost context
+  // takes. Any rest (frozen ?capture= included) has weight 0.6: unchanged.
+  const taaLive = !NOTAA && taaPass.weight >= TAA_MIN_WEIGHT;
+  if (taaLive && !taaPass.enabled) taaPass.validHistory = false;
+  taaPass.enabled = taaLive;
   // Jitter only as much as history can resolve. During the aerial orbit,
   // motion rejects almost all history; a full Halton offset then becomes
   // visible frame-to-frame shaking of the fine mushroom outlines. Restore
   // the sampling spread smoothly as the camera settles, with no threshold.
-  const jitterGain = taaPass.enabled ? taaPass.weight / 0.6 : 0;
+  const jitterGain = taaLive ? taaPass.weight / 0.6 : 0;
   camera.projectionMatrix.elements[8] += j[0] * 1.6 * jitterGain / db.width;
   camera.projectionMatrix.elements[9] += j[1] * 1.6 * jitterGain / db.height;
   _taaPrevPos.copy(camera.position);

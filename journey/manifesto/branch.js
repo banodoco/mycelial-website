@@ -686,7 +686,8 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     document.body.classList.add('j-manifesto-open');
     root.hidden = false;
     root.classList.add('is-open');
-    fitDesktop(true);
+    // keyed on its box and fonts: a prewarmed or repeated press reads once
+    fitDesktop();
     liftKey = '';
     liftColumn();
     measureReadingPadding();
@@ -885,6 +886,30 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     }
     apply(u, frameSeconds);
   }
+  /** Prepare the press ahead of it, while Purpose rests: the colony's
+   *  flight plan and GPU buffers for the pose on screen now, then the
+   *  desktop text fit. Each call does about `budgetMs` of work; it returns
+   *  true once nothing is left. Safe to call repeatedly and to abandon:
+   *  begin() finishes whatever is missing, exactly as without it. */
+  let fitWarmKey = '';
+  function prewarm({ budgetMs = 8 } = {}) {
+    if (active || reduceMotion.matches) return true;
+    const from = capture();
+    from.fieldCenter = mobileFieldCenter(field?.seats, from.target);
+    // colony.js publishes itself under this registered symbol (AERIAL_COLONY)
+    const colony = globalThis[Symbol.for('mycelial.manifesto.aerialColony')];
+    if (colony && !colony.prewarm(from, camera.aspect, budgetMs)) return false;
+    const fitKey = `${window.innerWidth}x${window.innerHeight}`;
+    if (window.innerWidth > 720 && fitWarmKey !== fitKey) {
+      fitWarmKey = fitKey;
+      // measured with the open page's reserve but never painted: shown and
+      // hidden again inside this one task (see .is-measuring, mycelial.css)
+      root.classList.add('is-measuring');
+      root.hidden = false;
+      try { fitDesktop(); } finally { root.hidden = true; root.classList.remove('is-measuring'); }
+    }
+    return true;
+  }
   function handleKey(event) {
     if (!active || event.key !== 'Escape') return;
     event.preventDefault();
@@ -898,8 +923,9 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
   }
   window.addEventListener('keydown', handleKey);
 
-  return {
+  const api = {
     begin,
+    prewarm,
     returnTo,
     retarget,
     update,
@@ -957,6 +983,15 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       window.removeEventListener('keydown', handleKey);
       root.remove();
       if (active) exit();
+      if (latestBranch === api) latestBranch = null;
     },
   };
+  latestBranch = api;
+  return api;
+}
+
+let latestBranch = null;
+/** The journey's idle hook while Purpose is at rest (see prewarm above). */
+export function prewarmManifesto(options) {
+  return latestBranch ? latestBranch.prewarm(options) : true;
 }
