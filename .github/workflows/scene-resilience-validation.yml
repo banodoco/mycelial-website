@@ -2,6 +2,9 @@ name: Validate scene resilience
 on:
   push:
     branches: [fix/scene-resilience-20261111]
+concurrency:
+  group: scene-resilience-validation
+  cancel-in-progress: true
 permissions:
   contents: write
 jobs:
@@ -24,6 +27,7 @@ jobs:
           gzip -dc /tmp/scene.patch.gz > evidence/candidate.patch
           git -C /tmp/scene-candidate apply --check "$GITHUB_WORKSPACE/evidence/candidate.patch"
           git -C /tmp/scene-candidate apply "$GITHUB_WORKSPACE/evidence/candidate.patch"
+          python .scene-validation/corrections.py /tmp/scene-candidate
           cd /tmp/scene-candidate
           node --check mycelial/stack.js
           node --check mycelial/flywheel.js
