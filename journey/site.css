@@ -681,7 +681,7 @@ body:not(.free-cam) #stage canvas:active { cursor: default; }
   }
   /* The two thesis lines bookend the panel's statement, so on desktop they
      set the panel's largest type (the rows and headings are much smaller). */
-  .j-menu-thesis { margin: 0.3rem 0 0.2rem; font-size: 1.65rem; line-height: 1.18; color: var(--ink); }
+  .j-menu-thesis { margin: 0.3rem 0 0.2rem; font-size: 1.65rem; line-height: 1.18; color: var(--ink); text-wrap: balance; }
   .j-menu-item:is(:hover, :focus-visible) { color: var(--gold-bright); background: rgba(217, 164, 65, 0.05); }
   .j-menu-item:is(:hover, :focus-visible) .j-menu-mark { color: var(--gold-bright); }
   .j-menu-item[aria-current="true"] { color: var(--gold-bright); }
