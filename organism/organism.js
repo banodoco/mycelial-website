@@ -13,7 +13,8 @@ import { createAnimationLifecycle } from './animation.js';
 import { createAdaptiveResolution } from './performance.js';
 import { DRAW_GLSL, PULSE_GLSL } from './shaders.js';
 import { createRendererSetup, createViewportSync } from './renderer.js';
-import { NOTAA, TAA_CLASSIC, NOFADE, DBG, PIN_PR } from '../flags.js';
+import { NOTAA, TAA_CLASSIC, NOFADE, DBG, PIN_PR, CAPTURE } from '../flags.js';
+import { createRestCadence } from './rest-cadence.js';
 
 // =====================================================================
 // TABLE OF CONTENTS (order as they appear below; M2 split the marked
@@ -2410,6 +2411,34 @@ if (PIN_PR === null)
     // at-rest predicate the journey's warm queue uses (journey.js isAtRest).
     canStep: () => !(globalThis.journey && globalThis.journey.atRest === false),
   }));
+
+/* REST CADENCE (2026-11-11 — mobile stability; ./rest-cadence.js has the
+   why). On a touch device the composer draws every other frame after a rest
+   with no input, and holds its frame while the menu panel covers the scene;
+   any touch, key or wheel restores full rate on that frame. Wired here,
+   beside the governor, for the same reason the governor's canStep is: this
+   file owns the frame loop, and the at-rest predicate is the journey's
+   published one (journey.js isAtRest). The cover test names the journey's
+   menu panel (.j-menu, journey/site.css) — the one overlay that is opaque
+   and nearly full-width on a phone. PAGE-lifetime: capture-phase, passive
+   listeners, never taken back off. Never under ?capture. */
+if (!CAPTURE) {
+  const coarseQuery = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : null;
+  const cadence = createRestCadence({
+    now: () => performance.now(),
+    coarse: () => !!(coarseQuery && coarseQuery.matches),
+    atRest: () => !!(globalThis.journey && globalThis.journey.atRest === true),
+    covered: () => {
+      const menu = document.querySelector('.j-menu.open');
+      return !!menu && menu.getBoundingClientRect().width >= innerWidth * 0.85;
+    },
+    frozen: () => animationLifecycle.isFrozen(),
+  });
+  for (const type of ['pointerdown', 'pointermove', 'touchstart', 'wheel', 'keydown']) {
+    addEventListener(type, cadence.input, { capture: true, passive: true });
+  }
+  animationLifecycle.setCadenceSource(cadence.frame);
+}
 
 /** Input policy (M5 — replaces the page's DOM event shield, which was the
  *  same reach-in class as buffer overwrites, aimed at input). Two modes:
