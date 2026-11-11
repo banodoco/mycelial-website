@@ -775,7 +775,7 @@ ${seatRetirementGLSL}
    *  next frame), scissored to one pixel, with every instance count and
    *  draw range at zero — the bindings upload, nothing is drawn. */
   const WARM_LAYER = 31;
-  let warmCamera = null, warmed = false;
+  let warmCamera = null, warmed = false, warmReport = null;
   group.traverse(o => { if (o !== group) o.layers.enable(WARM_LAYER); });
   function warmDraw() {
     const r = sceneApi.renderer, scene = sceneApi.scene, camera = sceneApi.camera;
@@ -784,14 +784,15 @@ ${seatRetirementGLSL}
     warmCamera.copy(camera);
     warmCamera.layers.set(WARM_LAYER);
     const objects = group.children;
-    const saved = objects.map(o => [o.visible, o.geometry.instanceCount, o.geometry.drawRange.start, o.geometry.drawRange.count]);
+    const saved = objects.map(o => [o.visible, o.geometry.instanceCount, o.geometry.drawRange.start, o.geometry.drawRange.count, o.frustumCulled]);
     const groupVisible = group.visible;
     const previous = r.getRenderTarget(), scissorTest = r.getScissorTest(), autoClear = r.autoClear;
     const scissor = r.getScissor(new THREE.Vector4());
     try {
       group.visible = true;
       for (const o of objects) {
-        o.visible = true;
+        // every buffer, whether or not this view frames it
+        o.visible = true; o.frustumCulled = false;
         if (o.geometry.isInstancedBufferGeometry) o.geometry.instanceCount = 0;
         else o.geometry.setDrawRange(0, 0);
       }
@@ -799,15 +800,17 @@ ${seatRetirementGLSL}
       r.autoClear = false;
       r.setScissorTest(true);
       r.setScissor(0, 0, 1, 1);
+      const before = r.info?.memory?.geometries;
       r.render(scene, warmCamera);
+      warmReport = { geometries: before === undefined ? null : r.info.memory.geometries - before, at: now() };
       return true;
     } finally {
       r.setScissor(scissor); r.setScissorTest(scissorTest); r.autoClear = autoClear;
       r.setRenderTarget(previous);
       group.visible = groupVisible;
       objects.forEach((o, i) => {
-        const [visible, instances, start, count] = saved[i];
-        o.visible = visible;
+        const [visible, instances, start, count, culled] = saved[i];
+        o.visible = visible; o.frustumCulled = culled;
         if (o.geometry.isInstancedBufferGeometry) o.geometry.instanceCount = instances;
         else o.geometry.setDrawRange(start, count);
       });
@@ -891,6 +894,8 @@ ${seatRetirementGLSL}
     /** QA: how many bodies each tier holds on the prepared flight. */
     get lod() { return { near: tiers[0].starts.length, far: tiers[1].starts.length }; },
     get drawn() { return { near: tiers[0].drawn, far: tiers[1].drawn }; },
+    /** QA: the last warm draw (geometries newly seen by the renderer). */
+    get warm() { return { prepared: prepared?.key || null, warmed, report: warmReport }; },
     setSeatLight(v, retreat = false) {
       const next = Math.max(0, Math.min(1, v));
       if (retreat && !seatRetiring.value) seatRetirementStart.value = Math.max(next, seatLight.value);
