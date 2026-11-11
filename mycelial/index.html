@@ -501,10 +501,10 @@
   @keyframes gp-rise { 0% { opacity: 0; transform: translate(0, 0) scale(.7); } 20% { opacity: .9; }
     100% { opacity: 0; transform: translate(var(--dx), -70px) scale(1.15); } }
   @keyframes gp-breathe { 50% { box-shadow: 0 0 60px #e0ab5e36, inset 0 0 26px #e0ab5e22; } }
-  /* The tools running off to slide 4 and back (gap.js): the chart's layer stays up through the slide's own fade
-     while they run, and everything but the tools and the ring fades. */
-  .slide.gap-host > .split > .vis.gp-held { opacity: 1; transition: none; }
-  .gp.is-bare > :not(.gp-dot):not(.gp-empty) { opacity: 0; transition: opacity .45s ease; }
+  /* The tools running off to slide 4 and back (gap.js): copies of them run on a layer of their own over both
+     slides, while the chart's own discs wait hidden. */
+  .gp.is-away .gp-dot { visibility: hidden; }
+  .gp-run { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
   .gp-flight { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
   @media (prefers-reduced-motion: reduce) { .gp-dot::before, .gp-empty i { animation: none; } .gp-dot, .gp-dot i { transition: none; } }
   html.deck-overview-open .slide, html.deck-overview-open .slide *, html.deck-overview-open .slide *::before, html.deck-overview-open .slide *::after,
@@ -2168,7 +2168,7 @@
     }
     for (const animation of document.getAnimations()) {
       const target = animation.effect?.target;
-      if (!(target instanceof Element) || !target.closest('.slide, .dt-dot, .dt-net, .dt-mark, .dt-name, .ac-seed')) continue;
+      if (!(target instanceof Element) || !target.closest('.slide, .dt-dot, .dt-net, .dt-mark, .dt-name, .ac-seed, .gp-run')) continue;
       if (!pacedAnimations.has(animation)) pacedAnimations.set(animation, animation.playbackRate);
       animation.playbackRate = pacedAnimations.get(animation) * pace;
     }
