@@ -298,12 +298,12 @@
   };
 
   // ---- Leaving for slide 4, and coming back ---------------------------------
-  // On to slide 4 the tools scatter like startled mice, rippling out from the empty ring: each flinches, then darts
-  // off a short way towards the bottom left, away from the ring, zigzagging and gathering speed as it goes, and only
-  // at the end of its run shrinks and is gone. The axes and labels fade, and the ring is left to lift off alone and
+  // On to slide 4 the tools scatter like startled mice, rippling out from the empty ring: each freezes for a beat,
+  // then dashes off towards the bottom left, away from the ring, gathering speed and veering once or twice as it
+  // goes, and towards the end of its run shrinks and is gone. The axes and labels fade, and the ring is left to lift off alone and
   // become the core's bright eye (core.js). Back from slide 4 it is the same run played backwards, at a slower pace:
   // the ring flies home to its corner while the tools zigzag back in from the bottom left, slowing as they come, and
-  // settle in their places with a last small start as it lands; the axes and labels fade in round them.
+  // come to rest in their places as it lands; the axes and labels fade in round them.
   const vis = root.parentElement;
   const RUN = 0.6; // seconds from the first tool flinching to the last gone (the chart is put away at 0.7 s)
   const HOME = 0.72; // seconds, coming back, from the first setting off home to the last settled
@@ -315,17 +315,16 @@
     vis?.classList.remove('gp-held');
     if (!keepBare) { root.classList.remove('is-bare'); empty.style.visibility = ''; }
   };
-  // Each tool's run, in its own time t (0 → 1): a flinch back towards the ring with a small swell, then off towards
-  // the bottom left (leaning away from the ring), accelerating, darting from side to side about its heading; it stays
-  // whole for most of the run and shrinks and fades over its last stretch. Coming back plays the same frames backwards.
-  const tri = (x) => (2 / Math.PI) * Math.asin(Math.sin(2 * Math.PI * x)); // a zigzag between -1 and 1, one cycle per unit
-  const FLINCH = 0.16; // of each run
+  // Each tool's run, in its own time t (0 → 1): a moment's stillness, then off towards the bottom left (leaning away
+  // from the ring), accelerating, weaving gently once or twice about its heading; it stays whole for most of the run
+  // and shrinks and fades over its last stretch. Coming back plays the same frames backwards.
+  const FREEZE = 0.08; // of each run
   const scurry = (back = false) => {
     runs.forEach((a) => a.cancel());
     runs = [];
     const h = empty.querySelector('i').getBoundingClientRect(), box = root.getBoundingClientRect();
     const hx = h.left + h.width / 2, hy = h.top + h.height / 2;
-    const reach = Math.max(36, Math.min(box.width, box.height) * 0.16);
+    const reach = Math.max(56, Math.min(box.width, box.height) * 0.26);
     const mice = tools.map((el) => {
       const r = el.querySelector('i').getBoundingClientRect();
       if (!r.width || (!back && !el.classList.contains('is-in'))) return null;
@@ -336,8 +335,8 @@
     const far = Math.max(1, ...mice.map((m) => (m ? m.d : 0)));
     mice.forEach((m) => {
       if (!m) return;
-      m.delay = 0.18 * (m.d / far) + 0.04 * rnd(); // rippling out from the ring
-      m.dur = 0.34 + 0.08 * rnd();
+      m.delay = 0.18 * (m.d / far) + 0.02 * rnd(); // rippling out from the ring
+      m.dur = 0.35 + 0.05 * rnd();
     });
     const end = Math.max(0.01, ...mice.map((m) => (m ? m.delay + m.dur : 0)));
     const slow = (back ? HOME : RUN) / end;
@@ -345,16 +344,16 @@
       if (!m) return;
       let dx = -0.62 + 0.38 * m.ax, dy = 0.62 + 0.38 * m.ay;
       const n = Math.hypot(dx, dy) || 1; dx /= n; dy /= n;
-      const dist = reach * (0.8 + 0.4 * rnd()), amp = Math.max(6, dist * (0.16 + 0.06 * rnd())), turns = 1.1 + 0.4 * rnd(), ph = rnd();
+      // A weave of one bend or a gentle S (1 to 1.6 half-waves), to one side or the other.
+      const dist = reach * (0.88 + 0.24 * rnd()), amp = dist * (0.08 + 0.03 * rnd()) * (rnd() < 0.5 ? -1 : 1), bends = 1 + 0.6 * rnd();
       const frames = [];
-      for (let i = 0; i <= 24; i++) {
-        const t = i / 24;
-        const f = clamp(t / FLINCH), q = clamp((t - FLINCH) / (1 - FLINCH)); // the flinch, then the run
-        const a = t < FLINCH ? -0.06 * Math.sin(Math.PI * f) : Math.pow(q, 1.7); // how far out
-        const w = amp * (tri(turns * q + ph) - tri(ph)) * Math.min(1, q * 4); // the darts, from its own phase
+      for (let i = 0; i <= 20; i++) {
+        const t = i / 20, q = clamp((t - FREEZE) / (1 - FREEZE)); // the beat's stillness, then the run
+        const a = Math.pow(q, 1.7); // how far out
+        const w = amp * Math.sin(Math.PI * bends * q) * smooth(clamp(q * 2.5)); // the weave, eased in
         const px = dx * dist * a - dy * w, py = dy * dist * a + dx * w;
-        const sc = (1 + 0.07 * Math.sin(Math.PI * f)) * (1 - 0.5 * smooth(clamp((t - 0.7) / 0.3)));
-        frames.push({ transform: `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px) ${m.base} scale(${sc.toFixed(3)})`, opacity: (1 - smooth(clamp((t - 0.78) / 0.22))).toFixed(3) });
+        const sc = 1 - 0.5 * smooth(clamp((t - 0.58) / 0.42));
+        frames.push({ transform: `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px) ${m.base} scale(${sc.toFixed(3)})`, opacity: (1 - smooth(clamp((t - 0.62) / 0.38))).toFixed(3) });
       }
       if (back) frames.reverse();
       const delay = (back ? end - m.delay - m.dur : m.delay) * slow;
