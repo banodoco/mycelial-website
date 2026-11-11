@@ -759,7 +759,8 @@
     ring.style.visibility = 'hidden';
     const steps = 24;
     // The flight's first stretch is the gathering: the ring holds, swelling a little as the tools slip under it.
-    const H = clamp((window.GapGather?.time ?? 0) / FLIGHT, 0, 0.5);
+    // Coming back the ring is down for longer at the end, while they come out again.
+    const H = clamp(((back ? window.GapGather?.landed : null) ?? window.GapGather?.time ?? 0) / FLIGHT, 0, 0.5);
     const of = (o) => H + (1 - H) * o; // an offset within the flight proper
     // Keep a positive playback rate so the deck's pace controller cannot
     // overwrite a pending reverse() rate before the first animation frame.

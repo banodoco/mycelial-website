@@ -300,11 +300,14 @@
   // ---- Into the empty corner, and out of it ----------------------------------
   // On to slide 4: every tool rushes in under the empty ring, shrinking and fading as it slips beneath it, while
   // the axes and labels fade; then the ring lifts off alone and becomes the core's bright eye (core.js). Back from
-  // slide 4 it is the same picture played backwards: the eye flies back down as the ring, and once it has landed
-  // the tools spill out from under it to their places as the axes and labels fade in round them.
+  // slide 4 it is the same picture played backwards, the tools coming out at half the speed they went in: the eye
+  // flies back down as the ring, and as it lands the tools spill out from under it to their places, the axes and
+  // labels fading in round them.
   const vis = root.parentElement;
-  const GATHER = 0.36; // seconds at the start of the ring's flight (the end, coming back) that the tools take
-  const SPREAD = 0.06; // the farthest set off this much sooner, so that they all arrive together
+  const GATHER = 0.36; // seconds at the start of the ring's flight that the tools take to go in
+  const EMERGE = 0.72; // seconds at the end of its flight back that they take to come out
+  const LANDED = 0.55; // of those, how long the ring is already down (the first, faint moments overlap its landing)
+  const SPREAD = 1 / 6; // of either: how much sooner the farthest set off going in (later coming out), so they move as one
   let gathered = [], awaiting = null;
   const ungather = (keepGathered = false) => {
     gathered.forEach((a) => a.cancel());
@@ -328,13 +331,15 @@
     const far = Math.max(1, ...paths.map((p) => (p ? Math.hypot(p.dx, p.dy) : 0)));
     paths.forEach((p) => {
       if (!p) return;
-      const lead = SPREAD * (1 - Math.hypot(p.dx, p.dy) / far);
-      const timing = { duration: (GATHER - SPREAD) * 1000, delay: (wait + (back ? SPREAD - lead : lead)) * 1000, fill: 'both', direction: back ? 'reverse' : 'normal' };
+      const span = back ? EMERGE : GATHER, spread = SPREAD * span;
+      const lead = spread * (1 - Math.hypot(p.dx, p.dy) / far);
+      const timing = { duration: (span - spread) * 1000, delay: (wait + (back ? spread - lead : lead)) * 1000, fill: 'both', direction: back ? 'reverse' : 'normal' };
       gathered.push(p.el.animate([
         { transform: `translate(0px, 0px) ${p.base} scale(1)` },
         { transform: `translate(${p.dx.toFixed(1)}px, ${p.dy.toFixed(1)}px) ${p.base} scale(.3)` },
-      ], { ...timing, easing: 'cubic-bezier(.55, 0, .85, .4)' })); // gathering pace, quickening into the ring
-      gathered.push(p.el.animate([{ opacity: 1 }, { opacity: 1, offset: 0.4 }, { opacity: 0 }], { ...timing, easing: 'ease-in' }));
+      ], { ...timing, easing: back ? 'cubic-bezier(.5, 0, .75, .55)' : 'cubic-bezier(.55, 0, .85, .4)' })); // quickening into the ring; easing out of it
+      gathered.push(p.el.animate(back ? [{ opacity: 1 }, { opacity: 1, offset: 0.65 }, { opacity: 0 }] : [{ opacity: 1 }, { opacity: 1, offset: 0.4 }, { opacity: 0 }],
+        { ...timing, easing: 'ease-in' }));
     });
   };
   // The chart holds its own layer up while the tools are in motion; everything but the tools and the ring fades.
@@ -350,15 +355,16 @@
   };
   window.GapGather = {
     time: GATHER,
+    landed: LANDED, // how long the ring sits at the end of its flight back
     expect: (ctx) => { expected = ctx; },
     // The ring has begun its flight back, lasting `flight` seconds.
     emerge: (ctx, flight) => {
       if (awaiting !== ctx || !ctx.isCurrent()) return;
       const at = (s, fn) => timers.push(window.deckLater(() => { if (awaiting === ctx && ctx.isTransitionCurrent()) fn(); }, Math.max(0, s) * 1000, ctx));
-      at(flight - 0.45, () => { root.classList.remove('is-gathered'); empty.style.visibility = ''; });
+      at(flight - LANDED, () => { root.classList.remove('is-gathered'); empty.style.visibility = ''; });
       // The tools wait, hidden under the ring, and come out over the last of its flight.
       tools.forEach((el) => el.classList.add('is-in'));
-      gather(true, Math.max(0, flight - GATHER));
+      gather(true, Math.max(0, flight - EMERGE));
       const done = gathered.length ? Promise.all(gathered.map((a) => a.finished)) : Promise.resolve();
       done.then(() => {
         if (awaiting !== ctx) return;
