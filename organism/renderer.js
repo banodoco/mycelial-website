@@ -12,7 +12,15 @@ export function createRendererSetup({ panX, container, camY, camZ, targetY, camA
   const az = camAzimuth * Math.PI / 180;
   camera.position.set(0.15 + panX + Math.sin(az) * camZ, camY, Math.cos(az) * camZ);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  /* NO MULTISAMPLED CANVAS (2026-11-11 — mobile stability). The canvas only
+     ever receives the composer's last full-screen pass (OutputPass); every
+     scene draw goes into the composer's own 4x target (organism.js), whose
+     comment already says the canvas's antialiasing is bypassed. A full-screen
+     pass covers every sample of every pixel with one value, so a 4x canvas
+     resolves to exactly the single-sampled picture — and costs a 4x colour
+     plus a 4x depth buffer the size of the screen (~40 MB at a phone's 2x
+     DPR) and a resolve every frame, for nothing. */
+  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   renderer.setSize(innerWidth, innerHeight);
   const pixelRatioPolicy = createPixelRatioPolicy(pinPr);
   renderer.setPixelRatio(pixelRatioPolicy.initial);

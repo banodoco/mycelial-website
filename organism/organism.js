@@ -211,6 +211,32 @@ const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(
 // normalize the composer's logical size before adding any passes; otherwise it
 // multiplies the TAA history by DPR a second time until the first resize.
 composer.setSize(_cssSize.width, _cssSize.height);
+/* ONE MULTISAMPLED TARGET, NOT TWO (2026-11-11 — mobile stability: "the
+   site shuts down after I click around a bunch", iPhone). EffectComposer
+   makes its second ping-pong buffer by clone(), so renderTarget2 inherited
+   samples: 4 and a 4x depth buffer: at a phone's 2x DPR that is ~60 MB of
+   GPU memory (4x RGBA16F colour + 4x depth) for a buffer that only ever
+   receives full-screen passes, where every sample of a pixel is the same
+   value and the resolve returns it unchanged. Only the scene draw needs
+   the samples. It landed in rt2 on alternate frames because this pipeline
+   swaps an odd number of times per frame (TAA, grade, output), so the
+   read buffer flipped every frame; `pinSceneTarget` below swaps back after
+   each composed frame, so the scene always draws into rt1 — which is also
+   what the warm-up and compile helpers that bind `composer.readBuffer`
+   (journey/boot/hero-gpu.js, journey.js warm queue) always assumed. */
+{
+  const single = new THREE.WebGLRenderTarget(_dbSize.width, _dbSize.height,
+    { type: THREE.HalfFloatType, depthBuffer: false });
+  composer.renderTarget2.dispose();
+  composer.renderTarget2 = single;
+  // the constructor starts with readBuffer = rt2; the scene must draw into
+  // the multisampled one from the very first frame (and the boot warm-ups)
+  composer.readBuffer = composer.renderTarget1;
+  composer.writeBuffer = single;
+}
+const pinSceneTarget = () => {
+  if (composer.readBuffer !== composer.renderTarget1) composer.swapBuffers();
+};
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.56, 0.45, 0.1);
 composer.addPass(bloom);
@@ -2141,7 +2167,7 @@ const animationLifecycle = createAnimationLifecycle({
     taaFrame();
     heroSpores.syncCamera(camera, _steadyProj);
   },
-  render: () => composer.render(),
+  render: () => { composer.render(); pinSceneTarget(); },
 });
 const { animators, addAnimator } = animationLifecycle;
 /** Register a per-frame callback `fn(t, dt)`, run in insertion order every
