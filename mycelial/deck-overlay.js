@@ -332,6 +332,7 @@ window.createAstridDemoNotes = function createAstridDemoNotes(root, targets) {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const quiet = () => reduced.matches || window.deckStill?.();
   const CHAT_MARKER_DELAY = 500, EDITOR_MARKER_DELAY = 850;
+  const EDGE_INSET = 21; // a timeline marker's centre sits this far inside its clip's end, so its ring clears the clip's edge
   const definitions = [
     { title: 'Build with extensions', text: 'Your agent uses extensions such as Three.js to turn your request into a scene on the timeline.', x: 0, y: .5 },
     { title: 'Put open models to work', text: 'Your agent works out how to use open models on your machine. Here, Qwen turns the scene into reference images.', x: .5, y: .5 },
@@ -411,7 +412,7 @@ window.createAstridDemoNotes = function createAstridDemoNotes(root, targets) {
       const editorVisible = visible && group.started && group.due && ready;
       if (editorVisible) {
         const box = (index === 1 ? target.parentElement : target).getBoundingClientRect(), point = definitions[index];
-        positionPin(group.editor, box.left + (point.x === .5 ? box.width / 2 : point.x ? box.width - 12 : 12), box.top + (point.y === .5 ? box.height / 2 : point.y ? box.height - 12 : 12), host);
+        positionPin(group.editor, box.left + (point.x === .5 ? box.width / 2 : point.x ? box.width - EDGE_INSET : EDGE_INSET), box.top + (point.y === .5 ? box.height / 2 : point.y ? box.height - 12 : 12), host);
       }
       reveal(group.editor, editorVisible);
     });

@@ -1047,8 +1047,10 @@
   // back from, in ms on screen: when the unwind starts, how long it takes, and (free) whether it
   // may start while the picture is still passing over the words' place.
   const UNWIND_TUNE = {
+    10: { start: 0, length: 670, free: true }, // 11→10: from the start of the wheel's return, as long as before
     9: { start: 0, length: 1200, free: true }, // 10→9: with the wheel's return, not after it
-    8: { start: 1970, length: 700 },           // 9→8: just after the picture above has arrived
+    8: { start: 1470, length: 700 },           // 9→8: as the picture above arrives
+    7: { start: 370, length: 785, free: true }, // 8→7: half a second sooner, as long as before
     4: { start: 680, length: 660, free: true }, // 5→4: half a second sooner, as long as before
   };
   const landings = new WeakMap(); // navigation → { at: deck time its reverse picture lands, length: a tuned unwind (deck ms) }
@@ -1590,8 +1592,8 @@
     const lands = pictureLands(context), tune = lands ? UNWIND_TUNE[context.from] : null;
     const onScreen = window.deckPace?.() || 1; // deck ms per ms on screen, for this turn
     if (lands) landings.set(context, { at: started + lands, length: tune ? tune.length * onScreen : 0 });
-    let early = Math.max(overlap(prev, from, to, context), pictureLead, finalLead,
-      tune ? tune.start * onScreen : lands ? lands - unwindMs() : 0);
+    let early = tune ? tune.start * onScreen
+      : Math.max(overlap(prev, from, to, context), pictureLead, finalLead, lands ? lands - unwindMs() : 0);
     // The original hold also bounds recovery for the longer final reveal.
     const revealAt = Math.max(started + early, context.textDeadline);
     const copyVisit = copy.hide(next, context, to, Math.max(0, revealAt - context.now()) + revealDuration(next, to, context) + 400);
