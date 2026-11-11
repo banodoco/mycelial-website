@@ -41,15 +41,15 @@ export const SPIRAL_START_SECONDS = 1.0;
    zoomed, at 2-7 px/s, with its heading frozen. Now the 16-unit rise leads
    (3.5 s), the tilt, glide and lens follow (5.5 s), each gathering in
    0.6 s; the climb then runs at a near-even rate, and the
-   heading orbits through the whole flight, 20 degrees further than the
-   25 degree turn it used to finish during the tilt. */
+   heading orbits through the whole flight, 85 degrees in all: 60 more than
+   the 25 degree turn it used to finish during the tilt. */
 export const MOBILE_RISE_SECONDS = 3.5;
 export const MOBILE_LIFT_SECONDS = 5.5;
 const MOBILE_EASE_IN_SECONDS = 0.6;
 const MOBILE_CLIMB_LEAD_SECONDS = 2.5;
 const MOBILE_SETTLE_FRACTION = 0.12;
 const MOBILE_LIFT_HEIGHT = 16;
-export const MOBILE_OVERHEAD_TURN = (25 + 20) * Math.PI / 180;
+export const MOBILE_OVERHEAD_TURN = (25 + 60) * Math.PI / 180;
 // The title is written the moment the page opens (2026-10-04 — Hannah: it
 // should "fade in as soon as I press manifesto ... and then the texts appear
 // afterwards").
