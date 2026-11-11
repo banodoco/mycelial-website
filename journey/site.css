@@ -679,7 +679,9 @@ body:not(.free-cam) #stage canvas:active { cursor: default; }
     line-height: 1.32;
     color: var(--muted);
   }
-  .j-menu-thesis { margin-top: 0; font-size: 1.08rem; color: var(--parchment); }
+  /* The two thesis lines bookend the panel's statement, so on desktop they
+     set the panel's largest type (the rows and headings are much smaller). */
+  .j-menu-thesis { margin: 0.3rem 0 0.2rem; font-size: 1.65rem; line-height: 1.18; color: var(--ink); }
   .j-menu-item:is(:hover, :focus-visible) { color: var(--gold-bright); background: rgba(217, 164, 65, 0.05); }
   .j-menu-item:is(:hover, :focus-visible) .j-menu-mark { color: var(--gold-bright); }
   .j-menu-item[aria-current="true"] { color: var(--gold-bright); }
@@ -3674,6 +3676,11 @@ body:not(.free-cam) #stage canvas:active { cursor: default; }
     --nav-minor-ring-d: 24px;
     --nav-connector-air: 5px;
     --nav-content-max: 1.15;
+    /* The intro's rail rests on the same seat the chapters use (one source:
+       --nav-centre-bottom), not 13.5vh above it. The old lift put the
+       labels a finger's width below the top bar's inset and dropped them
+       by a hop when Inspire opened (owner, 2026-11). */
+    --nav-hero-lift: 0px;
   }
   .j-rail .j-rail-name,
   .j-rail:not(.j-rail-column) .j-rail-name,

@@ -484,6 +484,9 @@ assert.match(railSource,
 assert.match(railSource,
   /j-rail-purpose-gathering', gatherU > 0\.001/,
   'Purpose arrival cannot activate horizontal gathering unless the explicit Ownership phase is nonzero');
+assert.match(css,
+  /@media \(orientation: portrait\) and \(max-width: 620px\) \{\s*:root \{[\s\S]*?--nav-centre-bottom: 70px;[\s\S]*?--nav-hero-lift: 0px;/,
+  'phones rest the intro rail on the chapter seat (no hero lift above --nav-centre-bottom)');
 assert.match(railSource,
   /gatheredAway = slot\.id !== 'final' && gatherU >= 0\.9999[\s\S]*?slot\.item\.inert = gatheredAway/,
   'fully absorbed non-Purpose controls leave interaction and accessibility surfaces');
