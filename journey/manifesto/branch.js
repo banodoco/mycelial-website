@@ -990,7 +990,12 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     from.fieldCenter = mobileFieldCenter(field?.seats, from.target);
     // colony.js publishes itself under this registered symbol (AERIAL_COLONY)
     const colony = globalThis[Symbol.for('mycelial.manifesto.aerialColony')];
-    if (colony && !colony.prewarm(from, camera.aspect, budgetMs)) return false;
+    if (colony) {
+      const drawnBefore = colony.warm.report;
+      if (!colony.prewarm(from, camera.aspect, budgetMs)) return false;
+      // its warm draw spent this slice; the text fit takes the next one
+      if (colony.warm.report !== drawnBefore) return false;
+    }
     const fitKey = `${window.innerWidth}x${window.innerHeight}`;
     if (window.innerWidth > 720 && fitWarmKey !== fitKey) {
       fitWarmKey = fitKey;

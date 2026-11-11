@@ -2004,6 +2004,9 @@ export function boot(opts = {}) {
     get atRest() { return isAtRest(); },
     /** Queue rest-time preparation (see warmHiddenChapters). */
     registerRestWarmTask: (fn, options) => registerRestWarmTask(fn, options),
+    /** QA: what the rest-time warm queue has done and what the GPU still
+     *  lacks, per chapter (see warmHiddenChapters). Side-effect free. */
+    warmReport: () => (warmProbe ? warmProbe() : null),
     get p() { return journey.progress; },
     get travelP() { return presentedP; },
     get transitionSeconds() { return transition.blend?.dur ?? 0; },
@@ -2137,29 +2140,46 @@ export function boot(opts = {}) {
      the first hop.
 
      So the work is cut into small units — a chapter's compile, then ONE
-     texture, then one warm draw per subtree of at most ~WARM_DRAW_BYTES —
-     and run in idle slices only while the camera has been at rest for
-     WARM_REST_MS. Nearest chapter first, measured from where the journey is;
-     a jump places p at its destination on the click frame, so after a
-     flight "where it is" is where it went. A unit never starts in a nearly
-     spent idle period; a page that never goes idle still gets one unit per
-     WARM_STARVE_MS of rest, because a hitch at rest is the lesser one. */
+     texture, then one warm draw of at most ~WARM_DRAW_BYTES of geometry the
+     GPU does not hold yet — and run in idle slices only while the camera has
+     been at rest for WARM_REST_MS. Nearest chapter first, measured from
+     where the journey is; a jump places p at its destination on the click
+     frame, so after a flight "where it is" is where it went.
+
+     UNITS ARE FOUND, NOT LISTED (2026-11, warmfix). The first version listed
+     every chapter's units once, at activation: Purpose came out as ~340
+     tiny subtree draws, most of them of geometry already uploaded, and the
+     textures and objects that only exist later (photo atlases, rebuilt root
+     world) were never in the list. Each unit is now the next thing the GPU
+     really lacks — asked of the renderer, at every rest — so a chapter is
+     a handful of units, re-scanned after every flight and every
+     WARM_RESCAN_MS of rest, and the queue is done when nothing is missing.
+
+     A unit never starts in a nearly spent idle period. A page that never
+     goes idle (this is the common case on a phone whose frame fills its
+     budget, and always on a software rasteriser) still gets one slice per
+     WARM_STARVE_MS of rest, of at most WARM_STARVE_BUDGET_MS — a short
+     slice at rest is the lesser hitch. */
   const WARM_REST_MS = 300;
   const WARM_POLL_MS = 150;
-  const WARM_STARVE_MS = 1500;
+  const WARM_STARVE_MS = 500;
+  const WARM_STARVE_BUDGET_MS = 6;
   const WARM_SLICE_MIN_MS = 6;
+  const WARM_RESCAN_MS = 3000;
   const WARM_DRAW_BYTES = 1 << 20;
   const WARM_DRAW_OBJECTS = 160;
+  // A layer no chapter uses (the colony keeps 31 for its own warm draw).
+  const WARM_LAYER = 30;
   /* REST WARM TASKS. Extra rest-time preparation registers here and runs in
      the same slices, under the same rules (never mid-flight, one call per
-     unit, nearest chapter first). `chapter` given: runs only while the
-     journey rests AT that chapter. `fn(deadline)` may return true for "call
-     me again" or a promise to wait on. Wire such a task with one line, e.g.
-       registerRestWarmTask(() => manifestoBranch.prewarm(), { chapter: 'final' });
-     (prewarmManifesto, agent mperf's NEEDS-WIRING request, belongs here). */
+     unit). `chapter` given: runs only while the journey rests AT that
+     chapter, after that chapter's own units and the next stop's. `fn(deadline)`
+     may return true for "call me again" or a promise to wait on; anything
+     else is done. `repeat`: run again at every later rest there (a task
+     keyed on the pose, which a resize or a new rest can change). */
   const restWarmTasks = [];
-  function registerRestWarmTask(fn, { chapter = null } = {}) {
-    if (typeof fn === 'function') restWarmTasks.push({ fn, chapter });
+  function registerRestWarmTask(fn, { chapter = null, repeat = false } = {}) {
+    if (typeof fn === 'function') restWarmTasks.push({ fn, chapter, repeat, done: false });
     return state;
   }
   /* The Manifesto press, prepared while Purpose rests: flight plan, colony
@@ -2167,36 +2187,52 @@ export function boot(opts = {}) {
      the queue reads true as "call me again" — hence the negation. */
   registerRestWarmTask(
     () => !!manifestoBranch && !manifestoBranch.prewarm({ budgetMs: 8 }),
-    { chapter: 'final' },
+    { chapter: 'final', repeat: true },
   );
   /** THE ONE "AT REST" PREDICATE: no camera blend or rail/camera
    *  disagreement, the hero growth finished, no Manifesto ascent or descent
    *  under way. The warm queue below and the resolution governor
    *  (organism/performance.js canStep, through `state.atRest`) both ask it. */
-  function isAtRest() {
-    return !(transition.blend || transition.cameraStateDisagree
-      || (sceneApi.intro && sceneApi.intro.complete === false)
-      || (manifestoBranch && manifestoBranch.active
-        && (manifestoBranch.returning || manifestoBranch.progress < 1)));
+  function isAtRest() { return restBlocker() === null; }
+  /** What keeps the journey from resting, named for the warm report. */
+  function restBlocker() {
+    if (transition.blend) return 'flight';
+    if (transition.cameraStateDisagree) return 'rail/camera disagree';
+    if (sceneApi.intro && sceneApi.intro.complete === false) return 'intro';
+    if (manifestoBranch && manifestoBranch.active
+      && (manifestoBranch.returning || manifestoBranch.progress < 1)) return 'manifesto flight';
+    return null;
   }
   let warmStarted = false;
+  let warmProbe = null;
   function warmHiddenChapters() {
     const r = sceneApi.renderer;
     if (warmStarted || !r || typeof r.compileAsync !== 'function') return;
     warmStarted = true;
     const props = r.properties && typeof r.properties.get === 'function' ? r.properties : null;
-    const uploaded = new WeakMap();   // fallback when the renderer hides its texture state
-    // Rail order, not route order: Owned is a branch under Purpose, so from
-    // Connect the next stop a visitor can take is Purpose ('final').
+    const tried = new WeakMap();      // texture -> the version last handed to initTexture
+    const drawn = new WeakSet();      // geometry this queue has warm-drawn
+    /* Rail position. Owned shares Purpose's: Owned is a branch under
+       Purpose and its root world and portraits are drawn on the way IN to
+       Purpose (measured: 7 textures, 26 MB with mipmaps, and 1.6 MB of
+       buffers inside Connect->Purpose), so from Connect both are the next
+       stop, and resting at either covers the other. */
     const RAIL_ORDER = ['mission', 'inspire', 'equip', 'connect', 'final', 'owned'];
-    const order = (id) => { const i = RAIL_ORDER.indexOf(id); return i < 0 ? CHAPTER_IDS.indexOf(id) : i; };
-    const jobs = new Map();           // chapter id -> [unit, ...]
+    const RAIL_POS = { mission: 0, inspire: 1, equip: 2, connect: 3, final: 4, owned: 4 };
+    const pos = (id) => (id in RAIL_POS ? RAIL_POS[id] : Math.max(0, CHAPTER_IDS.indexOf(id)));
+    // 0 here, 2 one stop ahead, 3 one stop back, ...; ties in rail order
+    const rankOf = (id, here) => Math.abs(pos(id) - here) * 2 + (pos(id) < here ? 1 : 0)
+      + Math.max(0, RAIL_ORDER.indexOf(id)) * 0.01;
+    // a task for this chapter after the next stop's units; a general one
+    // (card media) after both neighbours'
+    const TASK_HERE_RANK = 2.5, TASK_ANY_RANK = 4.5;
+    const work = new Map();           // chapter id -> its warm state
     for (const id of Object.keys(chapters)) {
       const group = chapters[id] && chapters[id].group;
-      if (group) jobs.set(id, [{ compile: group }, { textures: group }, ...drawUnits(group)]);
+      if (group) work.set(id, { group, compiled: false, dirty: true, units: 0, draws: 0, drawBytes: 0, textures: 0, textureBytes: 0 });
     }
     let restSince = null;
-    let lastUnitAt = performance.now();
+    let lastSliceAt = performance.now();
     /* A software rasteriser draws a hidden 4 MB chapter in seconds, not
        milliseconds, so the warm DRAWS are skipped there (compile and texture
        units still run) — the same carve-out boot's warm-up always made.
@@ -2214,123 +2250,201 @@ export function boot(opts = {}) {
       return !!(gl && typeof gl.isContextLost === 'function' && gl.isContextLost());
     };
 
-    /** Subtrees small enough to upload in one slice. A node over budget
-     *  draws its own geometry alone and hands its children down. */
-    function drawUnits(root) {
-      const units = [];
-      const visit = (node) => {
-        let bytes = 0, objects = 0;
-        const seen = new Set();
-        node.traverse((o) => {
-          objects++;
-          const g = o.geometry;
-          if (!g || seen.has(g)) return;
-          seen.add(g);
-          for (const a of Object.values(g.attributes || {})) {
-            bytes += ((a && (a.array || (a.data && a.data.array))) || { byteLength: 0 }).byteLength;
-          }
-          if (g.index) bytes += g.index.array.byteLength;
-        });
-        if ((bytes <= WARM_DRAW_BYTES && objects <= WARM_DRAW_OBJECTS) || !node.children.length) {
-          if (bytes > 0) units.push({ draw: node, deep: true });
-          return;
-        }
-        if (node !== root && node.geometry) units.push({ draw: node, deep: false });
-        for (const child of node.children) visit(child);
-      };
-      visit(root);
-      return units;
-    }
-
-    /** One draw of `node` (its subtree when `deep`) into a 1x1 target of the
-     *  composer's own format and sample count, everything else hidden and
-     *  culling off — the hero-gpu.js precedent, minus its full-size target:
-     *  no pixel, viewport, scissor or TAA history the frame reads is touched.
-     *  The real Scene is rendered so fog and the program variants match. */
-    let warmTarget = null;
-    function warmDraw(node, deep) {
-      const scene = sceneApi.scene;
-      const source = sceneApi.composer && sceneApi.composer.readBuffer;
-      if (!scene || !source || typeof r.render !== 'function' || typeof r.setRenderTarget !== 'function') return;
-      if (!warmTarget) { warmTarget = source.clone(); warmTarget.setSize(1, 1); }
-      const shown = [], culled = [];
-      const show = (o, v) => { if (o.visible !== v) { shown.push(o); o.visible = v; } };
-      for (let o = node; o && o !== scene; o = o.parent) {
-        show(o, true);
-        if (o.parent) for (const sib of o.parent.children) if (sib !== o) show(sib, false);
+    /** Depth-first walk that stops once `fn` returns true. */
+    const walk = (root, fn) => {
+      const stack = [root];
+      while (stack.length) {
+        const o = stack.pop();
+        if (fn(o)) return;
+        for (let i = o.children.length - 1; i >= 0; i--) stack.push(o.children[i]);
       }
-      if (deep) {
-        node.traverse((o) => {
-          show(o, true);
-          if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; }
-        });
-      } else {
-        if (node.frustumCulled) { culled.push(node); node.frustumCulled = false; }
-        for (const child of node.children) show(child, false);
+    };
+    const bytesOf = (g) => {
+      let bytes = g.index ? g.index.array.byteLength : 0;
+      for (const a of Object.values(g.attributes || {})) {
+        bytes += ((a && (a.array || (a.data && a.data.array))) || { byteLength: 0 }).byteLength;
+      }
+      return bytes;
+    };
+    /* Does the GPU hold this geometry? Three registers a geometry (and
+       uploads its attributes) the first time any draw projects it, and
+       registers its own dispose listener then; nothing else here listens
+       for 'dispose' on geometry. */
+    const onGpu = (g) => drawn.has(g) || !!(g._listeners && g._listeners.dispose && g._listeners.dispose.length);
+    /** Every texture a material samples: its own slots and its uniforms,
+     *  uniform arrays included (Owned's portrait atlases are uniforms). */
+    function texturesOf(m, out) {
+      for (const v of Object.values(m)) if (v && v.isTexture) out.push(v);
+      for (const u of Object.values(m.uniforms || {})) {
+        const v = u && u.value;
+        if (v && v.isTexture) out.push(v);
+        else if (Array.isArray(v)) for (const t of v) if (t && t.isTexture) out.push(t);
+      }
+      return out;
+    }
+    /** A texture the GPU lacks at its current version and could take now. */
+    function stale(t) {
+      if (t.isRenderTargetTexture || t.isVideoTexture || !(t.version > 0)) return false;
+      if (!t.image || t.image.complete === false) return false;   // asked again at a later scan
+      if (tried.get(t) === t.version) return false;               // tried once per version
+      return !props || !(props.has ? props.has(t) : true) || props.get(t).__version !== t.version;
+    }
+    function staleTexture(group) {
+      let found = null;
+      walk(group, (o) => {
+        for (const m of [].concat(o.material || [])) {
+          if (!m) continue;
+          for (const t of texturesOf(m, [])) if (stale(t)) { found = t; return true; }
+        }
+        return false;
+      });
+      return found;
+    }
+    /** The next ~WARM_DRAW_BYTES of geometry under `group` the GPU lacks. */
+    function drawBatch(group) {
+      const batch = [];
+      let bytes = 0;
+      const seen = new Set();
+      walk(group, (o) => {
+        const g = o.geometry;
+        if (!g || seen.has(g) || onGpu(g)) return false;
+        seen.add(g);
+        const b = bytesOf(g);
+        // an object over budget on its own is a unit of its own
+        if (batch.length && bytes + b > WARM_DRAW_BYTES) return true;
+        batch.push(o);
+        bytes += b;
+        return bytes >= WARM_DRAW_BYTES || batch.length >= WARM_DRAW_OBJECTS;
+      });
+      return batch.length ? { batch, bytes } : null;
+    }
+    const textureBytes = (t) => ((t.image && t.image.width * t.image.height) || 0) * 4;
+
+    /** One draw of `batch` into a 1x1 target of the composer's own format
+     *  and sample count — the hero-gpu.js precedent, minus its full-size
+     *  target: no pixel, viewport, scissor or TAA history a frame reads is
+     *  touched. The real Scene is rendered, so fog and the program variants
+     *  match, through a camera that sees only WARM_LAYER, which the batch
+     *  joins for this draw; hidden ancestors and materials are shown and
+     *  culling is off, so a buffer is uploaded whether or not this view, or
+     *  this moment, would draw it. Everything is restored in `finally`. */
+    let warmTarget = null, warmCamera = null;
+    function warmDraw(batch) {
+      const scene = sceneApi.scene;
+      const camera = sceneApi.camera;
+      const source = sceneApi.composer && sceneApi.composer.readBuffer;
+      if (!scene || !camera || !source || typeof r.render !== 'function' || typeof r.setRenderTarget !== 'function') return;
+      if (!warmTarget) { warmTarget = source.clone(); warmTarget.setSize(1, 1); }
+      if (!warmCamera) warmCamera = camera.clone(false);
+      warmCamera.copy(camera, false);
+      warmCamera.layers.set(WARM_LAYER);
+      // the batch's own state first: one of them may be another's ancestor
+      const objects = batch.map((o) => [o, o.layers.mask, o.visible, o.frustumCulled]);
+      const shown = [], materials = [];
+      for (const o of batch) {
+        o.layers.enable(WARM_LAYER); o.visible = true; o.frustumCulled = false;
+        for (let a = o.parent; a && a !== scene; a = a.parent) if (!a.visible) { shown.push(a); a.visible = true; }
+        for (const m of [].concat(o.material || [])) if (m && m.visible === false) { materials.push(m); m.visible = true; }
       }
       const previous = r.getRenderTarget();
       try {
         r.setRenderTarget(warmTarget);
-        r.render(scene, sceneApi.camera);
+        r.render(scene, warmCamera);
       } finally {
         r.setRenderTarget(previous);
-        for (const o of culled) o.frustumCulled = true;
-        for (let i = shown.length - 1; i >= 0; i--) shown[i].visible = !shown[i].visible;
+        for (const m of materials) m.visible = false;
+        for (const a of shown) a.visible = false;
+        for (const [o, mask, visible, culled] of objects) { o.layers.mask = mask; o.visible = visible; o.frustumCulled = culled; }
       }
     }
 
-    /** The next texture of `group` the GPU does not yet hold at its current
-     *  version (photo atlases arrive and remix swaps replace them later, so
-     *  this is asked again after every flight). */
-    function staleTexture(group) {
-      let found = null;
-      group.traverse((o) => {
-        if (found) return;
-        for (const m of [].concat(o.material || [])) {
-          const slots = [m.map, ...Object.values(m.uniforms || {}).map((u) => u && u.value)];
-          for (const t of slots) {
-            if (!t || !t.isTexture || t.isRenderTargetTexture || t.isVideoTexture || !(t.version > 0)) continue;
-            if (!t.image || t.image.complete === false) continue;
-            // tried once per version: an upload three declines is not retried
-            if (uploaded.get(t) === t.version) continue;
-            if (!props || props.get(t).__version !== t.version) { found = t; return; }
-          }
-        }
-      });
-      return found;
+    /** The next unit chapter `ch` really needs, or null once it lacks nothing. */
+    function nextUnit(ch) {
+      if (!ch.compiled) return { kind: 'compile' };
+      if (!ch.dirty) return null;
+      const t = staleTexture(ch.group);
+      if (t) return { kind: 'texture', t };
+      const b = drawBatch(ch.group);
+      if (b) return { kind: 'draw', ...b };
+      ch.dirty = false;
+      return null;
     }
-
-    /** Run one unit of chapter `id`. Returns a promise to wait on, or null. */
-    function runUnit(id) {
-      const list = jobs.get(id);
-      const unit = list[0];
-      if (unit.compile) {
-        list.shift();
+    /** Run it. Returns a promise to wait on, or null. */
+    function runUnit(ch, unit) {
+      ch.units++;
+      if (unit.kind === 'compile') {
+        ch.compiled = true;
         // Every hidden material variant, as at boot: reveal, compile, restore.
         const hidden = [];
-        unit.compile.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
-        try { return compileForFrame(sceneApi, unit.compile); }
+        ch.group.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+        try { return compileForFrame(sceneApi, ch.group); }
         finally { for (const o of hidden) o.visible = false; }
       }
-      if (unit.textures) {
-        const t = staleTexture(unit.textures);
-        if (!t) { list.shift(); return null; }
-        r.initTexture(t);
-        uploaded.set(t, t.version);
+      if (unit.kind === 'texture') {
+        tried.set(unit.t, unit.t.version);
+        r.initTexture(unit.t);
+        ch.textures++; ch.textureBytes += textureBytes(unit.t);
+        report.textures++; report.textureBytes += textureBytes(unit.t);
         return null;
       }
-      list.shift();
-      if (!softwareGl) warmDraw(unit.draw, unit.deep);
+      // marked first: a draw that throws, or is skipped, is not retried
+      for (const o of unit.batch) drawn.add(o.geometry);
+      if (softwareGl) return null;
+      warmDraw(unit.batch);
+      ch.draws++; ch.drawBytes += unit.bytes;
+      report.draws++; report.drawBytes += unit.bytes;
       return null;
     }
 
-    /** The nearest chapter with work left; textures re-checked after rests. */
-    function nextChapter(here) {
-      let best = null, bestD = Infinity;
-      for (const [id, list] of jobs) {
-        if (!list.length) continue;
-        const d = Math.abs(order(id) - here) * 2 + (order(id) < here ? 1 : 0);
-        if (d < bestD) { best = id; bestD = d; }
+    /* QA READOUT (journey.warmReport()). Counters kept as the queue runs,
+       plus a fresh count of what the GPU still lacks per chapter — a walk
+       and a few property reads, nothing drawn, uploaded or queued. */
+    const report = { slices: 0, units: 0, draws: 0, drawBytes: 0, textures: 0, textureBytes: 0,
+      longestUnit: null, lastSkip: null, log: [] };
+    const note = (entry) => { report.log.push(entry); if (report.log.length > 40) report.log.shift(); };
+    const skip = (why) => { if (report.lastSkip !== why) note({ at: Math.round(performance.now()), skip: why }); report.lastSkip = why; };
+    warmProbe = () => {
+      const chaptersOut = {};
+      for (const [id, ch] of work) {
+        let geometries = 0, geometryBytes = 0, textures = 0, texBytes = 0;
+        const seen = new Set();
+        ch.group.traverse((o) => {
+          const g = o.geometry;
+          if (g && !seen.has(g)) { seen.add(g); if (!onGpu(g)) { geometries++; geometryBytes += bytesOf(g); } }
+          for (const m of [].concat(o.material || [])) {
+            if (m) for (const t of texturesOf(m, [])) if (!seen.has(t)) { seen.add(t); if (stale(t)) { textures++; texBytes += textureBytes(t); } }
+          }
+        });
+        chaptersOut[id] = { compiled: ch.compiled, scanned: !ch.dirty, unitsRun: ch.units,
+          warmed: { draws: ch.draws, bytes: ch.drawBytes, textures: ch.textures, textureBytes: ch.textureBytes },
+          missing: { geometries, bytes: geometryBytes, textures, textureBytes: texBytes } };
+      }
+      return {
+        atRest: isAtRest(), restMs: restSince === null ? 0 : Math.round(performance.now() - restSince),
+        warmDraws: !softwareGl,
+        slices: report.slices, units: report.units, longestUnit: report.longestUnit,
+        warmed: { draws: report.draws, bytes: report.drawBytes, textures: report.textures, textureBytes: report.textureBytes },
+        chapters: chaptersOut,
+        tasks: restWarmTasks.filter((t) => !t.done).map((t) => t.chapter || 'any'),
+        lastSkip: report.lastSkip, log: report.log.slice(),
+      };
+    };
+
+    /** The most urgent work from `hereId`: a chapter's unit, or a task. */
+    function pick(hereId) {
+      const here = pos(hereId);
+      let best = null;
+      for (const [id, ch] of work) {
+        if (ch.compiled && !ch.dirty) continue;
+        const rank = rankOf(id, here);
+        if (best && best.rank <= rank) continue;
+        const unit = nextUnit(ch);       // a clean scan drops out here
+        if (unit) best = { rank, id, ch, unit };
+      }
+      for (const task of restWarmTasks) {
+        if (task.done || (task.chapter !== null && task.chapter !== hereId)) continue;
+        const rank = task.chapter === null ? TASK_ANY_RANK : TASK_HERE_RANK;
+        if (!best || rank < best.rank) best = { rank, task };
       }
       return best;
     }
@@ -2339,66 +2453,72 @@ export function boot(opts = {}) {
       ? (fn) => window.requestIdleCallback(fn, { timeout: WARM_STARVE_MS })
       : (fn) => requestAnimationFrame(() => setTimeout(() => fn({ didTimeout: true, timeRemaining: () => 0 }), 0));
     const later = (ms) => setTimeout(() => idle(slice), ms);
+    const markAllDirty = () => { for (const ch of work.values()) ch.dirty = true; };
 
     function slice(deadline) {
       if (startupFailed) return;
       const now = performance.now();
-      if (busy() || lost()) { restSince = null; later(WARM_POLL_MS); return; }
+      if (busy() || lost()) { skip(lost() ? 'context lost' : restBlocker()); restSince = null; later(WARM_POLL_MS); return; }
       if (restSince === null) {
         restSince = now;
-        // A new rest: anything swapped in since (atlases, remix) is re-checked.
-        for (const [id, list] of jobs) {
-          const group = chapters[id].group;
-          if (!list.some((u) => u.textures)) list.unshift({ textures: group });
-        }
+        // A new rest: anything created or swapped in since is looked for again.
+        markAllDirty();
+        for (const t of restWarmTasks) if (t.repeat) t.done = false;
       }
-      if (now - restSince < WARM_REST_MS) { later(WARM_REST_MS - (now - restSince)); return; }
+      if (now - restSince < WARM_REST_MS) { skip('settling'); later(WARM_REST_MS - (now - restSince)); return; }
       const hereId = chapterAt(journey.progress).id;
-      const here = Math.max(0, order(hereId));
-      let pending = null;
-      let ran = 0;
-      const starved = deadline.didTimeout || now - lastUnitAt >= WARM_STARVE_MS;
-      while (!pending && (deadline.timeRemaining() >= WARM_SLICE_MIN_MS || (starved && ran === 0))) {
-        const task = restWarmTasks.find((t) => t.chapter === null || t.chapter === hereId);
-        const id = nextChapter(here);
-        // a chapter's own resources before an optional extra, nearest first
-        if (id !== null && (!task || order(id) === here)) {
-          try { pending = runUnit(id); } catch (error) {
-            jobs.get(id).length = 0;
-            console.warn('[journey-v6] rest-time GPU warming skipped a chapter', error);
-          }
-        } else if (task) {
-          restWarmTasks.splice(restWarmTasks.indexOf(task), 1);
+      const starved = deadline.didTimeout || now - lastSliceAt >= WARM_STARVE_MS;
+      if (!starved && deadline.timeRemaining() < WARM_SLICE_MIN_MS) { skip('idle period spent'); idle(slice); return; }
+      report.slices++;
+      lastSliceAt = now;
+      let pending = null, ran = 0, next = null;
+      const room = () => (starved ? performance.now() - now < WARM_STARVE_BUDGET_MS : deadline.timeRemaining() >= WARM_SLICE_MIN_MS);
+      while (!pending && (ran === 0 || room()) && (next = pick(hereId))) {
+        const t0 = performance.now();
+        let what;
+        if (next.task) {
+          const task = next.task;
+          what = `task:${task.chapter || 'any'}`;
           try {
             const result = task.fn(deadline);
-            // "again": put it back and give the slice a breath, not a spin
-            if (result === true) { restWarmTasks.push(task); pending = new Promise((res) => setTimeout(res, WARM_POLL_MS)); }
-            else if (result && typeof result.then === 'function') pending = result;
-          } catch (error) { console.warn('[journey-v6] rest warm task failed', error); }
-        } else break;
-        ran++;
-        lastUnitAt = performance.now();
+            // "again": keep it and give the slice a breath, not a spin
+            if (result === true) pending = new Promise((res) => setTimeout(res, WARM_POLL_MS));
+            else if (result && typeof result.then === 'function') { task.done = true; pending = result; }
+            else task.done = true;
+          } catch (error) { task.done = true; console.warn('[journey-v6] rest warm task failed', error); }
+        } else {
+          what = `${next.unit.kind}:${next.id}`;
+          try { pending = runUnit(next.ch, next.unit); } catch (error) {
+            next.ch.compiled = true; next.ch.dirty = false;
+            console.warn('[journey-v6] rest-time GPU warming skipped a chapter', error);
+          }
+        }
+        const ms = +(performance.now() - t0).toFixed(1);
+        ran++; report.units++;
+        if (!report.longestUnit || ms > report.longestUnit.ms) report.longestUnit = { what, ms };
+        note({ at: Math.round(t0), here: hereId, what, ms, starved, ...(next.unit && next.unit.bytes ? { bytes: next.unit.bytes } : {}) });
       }
-      const chaptersLeft = [...jobs.values()].some((l) => l.length);
-      if (!chaptersLeft && !restWarmTasks.some((t) => t.chapter === null || t.chapter === hereId)) {
-        // Nothing left to do at this rest. Later rests only re-check
-        // textures (and run tasks waiting for their chapter), so sleep until
-        // the next flight has landed.
-        restSince = null;
-        waitForFlight();
+      if (!next && !pending) {
+        // Nothing missing from here. Look again after WARM_RESCAN_MS of rest
+        // (a photo atlas lands, a remix bakes) or after the next flight.
+        skip('nothing missing');
+        markAllDirty();
+        waitAtRest(performance.now());
         return;
       }
+      report.lastSkip = null;
       if (pending) Promise.resolve(pending).catch(() => {}).then(() => idle(slice));
       else idle(slice);
     }
-    // Once drained, wake again only after the next flight has landed.
-    function waitForFlight() {
-      const poll = () => {
+    // Drained: a cheap timer watches for a flight (which starts a new rest)
+    // and, failing one, rescans after WARM_RESCAN_MS.
+    function waitAtRest(since) {
+      setTimeout(() => {
         if (startupFailed) return;
-        if (busy()) later(WARM_POLL_MS);
-        else setTimeout(poll, 500);
-      };
-      setTimeout(poll, 500);
+        if (busy()) { restSince = null; skip(restBlocker()); later(WARM_POLL_MS); }
+        else if (performance.now() - since >= WARM_RESCAN_MS) idle(slice);
+        else waitAtRest(since);
+      }, 250);
     }
     idle(slice);
   }

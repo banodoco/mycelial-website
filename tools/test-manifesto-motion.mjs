@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { CONTENT } from '../content/content.js';
-import { manifestoPose, mobileFieldCenter, frameShiftAt, aerialPlacements, planAerialReveals, aerialRevealAt, AERIAL_BODY_COUNT, AERIAL_SCALE_MIN, AERIAL_SCALE_MAX, CAMERA_SECONDS, SPIRAL_START_SECONDS, MOBILE_LIFT_SECONDS, MOBILE_OVERHEAD_TURN, descentU, lineSecondsFor, mobileReadingSchedule, revealSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, FIRST_LINE_SECONDS, LINE_BREATH_SECONDS, LINE_SECONDS_PER_WORD, TITLE_SECONDS, awaySecondsFrom, returnSecondsFrom } from '../journey/manifesto/pose.js';
+import { manifestoPose, mobileFieldCenter, frameShiftAt, aerialPlacements, planAerialReveals, aerialRevealJob, aerialRevealAt, AERIAL_BODY_COUNT, AERIAL_SCALE_MIN, AERIAL_SCALE_MAX, CAMERA_SECONDS, SPIRAL_START_SECONDS, MOBILE_LIFT_SECONDS, MOBILE_OVERHEAD_TURN, descentU, lineSecondsFor, mobileReadingSchedule, revealSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, FIRST_LINE_SECONDS, LINE_BREATH_SECONDS, LINE_SECONDS_PER_WORD, TITLE_SECONDS, awaySecondsFrom, returnSecondsFrom } from '../journey/manifesto/pose.js';
 
 const from = { position: { x: 8, y: 3, z: 9 }, target: { x: 0, y: 2, z: 0 }, fov: 46 };
 for (const t of [0, 0.2, 0.8, SPIRAL_START_SECONDS]) {
@@ -523,6 +523,15 @@ for (const aspect of [1440/900,390/844]) {
   const first = planAerialReveals(scheduled, from, aspect, new Float32Array(scheduled.length*2));
   const again = planAerialReveals(scheduled, from, aspect, new Float32Array(scheduled.length*2));
   assert.deepEqual(first, again, 'same departure and placements must reproduce the reveal schedule');
+  // the resumable job (rest-time prewarm) is bit-identical however it is cut:
+  // stopped after every step, and after every 3rd
+  for (const every of [1, 3]) {
+    const job = aerialRevealJob(scheduled, from, aspect, new Float32Array(scheduled.length*2));
+    let asks = 0, steps = 0;
+    while (!job.step(() => ++asks % every === 0)) steps++;
+    assert.ok(steps > 3, 'the reveal job really stops between runs');
+    assert.deepEqual(job.output, first, `a sliced reveal plan equals the one-call plan (every ${every})`);
+  }
   assert.equal(first.at(-2), -1, 'existing field bodies remain outside the arrival schedule');
   const counts = [0, .28, .5, .71, .93, 1].map(f => f * CAMERA_SECONDS).map(t => placements.filter((b,i) => aerialRevealAt(t,first[i*2],first[i*2+1]) > 0.1).length);
   assert.equal(counts[0], 0, 'new aerial bodies start absent');

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { connectedLineIndex } from './connected-lines.js';
 import { COLONY_RETIREMENT_GLSL } from './retirement.js';
 import { BODY_DISSOLVE_GLSL } from '../lib/body-dissolve.js';
-import { aerialPlacements, planAerialReveals, manifestoPose, CAMERA_SECONDS } from './pose.js';
+import { aerialPlacements, aerialRevealJob, manifestoPose, CAMERA_SECONDS } from './pose.js';
 import { groundY, makeRng } from '../chapters/final/world.js';
 
 // Prepared once with Final. Every instance shares the hero's actual buffers;
@@ -681,23 +681,19 @@ ${seatRetirementGLSL}
   let job = null, prepared = null;
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   function newJob(from, aspect, key) {
-    return { key, from, aspect, stage: 0, i: 0, warmups: 0, plan: new Float32Array(bodies.length * 2),
+    return { key, from, aspect, stage: 0, i: 0, reveal: null, plan: new Float32Array(bodies.length * 2),
       near: null, frames: null, halfH: (typeof window !== 'undefined' ? window.innerHeight : 900) / 2,
       links: null, gates: null, groundIndex: null, sporeIndex: null, result: null };
   }
   // Each stage does a bounded unit and returns true when it is complete.
   const STAGES = [
-    // planAerialReveals is one indivisible call (pose.js) and, cold, the
-    // largest unit. Ahead of the press it is first run over a few bodies at
-    // a time, one call a slice, until the engine has compiled it: the full
-    // call then costs what a warm one does (measured ~15 ms cold -> ~2 ms).
+    // The reveal plan, resumable (pose.js aerialRevealJob): it was one
+    // indivisible call, ~15 ms cold and 5-14 ms warm on a phone, over any
+    // slice budget; now it stops between body runs once the slice is spent.
     (j, until) => {
-      if (until === Infinity || j.warmups >= 6) return true;
-      planAerialReveals(bodies.slice(0, 40), j.from, j.aspect, new Float32Array(80));
-      j.warmups++;
-      return false;
+      j.reveal ||= aerialRevealJob(bodies, j.from, j.aspect, j.plan);
+      return j.reveal.step(() => now() > until);
     },
-    (j) => { planAerialReveals(bodies, j.from, j.aspect, j.plan); return true; },
     (j, until) => {
       j.links ||= new Float32Array(links.array.length);
       for (; j.i < owners.length; j.i++) {
@@ -775,7 +771,7 @@ ${seatRetirementGLSL}
    *  next frame), scissored to one pixel, with every instance count and
    *  draw range at zero — the bindings upload, nothing is drawn. */
   const WARM_LAYER = 31;
-  let warmCamera = null, warmed = false, warmReport = null;
+  let warmCamera = null, warmed = false, warmReport = null, warmTriedKey = null;
   group.traverse(o => { if (o !== group) o.layers.enable(WARM_LAYER); });
   function warmDraw() {
     const r = sceneApi.renderer, scene = sceneApi.scene, camera = sceneApi.camera;
@@ -788,6 +784,11 @@ ${seatRetirementGLSL}
     const groupVisible = group.visible;
     const previous = r.getRenderTarget(), scissorTest = r.getScissorTest(), autoClear = r.autoClear;
     const scissor = r.getScissor(new THREE.Vector4());
+    // A hidden chapter above the colony hides it from any draw: shown for
+    // this one too (a prewarm that ran while Purpose was still hidden drew
+    // nothing yet called itself warmed, the "geometries 0" of 2026-11).
+    const hiddenAbove = [];
+    for (let a = group.parent; a && a !== scene; a = a.parent) if (!a.visible) { hiddenAbove.push(a); a.visible = true; }
     try {
       group.visible = true;
       for (const o of objects) {
@@ -800,14 +801,22 @@ ${seatRetirementGLSL}
       r.autoClear = false;
       r.setScissorTest(true);
       r.setScissor(0, 0, 1, 1);
-      const before = r.info?.memory?.geometries;
+      // three registers a geometry, and its own dispose listener, on the
+      // first draw that projects it: count the colony's, not the renderer's
+      // total (a 0 there read as "nothing warmed" when Purpose's own warm
+      // draws had already uploaded them)
+      const onGpu = () => objects.filter(o => o.geometry._listeners?.dispose?.length).length;
+      const before = onGpu();
       r.render(scene, warmCamera);
-      warmReport = { geometries: before === undefined ? null : r.info.memory.geometries - before, at: now() };
-      return true;
+      const after = onGpu();
+      warmReport = { objects: objects.length, onGpu: after, newlyOnGpu: after - before, at: now() };
+      // warmed only when every buffer is there; otherwise asked again
+      return after === objects.length;
     } finally {
       r.setScissor(scissor); r.setScissorTest(scissorTest); r.autoClear = autoClear;
       r.setRenderTarget(previous);
       group.visible = groupVisible;
+      for (const a of hiddenAbove) a.visible = false;
       objects.forEach((o, i) => {
         const [visible, instances, start, count, culled] = saved[i];
         o.visible = visible; o.frustumCulled = culled;
@@ -828,7 +837,9 @@ ${seatRetirementGLSL}
     prewarm(from, aspect, budgetMs = 8) {
       const key = keyOf(from, aspect);
       if (prepared?.key === key) {
-        if (!warmed) warmed = warmDraw();
+        // one warm draw per prepared pose: a draw that leaves something off
+        // the GPU reports it (warm.report) rather than retrying every slice
+        if (!warmed && warmTriedKey !== key) { warmTriedKey = key; warmed = warmDraw(); }
         return true;
       }
       if (!job || job.key !== key) job = newJob(from, aspect, key);
@@ -894,7 +905,7 @@ ${seatRetirementGLSL}
     /** QA: how many bodies each tier holds on the prepared flight. */
     get lod() { return { near: tiers[0].starts.length, far: tiers[1].starts.length }; },
     get drawn() { return { near: tiers[0].drawn, far: tiers[1].drawn }; },
-    /** QA: the last warm draw (geometries newly seen by the renderer). */
+    /** QA: the last warm draw (the colony's objects on the GPU after it). */
     get warm() { return { prepared: prepared?.key || null, warmed, report: warmReport }; },
     setSeatLight(v, retreat = false) {
       const next = Math.max(0, Math.min(1, v));
