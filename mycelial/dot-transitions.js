@@ -1021,9 +1021,13 @@
   // These forward arrivals keep their picture pace and let only the copy breathe.
   const copyExtra = (context) => {
     if (!(context?.dir > 0) || context.direct || context.rest) return 0;
-    if (context.from === 0 && context.to === 1) return 1000;
+    if (context.from === 0 && context.to === 1) return 1500;
+    // Slide 4's words start when they did and take a second longer to arrive.
+    if (context.from === 2 && context.to === 3) return 1000;
+    // Slide 8 too: a second more on screen, on its 1.3× arrival clock.
+    if (context.from === 6 && context.to === 7) return 1300;
     // Slide 7 arrives on a quickened clock (deckStoryPacing, 1.45×). Its words
-    // keep slide 2's unhurried spread: about the same two seconds on screen.
+    // keep slide 2's unhurried spread: about two seconds on screen.
     if (context.from === 5 && context.to === 6) return 2000;
     return (context.from === 3 && context.to === 4) || (context.from === 4 && context.to === 5) ? 500 : 0;
   };

@@ -117,7 +117,7 @@ test('canonical headings preserve copy, external links and brace', () => {
   assert.doesNotMatch(intro, /<a[^>]*>[^<]*Astrid/);
   assert.match(intro, /story-brace/); assert.match(intro, /story-bridge/); assert.match(intro, /All powered by/); assert.match(intro, /Open Models/);
   assert.match(deckHtml, /<div class="num">05<span class="act">Introducing<\/span><\/div>/);
-  assert.match(f.hosts.get('.st-host').heading.innerHTML, /^<span class="story-title">Astrid is <em>everyone’s to shape\.<\/em><\/span>/);
+  assert.match(f.hosts.get('.st-host').heading.innerHTML, /^<span class="story-title">Astrid is <em>everyone’s<\/em> <span class="story-title-line">to shape and refine\.<\/span><\/span>/);
   assert.match(f.hosts.get('.pa-host').heading.innerHTML, /Builders grow the ecosystem; creators sustain it\./);
   for (const host of f.hosts.values()) { assert.equal(host.querySelector('h1'), host.heading); assert.equal(host.body.hidden, true); }
 });
