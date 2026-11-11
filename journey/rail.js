@@ -1072,13 +1072,13 @@ export function createRail({ onNav, ready = true } = {}) {
     if (section.heading) txt.appendChild(el('span', 'j-menu-name', section.heading));
     if (section.thesis) {
       const line = el('span', 'j-menu-line j-menu-thesis');
-      // "open-source" is one compound word: keep a wrap from splitting it at
-      // the hyphen (the text itself is unchanged, so copy and search are).
+      // "open-source" is one compound word: desktop CSS keeps a wrap from
+      // splitting it at the hyphen (the text itself is unchanged, so copy and
+      // search are; the phone layout is deliberately left to wrap freely).
       const parts = section.thesis.split('open-source');
       parts.forEach((part, i) => {
         if (i) {
           const word = el('span', 'j-menu-nobreak', 'open-source');
-          word.style.whiteSpace = 'nowrap';
           line.appendChild(word);
         }
         if (part) line.appendChild(document.createTextNode(part));

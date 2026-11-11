@@ -5461,6 +5461,7 @@ body.j-rail-on .j-hotspots { opacity: 1; }
     font-size: clamp(1.15rem, calc(1.15rem + (100vh - 760px) * 0.0133), 1.4rem);
     line-height: 1.16;
   }
+  .j-menu-nobreak { white-space: nowrap; }
   .j-menu-legal { margin-top: 0.9rem; }
 }
 @media (min-width: 621px) and (min-height: 840px) {
