@@ -299,6 +299,10 @@
   let fly = null, flightTextRelease = null;
   const releaseFlightText = () => { flightTextRelease?.(); flightTextRelease = null; };
   const FLY = { charge: 0.5, travel: 1.25, land: 0.6 }; // seconds: unfold, cross, settle
+  // The stack's gathering under her (deck s): on the way here it runs before this clock starts; on the way back it is
+  // the unfold, in place of the charge.
+  const gather = () => window.deckStackFlight?.gather ?? FLY.charge;
+  const lead = (f) => (f?.back ? gather() : FLY.charge); // hand-off time when she leaves the stack (or lands on it)
   const FLIGHT_START = 0.95 - FLY.charge - FLY.travel; // scene clock when the mink leaves the stack
   const STACK_ARRIVAL_STRETCH = (END - FLIGHT_START + 0.75) / (END - FLIGHT_START);
   const inLens = () => ({ x: lens.c.x + M.LENS.x * cell, y: lens.c.y + M.LENS.y * cell }); // her centre, optically centred in the lens
@@ -324,7 +328,7 @@
   };
   const checkFlightText = (ctx) => {
     if (!flightTextRelease || !fly) return;
-    const h = ta - fly.t0, q = 0.5 - 0.5 * Math.cos(Math.PI * clamp((h - FLY.charge) / FLY.travel));
+    const h = ta - fly.t0, q = 0.5 - 0.5 * Math.cos(Math.PI * clamp((h - lead(fly)) / FLY.travel));
     // Include the tail behind the moving mink when checking the remaining path.
     const clear = fly.back ? !flightCrossesCopy(ctx, fly, 0, Math.min(1, q + 0.264)) : !flightCrossesCopy(ctx, fly, Math.max(0, q - 0.264), 1);
     if (clear) releaseFlightText();
@@ -442,9 +446,9 @@
     const f = fly, h = ta - f.t0, u0 = f.c, u1 = cell;
     const centre = inLens();
     const end = { x: Math.round(centre.x - 11.5 * u1) + 11.5 * u1, y: Math.round(centre.y - 10 * u1) + 10 * u1 }; // match paintMink at rest
-    const T1 = FLY.charge, T2 = T1 + FLY.travel;
-    if (f.back) f.flight?.draw(h / FLY.charge);
-    if (h < T1) { // Hold at the agent plane while the stack unfolds on the reverse journey.
+    const T1 = lead(f), T2 = T1 + FLY.travel;
+    if (f.back) f.flight?.draw(h / T1);
+    if (h < T1) { // Hold at the agent plane while the stack unfolds on the reverse journey (she shrinks back onto it).
       if (!f.back) paintMinkAt(f.x, f.y, u0);
       return;
     }
@@ -458,7 +462,7 @@
         halo(p.x, p.y, (10 - j * 0.5) * Math.max(1, u / 2), a * 0.6); dot(p.x, p.y, 1.8 - j * 0.1, CORE, a);
       }
       const p = pos(q);
-      halo(p.x, p.y, 17 * u, 0.45);
+      halo(p.x, p.y, 17 * u, 0.45 * smooth(clamp(q / 0.15))); // her light comes up as she leaves the stack (and goes as she lands on it)
       paintMinkAt(p.x - 11.5 * u, p.y - 10 * u, u, 0);
       return;
     }
@@ -562,8 +566,8 @@
     timers.forEach(window.deckCancelLater); timers = [];
     pulses = []; waves = []; glintAt = -9;
     const b = root.getBoundingClientRect(), x = r.left - b.left, y = r.top - b.top;
-    const t0 = FLIGHT_START; // the arrival's own clock, as flyIn set it
-    fly = { t0, x, y, c: u0, landed: t0 + FLY.charge + FLY.travel, back: true };
+    const t0 = FLIGHT_START - (gather() - FLY.charge); // the arrival's own clock, as flyIn set it, with the unfold in place of the charge
+    fly = { t0, x, y, c: u0, landed: t0 + gather() + FLY.travel, back: true };
     ta = Math.min(ta, END);
     fly.flight = window.deckStackFlight?.hold(ctx, r);
     if (!fly.flight) { fly = null; return false; }
@@ -583,9 +587,9 @@
     u.last = clock;
     const h = ta - fly.t0;
     // The picture ungrows a little quicker than it grew (as a second visit would); her flight keeps its own time.
-    ta -= h > FLY.charge + FLY.travel + FLY.land ? dt / 0.7 : dt;
+    ta -= h > lead(fly) + FLY.travel + FLY.land ? dt / 0.7 : dt;
     const hn = ta - fly.t0;
-    if (hn < FLY.charge + FLY.travel + 0.4) root.classList.remove('is-labelled');
+    if (hn < lead(fly) + FLY.travel + 0.4) root.classList.remove('is-labelled');
     if (hn < 0.4) document.documentElement.classList.remove('pa-quiet');
     if (hn <= 0) { endUnfly(); return; }
     draw();
@@ -625,11 +629,11 @@
     if (ctx.from === 5) {
       const path = flightGeometry();
       if (path && flightCrossesCopy(ctx, path, 0, 1)) {
-        // The avatar stands up for 0.18 s and the stack collapses for 0.5 s; the pays clock then runs from FLIGHT_START to END.
+        // The stack gathers up under her for its gathering's length; the pays clock then runs from FLIGHT_START to END.
         flightTextRelease = ctx.holdText(() => {
           stop(); fly = null; window.deckStackFlight?.ready(ctx);
           ta = END + 0.2; root.classList.add('is-labelled'); draw(); entryFinish?.(ctx, 'completed');
-        }, (0.68 + END - FLIGHT_START + 0.75 + 0.3) * 1000);
+        }, (gather() + END - FLIGHT_START + 0.75 + 0.3) * 1000);
         ctx.defer(releaseFlightText);
       }
       Promise.resolve(window.deckStackFlight?.collapsed(ctx)).then((result) => {
@@ -644,9 +648,9 @@
       const promise = completion(ctx, (fn) => { reverseFinish = fn; }, () => endUnfly(ctx));
       const path = flightGeometry();
       if (path && flightCrossesCopy(ctx, path, 0, 1)) {
-        // Unfly accelerates the ungrowing portion by 0.7, then reverses the flight at normal speed.
-        const flightEnd = FLY.charge + FLY.travel + FLY.land;
-        const duration = (END - FLIGHT_START - flightEnd) * 0.7 + flightEnd;
+        // Unfly accelerates the ungrowing portion by 0.7, then reverses the flight and the unfold at normal speed.
+        const ungrow = END - FLIGHT_START - FLY.charge - FLY.travel - FLY.land;
+        const duration = ungrow * 0.7 + gather() + FLY.travel + FLY.land;
         flightTextRelease = ctx.holdText(() => endUnfly(ctx), (duration + 0.3) * 1000);
         ctx.defer(releaseFlightText);
       }

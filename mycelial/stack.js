@@ -1115,11 +1115,13 @@
   // Going to slide 7 the stack gathers up behind her: the planes close their gaps into a tight pile on the agent's
   // plane, the threads between their corners drawing them in, while the pile shrinks and slides under her, small
   // enough to hide behind her before it goes. Flags, cards and the guide let go first; the roots draw back up into
-  // the foundation as it rises. Coming back, the same picture runs the other way. q: 0 the stack at rest, 1 gone.
-  // close: where the gaps have closed; fade: where the labels have gone; roots: where the roots have drawn in;
+  // the foundation as it rises. Meanwhile she stands up off her plane and grows where she is, toward her size in
+  // slide 7's lens, so the pile going under her and her growing meet in the middle; then she flies. Coming back,
+  // the same picture runs the other way. q: 0 the stack at rest, 1 gone; s: its length (deck s), both ways.
+  // stand: where she is upright; meet: how far toward her size in the lens she grows; close: where the gaps have closed; fade: where the labels have gone; roots: where the roots have drawn in;
   // shrink: the stretch over which the pile shrinks to its tucked size (its end is the small frame a late frame
   // must still show); tuck: the tucked pile's width, in her widths.
-  const GATHER = { pitch: 12, close: 0.55, fade: 0.35, roots: 0.5, shrink: [0.12, 0.88], tuck: 1.2 };
+  const GATHER = { s: 1.6, stand: 0.25, meet: 0.5, pitch: 12, close: 0.55, fade: 0.35, roots: 0.5, shrink: [0.12, 0.92], tuck: 1.2 };
   let piled = null; // what the gathering changed, to give back
   const pileAt = (q) => {
     if (!geo) return;
@@ -1173,6 +1175,15 @@
     unpile();
   };
   const avatar = planes[3].querySelector('.st-avatar img');
+  // Where she has grown to by the end of the gathering: her upright place, grown about its middle toward her size in
+  // slide 7's lens (its cell). It carries her place at rest (small), which the gathering grows her from.
+  const meet = (small) => {
+    if (!small?.width) return small;
+    const cell = window.AstridPays?.core?.()?.cell || 4 * small.c;
+    const f = lerp(small.c, Math.max(small.c, cell), GATHER.meet) / small.c, cx = small.left + small.width / 2, cy = small.top + small.height / 2;
+    const width = small.width * f, height = small.height * f;
+    return { quad: small.quad, left: cx - width / 2, top: cy - height / 2, width, height, c: small.c * f, small };
+  };
   const flightGeometry = () => {
     let x = 0, y = 0, el = avatar;
     while (el && el !== planes[3]) { x += el.offsetLeft; y += el.offsetTop; el = el.offsetParent; }
@@ -1211,10 +1222,12 @@
     const copy = avatar.cloneNode();
     Object.assign(copy.style, { position: 'fixed', left: '0', top: '0', width: '23px', height: '20px', transformOrigin: '0 0', imageRendering: 'pixelated', pointerEvents: 'none', zIndex: '3' });
     document.body.appendChild(copy); avatar.style.visibility = 'hidden';
-    const pose = (q) => {
-      const u = clamp(q);
-      const upright = [{ x: rect.left, y: rect.top }, { x: rect.left + rect.width, y: rect.top },
-        { x: rect.left + rect.width, y: rect.top + rect.height }, { x: rect.left, y: rect.top + rect.height }];
+    // u: from lying on her plane to upright; g: from her size at rest to grown.
+    const small = rect.small || rect;
+    const pose = (u, g = 0) => {
+      u = clamp(u);
+      const at = (key) => lerp(small[key], rect[key], g), l = at('left'), t = at('top'), w = at('width'), h = at('height');
+      const upright = [{ x: l, y: t }, { x: l + w, y: t }, { x: l + w, y: t + h }, { x: l, y: t + h }];
       copy.style.transform = quadTransform(rect.quad.map((p, i) => ({ x: lerp(p.x, upright[i].x, u), y: lerp(p.y, upright[i].y, u) })));
       copy.style.clipPath = u >= 1 ? '' : `ellipse(${lerp(23 * 14 / 30, 30, u)}px ${lerp(20 * 14 / 26, 30, u)}px at ${23 * 14 / 30}px ${20 * 10 / 26}px)`;
     };
@@ -1228,11 +1241,13 @@
       if (stackFlight !== flight || !ctx.isCurrent() || ctx.terminal) return;
       copy.style.visibility = q < 1 ? 'visible' : 'hidden';
       q = clamp(q);
-      pose(clamp(q * 0.5 / 0.18));
+      const { k, w, a } = gatherAt(q, tuck), m = k * w;
+      pose(seep(clamp(q / GATHER.stand)), w);
+      // While she holds the stack the tour waits at its first flag, so it begins with the stack at rest.
+      if (guide.on && guide.mode === 'dwell') guide.t0 = Math.max(guide.t0, now());
       if (q === shownQ) return;
       shownQ = q;
       pileAt(q);
-      const { k, w, a } = gatherAt(q, tuck), m = k * w;
       root.style.transform = `translate(${((O.x - C.x) * m).toFixed(2)}px, ${((O.y - C.y) * m).toFixed(2)}px) scale(${Math.max(0.001, k).toFixed(5)})`;
       root.style.opacity = a.toFixed(3);
     } };
@@ -1245,7 +1260,8 @@
     return flight;
   };
   window.deckStackFlight = { hold: holdStackFlight,
-    source: (ctx) => collapseSource?.ctx === ctx ? collapseSource.rect : flightGeometry(),
+    gather: GATHER.s, // the gathering's length (deck s), either way
+    source: (ctx) => collapseSource?.ctx === ctx ? collapseSource.rect : meet(flightGeometry()),
     collapsed: (ctx) => collapseSource?.ctx === ctx ? collapseSource.completed : Promise.resolve('completed'),
     ready: (ctx) => { if (collapseSource?.ctx === ctx) collapseSource.copy.remove(); },
   };
@@ -1263,7 +1279,7 @@
       activeCtx = ctx;
       stop(ctx, true);
       ctx.present(slide, 'dt-rewind dt-over');
-      const rect = flightGeometry(), flight = holdStackFlight(ctx, rect);
+      const rect = meet(flightGeometry()), flight = holdStackFlight(ctx, rect);
       if (!flight) return undefined;
       const copy = flight.copy;
       flight.stand(0);
@@ -1276,11 +1292,11 @@
         if (!current(ctx)) return;
         if (started === null) started = now();
         const elapsed = now() - started;
-        if (elapsed < 180) { flight.stand(easeIO(clamp(elapsed / 180))); frame = requestAnimationFrame(stepCollapse); return; }
-        let q = clamp((elapsed - 180) / 500);
+        let q = clamp(elapsed / (GATHER.s * 1000));
         // A delayed frame must still show the stack small, gathered under her, before it disappears.
         if (q === 1 && !smallFrame) q = GATHER.shrink[1];
-        flight.draw(q); flight.stand(1);
+        flight.draw(q); copy.style.visibility = 'visible'; // she stays until slide 7 has painted her
+
         if (q < 1) {
           if (q >= GATHER.shrink[1] - 1e-9) smallFrame = true;
           frame = requestAnimationFrame(stepCollapse);
