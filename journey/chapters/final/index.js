@@ -1147,7 +1147,7 @@ export function createFinal(sceneApi) {
      coordinate. Motes fade in from zero (no visibility flip) while it runs.
      Off a wrap departure (no published phase) this is null and nothing
      changes, so every rest and every other move is untouched. */
-  const RELIGHT_FROM = 0.52;
+  const RELIGHT_FROM = 0.42;
   const MOTE_POP_FLIGHT = 0.004;
   function relightOf() {
     if (!(blending && retiring && retireScale < 1) || depArm === null) return null;
