@@ -432,7 +432,10 @@
   .gap-copy-content.gap-spreading .num { --gap-ink: 224 171 94; }
   .gap-copy-content.gap-spreading .num .act { --gap-ink: 184 169 143; }
   .gap-copy-content.gap-spreading .gap-plain { --gap-ink: 239 230 214; }
-  .gap-copy-content.gap-spreading h1 em { --gap-ink: 240 198 126; }
+  /* The emphasis rests on a top-to-bottom gold gradient (--gild), but a spreading radial ink is one flat colour, so
+     removing the class used to step the glyphs darker. This flat ink is the gradient's own average over a line of
+     glyphs (the --gild value at the middle of the x-height), so the step is a small vertical shading, not a darkening. */
+  .gap-copy-content.gap-spreading h1 em { --gap-ink: 224 175 102; }
   .gap-copy-content.gap-spreading .body { --gap-ink: 184 169 143; }
   .gap-host .split > :first-child h1, .gap-host .split > :first-child .body { margin-left: auto; }
   .gp { position: relative; width: min(100%, 64vh); aspect-ratio: 1; margin: 0 auto; }
@@ -1010,7 +1013,8 @@
   .fw-host .fw-spreading .num { --fw-ink: 224 171 94; }
   .fw-host .fw-spreading .num .act, .fw-host .fw-spreading .fw-sub, .fw-host .fw-stat.fw-spreading { --fw-ink: 184 169 143; }
   .fw-host .fw-spreading h1 { --fw-ink: 239 230 214; }
-  .fw-host .fw-spreading h1 em, .fw-host .fw-stat.fw-spreading a { --fw-ink: 240 198 126; }
+  .fw-host .fw-spreading h1 em { --fw-ink: 224 175 102; } /* the --gild average, as for slide 3's emphasis */
+  .fw-host .fw-stat.fw-spreading a { --fw-ink: 240 198 126; }
   .fw-host .fw-stat.fw-spreading b { --fw-ink: 236 197 126; }
   /* The wheel's words keep a compositing layer of their own for as long as their slide is shown. Everywhere else the
      copy is already transformed (the idle drift) or positioned above its picture; here it was plain in-flow content
