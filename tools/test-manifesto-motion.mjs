@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { CONTENT } from '../content/content.js';
-import { manifestoPose, mobileFieldCenter, frameShiftAt, aerialPlacements, planAerialReveals, aerialRevealAt, AERIAL_BODY_COUNT, AERIAL_SCALE_MIN, AERIAL_SCALE_MAX, CAMERA_SECONDS, SPIRAL_START_SECONDS, MOBILE_LIFT_SECONDS, MOBILE_OVERHEAD_TURN, descentU, lineSecondsFor, mobileReadingSchedule, revealSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, FIRST_LINE_SECONDS, TITLE_SECONDS, awaySecondsFrom, returnSecondsFrom } from '../journey/manifesto/pose.js';
+import { manifestoPose, mobileFieldCenter, frameShiftAt, aerialPlacements, planAerialReveals, aerialRevealAt, AERIAL_BODY_COUNT, AERIAL_SCALE_MIN, AERIAL_SCALE_MAX, CAMERA_SECONDS, SPIRAL_START_SECONDS, MOBILE_LIFT_SECONDS, MOBILE_OVERHEAD_TURN, descentU, lineSecondsFor, mobileReadingSchedule, revealSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, FIRST_LINE_SECONDS, LINE_BREATH_SECONDS, LINE_SECONDS_PER_WORD, TITLE_SECONDS, awaySecondsFrom, returnSecondsFrom } from '../journey/manifesto/pose.js';
 
 const from = { position: { x: 8, y: 3, z: 9 }, target: { x: 0, y: 2, z: 0 }, fov: 46 };
 for (const t of [0, 0.2, 0.8, SPIRAL_START_SECONDS]) {
@@ -60,24 +60,34 @@ for (let seconds = 0; seconds <= CAMERA_SECONDS; seconds += .02) {
   const heading = Math.atan2(Math.sin(delta), Math.cos(delta));
   assert.ok(heading >= lastHeading - 1e-8 && heading <= MOBILE_OVERHEAD_TURN + 1e-8,
     'small heading turn is smooth and never overshoots or flips');
+  // The orbit runs through the whole climb, so the pull-back reads as motion.
+  if (seconds >= 0.6 && seconds <= CAMERA_SECONDS * .88) assert.ok(heading > lastHeading,
+    `overhead zoom keeps turning (${seconds.toFixed(2)} s)`);
   lastHeading = heading;
-  if (seconds >= MOBILE_LIFT_SECONDS) assert.ok(Math.abs(heading - MOBILE_OVERHEAD_TURN) < 1e-8,
-    'overhead zoom holds its finished framing');
   if (seconds >= MOBILE_LIFT_SECONDS) {
     assert.ok(Math.abs(pitch + Math.PI / 2) < 1.1e-5, 'remaining zoom stays straight down');
     assert.equal(pose.roll, 0);
   }
 }
+{
+  const end = manifestoPose(phoneFrom, CAMERA_SECONDS, .5);
+  const delta = Math.atan2(end.target.z - end.position.z, end.target.x - end.position.x)
+    - Math.atan2(from.target.z - from.position.z, from.target.x - from.position.x);
+  assert.ok(Math.abs(Math.atan2(Math.sin(delta), Math.cos(delta)) - MOBILE_OVERHEAD_TURN) < 1e-6,
+    'the orbit finishes its whole turn as the flight lands');
+}
 assert.ok(manifestoPose(phoneFrom, MOBILE_LIFT_SECONDS, .5).position.y >= from.position.y + 16);
 assert.equal(manifestoPose(phoneFrom, CAMERA_SECONDS, .5).position.y, 38);
 for (const startU of [.08, .2, .6, 1]) {
   const initial = manifestoPose(phoneFrom, startU * CAMERA_SECONDS, .5).position.y - from.position.y;
-  for (const k of [.1, .3, .5, .9]) {
+  let previous = initial;
+  for (let k = 0; k <= 1; k += 1 / 64) {
     const seconds = descentU(startU, k, .5, from.position.y) * CAMERA_SECONDS;
     const height = manifestoPose(phoneFrom, seconds, .5).position.y - from.position.y;
-    const eased = k*k*k*(k*(k*6-15)+10);
-    assert.ok(Math.abs(height - initial * (1 - eased)) < 1e-6,
-      'returns invert the complete new lift without a second landing move');
+    assert.ok(height <= previous + 1e-9, 'return descends monotonically');
+    // the return keys on height and tilt together; its final tenth is a settle
+    if (k >= .9) assert.ok(height <= initial * .015, 'returns invert the complete new lift without a second landing move');
+    previous = height;
   }
 }
 assert.equal(TITLE_SECONDS, 0, 'the title is written on the press');
@@ -86,8 +96,9 @@ assert.equal(TITLE_SECONDS, 0, 'the title is written on the press');
 const words = [26, 27, 20, 25, 21];
 const LINE_SECONDS = lineSecondsFor(words);
 assert.equal(LINE_SECONDS[0], FIRST_LINE_SECONDS);
+assert.deepEqual([LINE_BREATH_SECONDS, LINE_SECONDS_PER_WORD], [1.2, .125], 'the halved pause (2026-11) is the authored rhythm');
 const gaps = LINE_SECONDS.slice(1).map((t, i) => t - LINE_SECONDS[i]);
-gaps.forEach((g, i) => assert.ok(Math.abs(g - (1.6 + .14 * words[i])) < .001, `beat ${i + 2} follows a readable pause (${g.toFixed(2)} s)`));
+gaps.forEach((g, i) => assert.ok(Math.abs(g - (LINE_BREATH_SECONDS + LINE_SECONDS_PER_WORD * words[i])) < .01, `beat ${i + 2} follows a readable pause (${g.toFixed(2)} s)`));
 assert.ok(gaps[2] < gaps[1], 'the shortest sentence hands on sooner');
 assert.ok(LINE_SECONDS.at(-1) <= CAMERA_SECONDS - 5, 'the last line lands well inside the flight, not at its end');
 console.log('Manifesto motion: vertical lift, monotone 100° CCW spiral, camera-clock expansion, responsive cap scale and aligned reading beats pass.');
@@ -383,11 +394,14 @@ assert.equal(mobileParagraphs[1].hidden, true, 'early lead plans the next paragr
 assert.ok(!mobileParagraphs[1].classes.has('shown'), 'admitted incoming paragraph remains visually uninked');
 assert.ok(readingAdvance() > 0 && readingAdvance() < 25, 'the scroll is already moving before new text starts');
 advanceMobileTo(secondStart - 0.025);
-assert.ok(readingAdvance() > 70, 'the lead visibly advances before incoming ink starts');
+// The halved sentence pause (about 1 s from readable to the next ink) leaves
+// the lead a second, not two, so it has covered less of its way by then.
+assert.ok(readingAdvance() > 30, 'the lead visibly advances before incoming ink starts');
 assert.equal(mobile.shownLines, 1);
 advanceMobileTo(secondStart + 0.05);
 assert.equal(mobile.shownLines, 2, 'new paragraph starts after a clear pre-ink scroll lead');
-advanceMobileTo(secondStart + 0.1);
+// Two seconds into the follow's own clock (it used to start ~1.9 s before ink).
+advanceMobileTo(mobileSchedule.admit[1] + 2.02);
 assert.ok(readingAdvance() > 70 && readingAdvance() < 164, 'next reveal gently moves into the bottom of the view');
 const beforeResizeFollow = mobileBox.scrollTop;
 resizeObservers.at(-1).callback();
