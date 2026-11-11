@@ -1043,13 +1043,22 @@
   // from: measured, and the same within a few percent on phone and desktop screens.
   const REVERSE_PICTURE = [0, 2240, 1965, 3320, 2250, 3860, 3660, 2725, 2700, 1640, 1620];
   const UNWIND_FLOOR = 700; // wall ms: the shortest the unwind may be squeezed to when the words had to wait
-  const landings = new WeakMap(); // navigation → deck time at which its reverse picture lands
+  // Step-backs set by eye where landing together is not what reads best, by the slide stepped
+  // back from, in ms on screen: when the unwind starts, how long it takes, and (free) whether it
+  // may start while the picture is still passing over the words' place.
+  const UNWIND_TUNE = {
+    9: { start: 0, length: 1200, free: true }, // 10→9: with the wheel's return, not after it
+    8: { start: 1970, length: 700 },           // 9→8: just after the picture above has arrived
+    4: { start: 680, length: 660, free: true }, // 5→4: half a second sooner, as long as before
+  };
+  const landings = new WeakMap(); // navigation → { at: deck time its reverse picture lands, length: a tuned unwind (deck ms) }
   const pictureLands = (context) => unwinding(context) && context.to === context.from - 1 ? REVERSE_PICTURE[context.from] || 0 : 0;
   // As long as the full unwind when there is room for it before the landing; shorter,
   // down to the floor, when the picture kept the words waiting past that point.
   const unwindFor = (context) => {
-    const full = unwindMs(), at = landings.get(context);
-    return at === undefined ? full : clamp(at - context.now(), UNWIND_FLOOR * (window.deckPace?.() || 1), full);
+    const full = unwindMs(), landing = landings.get(context);
+    if (!landing) return full;
+    return landing.length || clamp(landing.at - context.now(), UNWIND_FLOOR * (window.deckPace?.() || 1), full);
   };
   const revealDuration = (slide, at, context) => unwinding(context) ? unwindMs()
     : Math.max(0, ...textOf(slide).map((el) => clamp(reach(el, at, context?.geometry?.box(el)) / 0.62, 1100, 1600) + copyExtra(context)));
@@ -1578,9 +1587,11 @@
     // the slow reveal begins about a second before its former visible onset.
     const finalLead = gentleFinal && innerWidth <= 760 && innerHeight > innerWidth ? 1100 : 0;
     // A step back: start the unwind so that it ends as the reverse picture lands.
-    const lands = pictureLands(context);
-    if (lands) landings.set(context, started + lands);
-    let early = Math.max(overlap(prev, from, to, context), pictureLead, finalLead, lands ? lands - unwindMs() : 0);
+    const lands = pictureLands(context), tune = lands ? UNWIND_TUNE[context.from] : null;
+    const onScreen = window.deckPace?.() || 1; // deck ms per ms on screen, for this turn
+    if (lands) landings.set(context, { at: started + lands, length: tune ? tune.length * onScreen : 0 });
+    let early = Math.max(overlap(prev, from, to, context), pictureLead, finalLead,
+      tune ? tune.start * onScreen : lands ? lands - unwindMs() : 0);
     // The original hold also bounds recovery for the longer final reveal.
     const revealAt = Math.max(started + early, context.textDeadline);
     const copyVisit = copy.hide(next, context, to, Math.max(0, revealAt - context.now()) + revealDuration(next, to, context) + 400);
@@ -1646,7 +1657,7 @@
       elapsed = context.now() - started;
       if (textDue && elapsed >= early) {
         textDue = false;
-        if (gentleFinal) grow();
+        if (gentleFinal || tune?.free) grow();
         else context.textReady.then((result) => { if (result === 'completed' && context.isCurrent() && !context.terminal) grow(); });
       }
       if (travelDue || textDue) {
@@ -1661,8 +1672,8 @@
       const landed = (event) => {
         if (event.detail?.generation !== context.generation || event.detail.phase !== 'entry') return;
         // Its landing is now known, not forecast: words still to come follow at once, in the short unwind.
-        landings.set(context, context.now());
-        if (textDue) { early = 0; advanceTurn(); }
+        landings.get(context).at = context.now();
+        if (textDue && !tune) { early = 0; advanceTurn(); }
       };
       window.addEventListener('deck-phase', landed);
       context.transitionDefer(() => window.removeEventListener('deck-phase', landed));
