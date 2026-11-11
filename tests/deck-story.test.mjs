@@ -259,10 +259,11 @@ test('slide 5 now uses the deck-native soft radial reveal and gather', () => {
   assert.match(css, /\.as-copy\.as-spreading \.story-powered/);
   assert.match(css, /background-attachment: fixed/);
   assert.match(css, /radial-gradient\(circle at var\(--as-x/);
-  assert.match(networkSource, /content\.classList\.toggle\('as-spreading', spreading\)/);
+  assert.match(networkSource, /column\.matches\('\.as-copy'\) \? 'as'/);
+  assert.match(networkSource, /content\.classList\.toggle\(`\$\{kind\}-spreading`, spreading\)/);
   assert.match(networkSource, /const ink = at \? '1' : alpha;/);
-  assert.match(networkSource, /--as-inner/);
-  assert.match(networkSource, /--as-outer/);
+  assert.match(networkSource, /`--\$\{kind\}-inner`/);
+  assert.match(networkSource, /`--\$\{kind\}-outer`/);
   assert.match(networkSource, /svg\.style\.maskImage = svg\.style\.webkitMaskImage = value/);
   assert.doesNotMatch(css, /@keyframes as-story-sweep|as-copy-sweeping/);
   assert.doesNotMatch(networkSource, /as-copy-sweeping/);
@@ -272,7 +273,7 @@ test('reverse visits fade the label and mobile links alongside the canonical cop
   assert.match(css, /\.as-copy \.num \{ color: rgb\(224 171 94 \/ var\(--as-copy-alpha, 1\)\)/);
   assert.match(css, /\.as-copy\.as-spreading \.num/);
   assert.match(css, /\.as-mobile-links \{ display: none; opacity: var\(--as-reveal-alpha, 1\); \}/);
-  assert.match(networkSource, /slide\.style\.setProperty\('--as-reveal-alpha', alpha\)/);
+  assert.match(networkSource, /closest\('\.slide'\)\?\.style\.setProperty\(`--\$\{kind\}-reveal-alpha`, alpha\)/);
   assert.doesNotMatch(css, /as-host\[data-settled\] \.as-mobile-links \{ opacity: 1 !important/);
   assert.doesNotMatch(css, /as-mobile-links-appear/);
 });

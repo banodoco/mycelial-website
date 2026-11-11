@@ -466,11 +466,12 @@
   // Decoration must never hold up copy or transition completion.
   const safeZone = (elements, key) => { try { return zone(elements(), key); } catch { return null; } };
   // The text block of a slide: its column, the label included.
-  const stableCopy = (column) => column.matches('.gap-copy, .as-copy');
-  // The wheel revisits and reverses one shared scene. Mask its real copy rather
-  // than exchanging a frozen clone for it at the end of every transition.
-  const liveCopy = (column) => !!column.closest('.fw-host');
-  const stationaryCopy = (column) => stableCopy(column) || liveCopy(column);
+  // Canonical copy is revealed by its ink: the real nodes stay opaque, unmasked
+  // and in place, and only their glyph colour spreads. Slides 3–5 and the wheel
+  // (9–11) share this one path; each kind names its own CSS class and variables.
+  const stableCopy = (column) => !!inkOf(column);
+  const inkOf = (column) => column.matches('.gap-copy') ? 'gap' : column.matches('.as-copy') ? 'as'
+    : column.closest('.fw-host') ? 'fw' : null;
   const copyContent = (column) => column.matches('.gap-copy')
     ? column.querySelector(':scope > .gap-copy-content') : column;
   const lines = (s) => textOf(s).flatMap((col) => [...copyContent(col).children]);
@@ -774,8 +775,7 @@
   // circle reveals it from the node outward, shrinking it draws it back in.
   const SOFT = 150;
   const masks = new WeakMap();
-  // Own every masked surface, not just clones. A canonical wheel root maps
-  // to itself so finishNetwork() and resize() can retire its mask as well.
+  // Every disposable masked clone, by the canonical node it stands in for.
   const overlays = new Map();
   const copyTrace = window.__deckDebug ? [] : null;
   const traceCopy = (operation, slide, context = window.deckNav) => {
@@ -794,13 +794,9 @@
   };
   const removeOverlay = (el) => {
     const overlay = overlays.get(el);
-    if (overlay && overlay !== el) overlay.remove();
+    if (overlay) overlay.remove();
     overlays.delete(el);
     masks.delete(el);
-    if (overlay === el || liveCopy(el)) {
-      el.style.removeProperty('mask-image');
-      el.style.removeProperty('-webkit-mask-image');
-    }
   };
   const clearOverlays = (slide) => textOf(slide).forEach(removeOverlay);
   const cancelOverlay = (slide, state) => {
@@ -864,46 +860,32 @@
     if (stableCopy(el)) {
       // Animate glyph/gradient ink on a stable, opaque semantic tree. No
       // opacity layer, clone, mask or visibility swap participates.
-      const content = copyContent(el);
+      const content = copyContent(el), kind = inkOf(el);
       if (at) masks.set(el, { at: { ...at }, r });
       else masks.delete(el);
       const alpha = at ? String(clamp(r / reach(el, at, bounds))) : hidden ? '0' : '1';
-      if (el.matches('.gap-copy')) {
-        const spreading = Boolean(at);
-        content.classList.toggle('gap-spreading', spreading);
-        if (spreading) {
-          // Use the same viewport origin, radius and soft edge as the regular
-          // copy mask. A fixed background shares one circle across wrapped
-          // inline fragments while the canonical text stays visible in place.
-          content.style.setProperty('--gap-x', `${at.x.toFixed(1)}px`);
-          content.style.setProperty('--gap-y', `${at.y.toFixed(1)}px`);
-          content.style.setProperty('--gap-inner', `${Math.max(0, r - SOFT).toFixed(1)}px`);
-          content.style.setProperty('--gap-outer', `${Math.max(0.01, r).toFixed(1)}px`);
-        } else {
-          for (const property of ['--gap-x', '--gap-y', '--gap-inner', '--gap-outer']) content.style.removeProperty(property);
-        }
+      // The same viewport origin, radius and soft edge as the clone mask. A
+      // fixed background shares one circle across every wrapped fragment. The
+      // wheel has no per-colour alpha rules: its hidden endpoint is a spread of
+      // radius zero, so one mechanism covers hidden, partial and gathered.
+      const spreading = Boolean(at) || (hidden && kind === 'fw');
+      content.classList.toggle(`${kind}-spreading`, spreading);
+      if (spreading) {
+        content.style.setProperty(`--${kind}-x`, `${(at ? at.x : 0).toFixed(1)}px`);
+        content.style.setProperty(`--${kind}-y`, `${(at ? at.y : 0).toFixed(1)}px`);
+        content.style.setProperty(`--${kind}-inner`, `${Math.max(0, r - SOFT).toFixed(1)}px`);
+        content.style.setProperty(`--${kind}-outer`, `${Math.max(0.01, r).toFixed(1)}px`);
+      } else {
+        for (const name of ['x', 'y', 'inner', 'outer']) content.style.removeProperty(`--${kind}-${name}`);
       }
-      if (el.matches('.as-copy')) {
-        // Unlike the temporary CSS wipe, this uses exactly the same growing
-        // radial soft edge as the deck's other copy (including reverse gather).
-        // The heading stays canonical so the editor's WebKit paint path is stable.
-        const spreading = Boolean(at);
-        content.classList.toggle('as-spreading', spreading);
-        const props = ['--as-x', '--as-y', '--as-inner', '--as-outer'];
-        if (spreading) {
-          content.style.setProperty('--as-x', `${at.x.toFixed(1)}px`);
-          content.style.setProperty('--as-y', `${at.y.toFixed(1)}px`);
-          content.style.setProperty('--as-inner', `${Math.max(0, r - SOFT).toFixed(1)}px`);
-          content.style.setProperty('--as-outer', `${Math.max(0.01, r).toFixed(1)}px`);
-        } else props.forEach((property) => content.style.removeProperty(property));
-        // The mobile App | Vision links sit below the player, outside the
-        // text column. Feed them the same outgoing and incoming copy progress.
-        const slide = el.closest('.as-host');
-        if (slide) slide.style.setProperty('--as-reveal-alpha', alpha);
+      // Boxes that are not glyphs (slide 5's mobile links, slide 11's question
+      // pill) sit outside the ink: they follow the same visit's progress.
+      if (kind !== 'gap') el.closest('.slide')?.style.setProperty(`--${kind}-reveal-alpha`, alpha);
+      if (kind === 'as') {
         // SVG braces cannot clip text like glyphs: reveal them using the same
         // node-centred radial mask, in their own coordinate system.
         content.querySelectorAll('.story-brace, .story-bridge').forEach((svg) => {
-          if (!spreading) {
+          if (!at) {
             svg.style.maskImage = svg.style.webkitMaskImage = '';
             return;
           }
@@ -914,7 +896,7 @@
           svg.style.maskImage = svg.style.webkitMaskImage = value;
         });
       }
-      const property = el.matches('.gap-copy') ? '--gap-copy-alpha' : '--as-copy-alpha';
+      const property = `--${kind}-copy-alpha`;
       const ink = at ? '1' : alpha;
       if (content.style.getPropertyValue(property) !== ink) content.style.setProperty(property, ink);
       return;
@@ -925,18 +907,17 @@
       const x = at.x - b.left, y = at.y - b.top;
       const value = r <= 0 ? 'linear-gradient(transparent, transparent)'
         : `radial-gradient(circle at ${x.toFixed(1)}px ${y.toFixed(1)}px, #000 ${Math.max(0, r - SOFT).toFixed(1)}px, transparent ${r.toFixed(1)}px)`;
-      // Identical radius, soft edge and timing; only the paint target differs.
-      const canonical = liveCopy(el);
-      const surface = canonical ? copyContent(el) : overlayFor(el);
-      if (canonical) overlays.set(el, surface);
+      // Only a disposable clone is ever masked; the real copy waits hidden beneath it.
+      const surface = overlayFor(el);
       surface.style.webkitMaskImage = surface.style.maskImage = value;
-      copyContent(el).classList.toggle('dt-copy-hidden', !canonical);
+      copyContent(el).classList.add('dt-copy-hidden');
     } else {
       removeOverlay(el);
       copyContent(el).classList.toggle('dt-copy-hidden', hidden);
     }
   };
   const copyStates = new WeakMap();
+  const REVEAL_GRACE = 700; // wall ms a live reveal may overrun its deadline before recovery takes over
   const ownsCopy = (slide, state, transient = false) => !!state &&
     copyStates.get(slide) === state && state.context?.isCurrent() &&
     (!transient || (state.context.isTransitionCurrent() &&
@@ -970,7 +951,7 @@
     let complete = true;
     textOf(slide).forEach(el => {
       try {
-        if (!stationaryCopy(el)) el.style.transform = '';
+        if (!stableCopy(el)) el.style.transform = '';
         paintCopy(el, null, 0, hidden);
       } catch (error) { complete = false; console.error('Deck copy restoration failed', error); }
     });
@@ -989,12 +970,19 @@
       if (state.timer) window.deckCancelLater(state.timer);
       state.timer = null;
       if (!reuse) clearOverlays(slide);
-      if (deadline) state.timer = window.deckLater(() => {
-        if (!ownsCopy(slide, state, true)) return;
+      if (deadline) {
         // Failure recovery belongs to the existing terminal transaction. It
         // stops writers, reconciles scenes and copy, then declares settlement.
-        window.deckTransaction('recover', context);
-      }, deadline, context);
+        const expire = () => { if (ownsCopy(slide, state, true)) window.deckTransaction('recover', context); };
+        state.timer = window.deckLater(() => {
+          if (!ownsCopy(slide, state, true)) return;
+          // A reveal lands on a painted frame; this timer needs none, and the deck
+          // clock shrinks its margin as the pace rises. A reveal that is already
+          // running gets real frames to land by itself before it is replaced.
+          if (state.phase === 'revealing') state.timer = window.deckLater(expire, REVEAL_GRACE * (window.deckPace?.() || 1), context);
+          else expire();
+        }, deadline, context);
+      }
       textOf(slide).forEach(el => paintCopy(el, at, 0, !at, context.geometry?.box(el)));
       traceCopy('hide', slide, context);
       return state;
@@ -1022,9 +1010,7 @@
       return true;
     },
     get liveCloneCount() {
-      let count = 0;
-      for (const [el, surface] of overlays) if (surface !== el) count++;
-      return count;
+      return overlays.size;
     },
   };
   const reach = (el, at, bounds) => {
@@ -1255,7 +1241,7 @@
     if (!(Math.abs(trail.x - put.x) < e && Math.abs(trail.y - put.y) < e)) {
       put.x = trail.x; put.y = trail.y;
       textOf(current).forEach((el) => {
-        if (!stationaryCopy(el)) el.style.transform = `translate(${trail.x.toFixed(2)}px, ${trail.y.toFixed(2)}px)`;
+        if (!stableCopy(el)) el.style.transform = `translate(${trail.x.toFixed(2)}px, ${trail.y.toFixed(2)}px)`;
       });
     }
   };
@@ -1793,6 +1779,7 @@
       roots: textOf(slide).map((el) => {
         const style = getComputedStyle(el);
         return { hidden: el.classList.contains('dt-copy-hidden'), registered: overlays.has(el),
+          spreading: el.classList.contains('fw-spreading'), outer: el.style.getPropertyValue('--fw-outer'),
           mask: style.maskImage || style.webkitMaskImage, visibility: style.visibility,
           opacity: style.opacity, transform: style.transform };
       }),

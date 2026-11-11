@@ -997,6 +997,21 @@
   html[data-ver="f"] .fw-host h1 { max-width: 27em; margin: 0 auto; font-size: clamp(1.8rem, 2.9vw, 3rem); text-wrap: balance; }
   html[data-ver="f"] .fw-host .body, html[data-ver="f"] .fw-host .vis, html[data-ver="f"] .fw-host .wheel,
   html[data-ver="f"] .fw-host .cap, html[data-ver="f"] .fw-host .e-note { display: none; }
+  /* The wheel's words use the same stable ink reveal as slides 3–5 (paintCopy in dot-transitions.js): the real nodes
+     stay opaque, unmasked and in place, and only their glyph colour spreads from the node. No mask is ever added to
+     or removed from them, so nothing depends on the browser repainting a layer when a mask goes. */
+  .fw-host .fw-spreading .num, .fw-host .fw-spreading .num .act, .fw-host .fw-spreading h1, .fw-host .fw-spreading h1 em,
+  .fw-host .fw-spreading .fw-sub, .fw-host .fw-stat.fw-spreading, .fw-host .fw-stat.fw-spreading b, .fw-host .fw-stat.fw-spreading a {
+    color: transparent; -webkit-text-fill-color: transparent;
+    -webkit-background-clip: text; background-clip: text; background-attachment: fixed;
+    background-image: radial-gradient(circle at var(--fw-x, 0px) var(--fw-y, 0px),
+      rgb(var(--fw-ink)) var(--fw-inner, 0px), transparent var(--fw-outer, 0px));
+  }
+  .fw-host .fw-spreading .num { --fw-ink: 224 171 94; }
+  .fw-host .fw-spreading .num .act, .fw-host .fw-spreading .fw-sub, .fw-host .fw-stat.fw-spreading { --fw-ink: 184 169 143; }
+  .fw-host .fw-spreading h1 { --fw-ink: 239 230 214; }
+  .fw-host .fw-spreading h1 em, .fw-host .fw-stat.fw-spreading a { --fw-ink: 240 198 126; }
+  .fw-host .fw-stat.fw-spreading b { --fw-ink: 236 197 126; }
   html[data-ver="f"] .fw-raise { justify-content: center; padding-bottom: 4vh; }
   html[data-ver="f"] .fw-raise h1 { max-width: 13em; font-size: clamp(2.1rem, 3.7vw, 3.9rem); }
   .fw-sub { max-width: 30em; margin: 1.1rem auto 0; font-size: clamp(1.02rem, 1.3vw, 1.25rem); line-height: 1.5; color: var(--soft); text-wrap: balance; }
@@ -1163,7 +1178,7 @@
   .slide.on[data-settled] .fw-asks, html.deck-motion-off .slide.on .fw-asks { opacity: 1; visibility: visible; transition: opacity 1.1s ease .45s, visibility 0s linear .45s; }
   /* Text endpoints are owned by deckCopy, not inferred from data-settled.
      Keep the independent question-card emphasis rules below. */
-  .slide.fw-raise.on .fw-asks { opacity: 1; visibility: visible; transition: none; } /* revealed with the complete text block */
+  .slide.fw-raise.on .fw-asks { opacity: var(--fw-reveal-alpha, 1); visibility: visible; transition: none; } /* revealed with the complete text block */
   .fw-ask { position: relative; }
   .fw-ask + .fw-ask { border-left: 1px solid #f0c87726; }
   .fw-ask-q { all: unset; position: relative; display: flex; align-items: center; gap: .9em; padding: 1.15em 1.35em 1.1em 1.45em; cursor: pointer;
@@ -2419,11 +2434,24 @@
   const scheduleResize = () => {
     if (viewSize() !== laidOut) layoutGeneration++;
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      const size = viewSize();
-      if (size === laidOut) return;
-      window.deckTransaction('resize', window.deckNav, size);
-    }, 120);
+    resizeTimer = setTimeout(layoutViewport, 120);
+  };
+  // A phone's toolbar sliding in or out changes the height alone, often in the middle of a turn. Laying out is a
+  // terminal transaction: it would replace the turn's animation with its endpoint. So a height-only change waits
+  // (briefly, and never past RESIZE_HOLD) for the turn in flight to finish by itself, then lays out the settled slide.
+  // A change of width (a phone turned, a window dragged) still lays out at once.
+  const RESIZE_HOLD = 6000;
+  let resizeHeldSince = 0;
+  const layoutViewport = () => {
+    const size = viewSize();
+    if (size === laidOut) { resizeHeldSince = 0; return; }
+    const heightOnly = parseInt(laidOut, 10) === innerWidth;
+    if (turn && !turn.finishing && heightOnly && !paused()) {
+      resizeHeldSince ||= performance.now();
+      if (performance.now() - resizeHeldSince < RESIZE_HOLD) { resizeTimer = setTimeout(layoutViewport, 200); return; }
+    }
+    resizeHeldSince = 0;
+    window.deckTransaction('resize', window.deckNav, size);
   };
   addEventListener('resize', scheduleResize);
   window.visualViewport?.addEventListener('resize', scheduleResize);
