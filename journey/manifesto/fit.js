@@ -4,7 +4,12 @@ import { settledPurposeMarks } from '../layout/rail-geometry.js';
  * Layout reads happen only when the available box or loaded font changes.
  * No minimum font is imposed: a short desktop must still never scroll. */
 export function createManifestoFit(root, panel, lines, paragraphs) {
-  let key = '';
+  let key = '', reserveValue = '';
+  // A loaded face can change the manuscript's metrics at an unchanged box,
+  // so it is part of the key; a press with nothing changed then costs one
+  // layout read instead of the twelve-step search (2026-11, take-off hitch).
+  let fonts = 0;
+  document.fonts?.addEventListener?.('loadingdone', () => { fonts++; });
   return function fit(force = false) {
     if (window.innerWidth <= 720 || root.hidden) return;
     const panelRect = panel.getBoundingClientRect();
@@ -16,11 +21,16 @@ export function createManifestoFit(root, panel, lines, paragraphs) {
         && mark.x - mark.radius <= panelRect.right);
     const reserve = Math.max(128, ...marks.map(mark =>
       window.innerHeight - (mark.y - mark.radius) + 12));
-    root.style.setProperty('--manifesto-desktop-reserve', `${reserve}px`);
+    // unchanged, it is not rewritten: a write here would make the reads
+    // below lay the page out a second time
+    if (`${reserve}px` !== reserveValue) {
+      reserveValue = `${reserve}px`;
+      root.style.setProperty('--manifesto-desktop-reserve', reserveValue);
+    }
     const panelStyle = getComputedStyle(panel);
     const available = Math.max(1, parseFloat(panelStyle.maxHeight)
       - parseFloat(panelStyle.paddingTop) - parseFloat(panelStyle.paddingBottom));
-    const next = `${panel.clientWidth}|${available}`;
+    const next = `${panel.clientWidth}|${available}|${fonts}|${!!root.classList.contains?.('is-font-pending')}`;
     if (!force && next === key) return;
     key = next;
     const fits = size => {

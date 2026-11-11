@@ -690,15 +690,23 @@ for (const aspect of [390 / 844, 1.6]) {
   assert.ok(count > 0 && count < colony.lod.near + colony.lod.far,
     'both phone and desktop omit offscreen bodies from instance submission');
   const groundCount = groundGeometry.drawRange.count, sporesCount = sporeGeometry.drawRange.count;
-  assert.ok(groundCount > 0 && groundCount < gp.count, 'offscreen ground strands do not reach the GPU');
-  assert.ok(sporesCount < sg.count, 'offscreen or unarrived spore cohorts do not reach the GPU');
+  // 2026-11: the batch indices are written once per prepared flight (in
+  // arrival order) and a frame draws one contiguous run of them, so a
+  // changing view never re-uploads them mid-flight (colony.js cullBatches).
+  assert.ok(groundCount > 0 && groundCount <= gp.count, 'arrived, in-view ground strands are drawn');
+  assert.ok(sporesCount <= sg.count, 'spore cohorts draw through the same fixed index');
   assert.equal(groundCount % 40, 0, 'whole curved strands survive the guard band');
+  assert.equal(groundGeometry.drawRange.start % 40, 0, 'the drawn run starts on a whole strand');
   assert.equal(sporesCount % 54, 0, 'whole full-lifetime spore cohorts survive the guard band');
-  const indices = [groundGeometry, sporeGeometry].map(g => Array.from(g.index.array.slice(0, g.drawRange.count)));
+  const run = g => Array.from(g.index.array.slice(g.drawRange.start, g.drawRange.start + g.drawRange.count));
+  const indices = [groundGeometry, sporeGeometry].map(run);
   const versions = [groundGeometry.index.version, sporeGeometry.index.version];
   for (let i = 0; i < 60; i++) paintPhone(CAMERA_SECONDS);
   assert.deepEqual([groundGeometry.index.version, sporeGeometry.index.version], versions,
     'stationary camera does not upload batch indices');
+  for (const s of [0.3, 0.6, 0.9, 1]) paintPhone(CAMERA_SECONDS * s);
+  assert.deepEqual([groundGeometry.index.version, sporeGeometry.index.version], versions,
+    'a moving camera and new arrivals never re-upload batch indices');
   viewCamera.lookAt(viewCamera.position.x, viewCamera.position.y + 20, viewCamera.position.z);
   colony.set(1,80,200,CAMERA_SECONDS);
   assert.equal(drawnCount(), 0);
@@ -707,7 +715,7 @@ for (const aspect of [390 / 844, 1.6]) {
   assert.ok(colony.group.children.filter(o => o.geometry === groundGeometry || o.geometry === sporeGeometry)
     .every(o => !o.visible), 'empty ground and spore batches also skip their draw calls');
   paintPhone(CAMERA_SECONDS);
-  assert.deepEqual([groundGeometry, sporeGeometry].map(g => Array.from(g.index.array.slice(0,g.drawRange.count))), indices,
+  assert.deepEqual([groundGeometry, sporeGeometry].map(run), indices,
     'turning back restores exactly the same strand and spore identities');
   console.log(`${aspect < 1 ? 'Mobile' : 'Desktop'} visible submissions: ${count} bodies, ${groundCount}/${gp.count} ground vertices, ${sporesCount}/${sg.count} spores.`);
 }
@@ -736,3 +744,37 @@ assert.ok(purposeColony.group.visible, 'Purpose seats survive the first Manifest
 assert.deepEqual(purposeColony.group.children.map(o => [o, o.geometry, o.material]), purposeResources,
   'Purpose/Manifesto reuse the same batches and GPU resources');
 console.log('Purpose quality: existing far seats only, visible submission, no duplicate ground/spores, stable branch resources pass.');
+
+// 2026-11 (take-off hitch): the flight's preparation is cached by its
+// inputs and can be advanced ahead of the press in small slices. A warmed
+// or repeated prepare() commits exactly what a cold one does, and an
+// unchanged re-entry re-uploads none of the shared links, gates or indices.
+{
+  const warmColony = createAerialColony({ groups: { stem, mushroom: cap } }, []);
+  const coldColony = createAerialColony({ groups: { stem, mushroom: cap } }, []);
+  const sharedOf = c => {
+    const ground = c.group.children.find(o => o.geometry.attributes.aColonyLink).geometry;
+    const spores = c.group.children.find(o => o.geometry.attributes.aSporeGate).geometry;
+    return [ground.attributes.aColonyLink, spores.attributes.aSporeGate, ground.index, spores.index];
+  };
+  const snapshot = c => c.group.children.map(o => [o.geometry.index && Array.from(o.geometry.index.array),
+    ...['aColonyPose', 'aColonyTone', 'aColonyReveal', 'aColonyLink', 'aSporeGate'].map(k => o.geometry.attributes[k] && Array.from(o.geometry.attributes[k].array))]);
+  let slices = 0;
+  while (!warmColony.prewarm(from, 1.6, 2) && slices < 500) slices++;
+  assert.ok(slices > 2 && slices < 500, `the preparation advances in several bounded slices (${slices})`);
+  const versions = sharedOf(warmColony).map(a => a.version);
+  warmColony.prepare(from, 1.6);
+  coldColony.prepare(from, 1.6);
+  assert.deepEqual(sharedOf(warmColony).map(a => a.version), versions, 'a warmed press re-uploads nothing it already sent');
+  assert.deepEqual(snapshot(warmColony), snapshot(coldColony), 'warmed and cold presses prepare identical flights');
+  assert.deepEqual(warmColony.lod, coldColony.lod);
+  warmColony.prepare(from, 1.6);
+  assert.deepEqual(sharedOf(warmColony).map(a => a.version), versions, 'an unchanged re-entry re-uploads no links, gates or indices');
+  // abandoned half-way for another pose, then pressed: the press completes it
+  const other = { ...from, position: { ...from.position, x: from.position.x + 1 } };
+  warmColony.prewarm(other, 1.6, 0);
+  warmColony.prepare(other, 1.6);
+  coldColony.prepare(other, 1.6);
+  assert.deepEqual(snapshot(warmColony), snapshot(coldColony), 'an abandoned warm-up is finished by the press');
+  console.log(`Manifesto prepare cache: ${slices + 1} warm slices, identical to a cold press, no re-upload on re-entry pass.`);
+}

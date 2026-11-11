@@ -443,7 +443,7 @@ body .j-manifesto .j-manifesto-panel { translate: none; }
    lift is needed. Keep the signature and navigation clearances intact. */
 @media (min-width: 721px) {
   .j-manifesto .j-manifesto-panel { width: min(44rem, 58vw); }
-  body .j-manifesto.is-open {
+  body .j-manifesto:is(.is-open, .is-measuring) {
     --manifesto-reserve: var(--manifesto-desktop-reserve, 8rem);
     align-items: flex-start;
   }
@@ -600,11 +600,18 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
   inherits: false;
   initial-value: .48;
 }
+/* Hover adds to the drawn thread's own strength (which its arrival
+   animation owns), so the two never fight over one property. */
+@property --thread-hover {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
 .manifesto-phrase-thread {
   background-image: linear-gradient(90deg,
-    rgb(219 173 112 / calc(var(--thread-strength) * .65)),
-    rgb(245 211 156 / var(--thread-strength)),
-    rgb(219 173 112 / calc(var(--thread-strength) * .75)));
+    rgb(219 173 112 / calc((var(--thread-strength) + var(--thread-hover) * .5) * .65)),
+    rgb(245 211 156 / calc(var(--thread-strength) + var(--thread-hover) * .5)),
+    rgb(219 173 112 / calc((var(--thread-strength) + var(--thread-hover) * .5) * .75)));
   background-repeat: no-repeat;
   background-position: left bottom;
   background-size: 100% 1px;
@@ -628,6 +635,24 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
 .j-manifesto-line.shown .concept-kinship {
   animation: manifesto-concept-pair 6s ease-in-out forwards;
   animation-delay: calc(var(--w) * var(--stagger));
+}
+/* THE THREAD ANSWERS THE POINTER (2026-11 — Hannah: "open models and open
+   tools should underline [when you] hover over it"). The phrase is copy,
+   not a link, so it takes no focus and no cursor; its existing thread just
+   brightens while the pointer is anywhere on it. The release waits a beat,
+   so crossing the gap between its wrapped lines does not flicker it. */
+@media (hover: hover) {
+  .j-manifesto.is-open .j-manifesto-line.shown .manifesto-phrase-thread {
+    pointer-events: auto;
+    transition: --thread-hover .35s ease .12s;
+  }
+  .j-manifesto.is-open .j-manifesto-line.shown .manifesto-phrase-thread:hover {
+    --thread-hover: 1;
+    transition: --thread-hover .2s ease;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .j-manifesto.is-open .j-manifesto-line.shown .manifesto-phrase-thread { transition: none; }
 }
 @keyframes manifesto-thread {
   0% { background-size: 0% 1px; --thread-strength: 0; }
@@ -941,4 +966,40 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
     mask-image: none;
     -webkit-mask-image: none;
   }
+}
+
+/* AN AHEAD-OF-PRESS MEASURE (branch.js prewarm): the manuscript is laid out
+   with the open page's reserve and hidden again inside one task, so it is
+   never painted; this only guarantees it could not be. */
+.j-manifesto.is-measuring,
+.j-manifesto.is-measuring *,
+.j-manifesto.is-measuring::before {
+  visibility: hidden !important;
+  animation: none !important;
+  transition: none !important;
+}
+
+/* THE WORDS ARRIVE ON THE COMPOSITOR (2026-11 — stutter toward the top of
+   the Manifesto, worst on phones). Each sentence started ~40 word
+   animations of filter: blur, text-shadow and colour (journey/site.css,
+   WRITTEN IN LIGHT): a repaint of every inking word on every frame, on the
+   flight's heaviest GPU frames. The same staggered reveal now animates
+   opacity alone, on the same clock and curve; the settled look is the
+   line's own colour and shadow, exactly what those keyframes ended on.
+   These rules replace site.css's keyframes by name, so they must stay in
+   this later stylesheet (or move there whole). */
+@keyframes j-manifesto-ink-light { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 1; } }
+@keyframes j-manifesto-name-light { 0% { opacity: 0; } 14%, 100% { opacity: 1; } }
+@keyframes j-manifesto-condense-light {
+  0% { opacity: 0; transform: translateX(calc((var(--w) - 4.5) * 0.12em)) scale(1.06); }
+  35% { opacity: 1; }
+  100% { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .j-manifesto-line.shown .j-manifesto-word { animation-name: j-manifesto-ink-light; }
+  .j-manifesto-line.shown .j-manifesto-word.is-name { animation-name: j-manifesto-name-light; }
+  .j-manifesto.title-shown .j-manifesto-glyph { animation-name: j-manifesto-condense-light; }
+  /* the resting values the old keyframes held by their fill */
+  .j-manifesto-line.shown .j-manifesto-word.is-name { color: rgba(246, 226, 184, 0.96); }
+  .j-manifesto.title-shown .j-manifesto-glyph { color: #f2e4c3; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.62); }
 }

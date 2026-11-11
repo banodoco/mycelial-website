@@ -104,6 +104,9 @@ function stridedIndex(source, unit, stride) {
   return new THREE.BufferAttribute(out.subarray(0, o), 1);
 }
 
+/** The registry slot the branch reads (manifesto/branch.js prewarm). */
+export const AERIAL_COLONY = Symbol.for('mycelial.manifesto.aerialColony');
+
 export function createAerialColony(sceneApi, seats, time = { value: 0 }) {
   const random = makeRng(0x41e21a);
   const bodies = aerialPlacements(seats, random, groundY);
@@ -306,9 +309,15 @@ ${seatRetirementGLSL}
     viewFrustum.setFromProjectionMatrix(viewMatrix);
   }
 
+  // A whole-attribute rewrite (prepare) must not inherit a partial range a
+  // cull queued and the renderer has not yet consumed.
+  function uploadWhole(attribute) {
+    attribute.clearUpdateRanges();
+    attribute.needsUpdate = true;
+  }
   function cullBodies(seconds) {
     for (const tier of tiers) {
-      let count = 0, changed = false;
+      let count = 0, firstChanged = -1;
       for (let i = 0; i < tier.bodyIds.length && tier.starts[i] <= seconds; i++) {
         const src = tier.bodyIds[i];
         // New tissue cannot contribute before its global arrival gate.
@@ -319,14 +328,17 @@ ${seatRetirementGLSL}
         if (tier.activeIds[count] !== src) {
           tier.activeIds[count] = src;
           writeBody(tier, src, count);
-          changed = true;
+          if (firstChanged < 0) firstChanged = count;
         }
         count++;
       }
-      if (changed) {
-        tier.arrivals.needsUpdate = true;
-        tier.poses.needsUpdate = true;
-        tier.tones.needsUpdate = true;
+      if (firstChanged >= 0) {
+        // Upload only the slots from the first change on (a body entering
+        // the frame shifts the compacted tail; the head is unchanged).
+        for (const attribute of [tier.arrivals, tier.poses, tier.tones]) {
+          attribute.addUpdateRange(firstChanged * attribute.itemSize, (count - firstChanged) * attribute.itemSize);
+          attribute.needsUpdate = true;
+        }
       }
       if (tier.drawn !== count) {
         tier.drawn = count;
@@ -337,29 +349,46 @@ ${seatRetirementGLSL}
 
   // Ground strands and complete spore trajectories have their own bounds:
   // a cap outside the frame can still send a visible runner or airborne spore
-  // into it. Keep source attributes immutable and compact only draw indices.
+  // into it. Keep source attributes immutable; the draw index is written ONCE
+  // per prepared flight, batches in arrival order (2026-11 — the stutter
+  // toward the top: re-compacting it whenever the in-view set changed
+  // re-uploaded the whole ground index mid-flight). A frame draws the one
+  // contiguous run of that order that spans its arrived, in-view batches.
   function indexedBatches(geometry, batches) {
     const count = geometry.attributes.position.count;
     const index = new THREE.BufferAttribute(Uint32Array.from({ length: count }, (_, i) => i), 1);
     geometry.setIndex(index);
-    return { geometry, batches, index, active: new Int32Array(batches.length).fill(-1) };
+    return { geometry, batches, index, order: Int32Array.from(batches, (_, i) => i),
+      ends: new Uint32Array(batches.length), arrived: 0 };
+  }
+  /** The batch order for one flight, from its prepared starts. */
+  function orderBatches(state, starts, intoIndex) {
+    const order = Int32Array.from(state.batches, (_, i) => i).sort((a, b) => starts[a] - starts[b]);
+    const ends = new Uint32Array(order.length);
+    let o = 0;
+    for (let k = 0; k < order.length; k++) {
+      const batch = state.batches[order[k]];
+      for (let j = 0; j < batch.count; j++) intoIndex[o++] = batch.first + j;
+      ends[k] = o;
+    }
+    return { order, ends };
   }
   function cullBatches(state, seconds, enabled) {
-    let count = 0, active = 0, changed = false;
-    if (enabled) for (let i = 0; i < state.batches.length; i++) {
-      const batch = state.batches[i];
-      if (seconds <= batch.start) continue;
-      worldBody.copy(batch.bounds).applyMatrix4(group.matrixWorld);
+    // arrivals only ever advance through the flight; a Return replays it
+    let arrived = state.arrived;
+    while (arrived > 0 && seconds <= state.batches[state.order[arrived - 1]].start) arrived--;
+    while (arrived < state.order.length && seconds > state.batches[state.order[arrived]].start) arrived++;
+    state.arrived = arrived;
+    let first = -1, last = -1;
+    if (enabled) for (let k = 0; k < arrived; k++) {
+      worldBody.copy(state.batches[state.order[k]].bounds).applyMatrix4(group.matrixWorld);
       if (!viewFrustum.intersectsSphere(worldBody)) continue;
-      if (state.active[active] !== i) {
-        state.active[active] = i;
-        for (let k = 0; k < batch.count; k++) state.index.array[count+k] = batch.first+k;
-        changed = true;
-      }
-      count += batch.count; active++;
+      if (first < 0) first = k;
+      last = k;
     }
-    if (changed) state.index.needsUpdate = true;
-    state.geometry.setDrawRange(0, count);
+    const start = first > 0 ? state.ends[first - 1] : 0;
+    const count = first < 0 ? 0 : state.ends[last] - start;
+    state.geometry.setDrawRange(start, count);
     state.object.visible = count > 0;
   }
 
@@ -602,9 +631,8 @@ ${seatRetirementGLSL}
    *  (the descent replays the same poses, so the climb covers both ways).
    *  The camera path is sampled every quarter second; a body counts only
    *  from its arrival (the ring's own seats from the start) and only while
-   *  it is inside the frame. */
-  function nearBodies(from, aspect) {
-    const halfH = (typeof window !== 'undefined' ? window.innerHeight : 900) / 2;
+   *  it is inside the frame. Body-by-body, so the job below can slice it. */
+  function nearFrames(from, aspect) {
     const frames = [];
     for (let t = 0; t <= CAMERA_SECONDS; t += 0.25) {
       const pose = manifestoPose(from, t, aspect);
@@ -615,67 +643,221 @@ ${seatRetirementGLSL}
       frames.push({ t, p, fx, fy, fz, rx, rz, ux: -fy*rz, uy: fx*rz-fz*rx, uz: fy*rx,
         tangent: Math.tan(pose.fov * Math.PI / 360) });
     }
-    return bodies.map((b, i) => {
-      const height = b.s * BODY_HEIGHT;
-      const arrives = plan[i*2] < 0 ? 0 : plan[i*2];
-      for (const f of frames) {
-        if (f.t + 0.25 < arrives) continue;
-        const x = b.x-f.p.x, y = b.gy+height/2-f.p.y, z = b.z-f.p.z;
-        const depth = x*f.fx + y*f.fy + z*f.fz;
-        // a body the camera is inside or right beside is as near as it gets
-        if (depth <= height) return true;
-        const nx = (x*f.rx + z*f.rz) / (depth*f.tangent*aspect);
-        const ny = (x*f.ux + y*f.uy + z*f.uz) / (depth*f.tangent);
-        if (Math.abs(nx) > 1.1 || Math.abs(ny) > 1.1) continue;
-        if (height / (depth*f.tangent) * halfH >= NEAR_PX) return true;
-      }
-      return false;
-    });
+    return frames;
+  }
+  function isNearBody(b, arrival, frames, aspect, halfH) {
+    const height = b.s * BODY_HEIGHT;
+    const arrives = arrival < 0 ? 0 : arrival;
+    for (const f of frames) {
+      if (f.t + 0.25 < arrives) continue;
+      const x = b.x-f.p.x, y = b.gy+height/2-f.p.y, z = b.z-f.p.z;
+      const depth = x*f.fx + y*f.fy + z*f.fz;
+      // a body the camera is inside or right beside is as near as it gets
+      if (depth <= height) return true;
+      const nx = (x*f.rx + z*f.rz) / (depth*f.tangent*aspect);
+      const ny = (x*f.ux + y*f.uy + z*f.uz) / (depth*f.tangent);
+      if (Math.abs(nx) > 1.1 || Math.abs(ny) > 1.1) continue;
+      if (height / (depth*f.tangent) * halfH >= NEAR_PX) return true;
+    }
+    return false;
   }
 
-  return {
+  /* THE FLIGHT IS PREPARED AHEAD, AND ONCE (2026-11 — the hitch as the
+     Manifesto camera takes off). Everything prepare() derives is a pure
+     function of the opening pose, the aspect and the window height, and it
+     used to run in full on the press itself (26-49 ms on a server CPU, a
+     multiple of that on a phone), then re-upload ~0.85 MB of unchanged
+     links and gates on every open. It is now a resumable job, keyed by
+     those inputs: prewarm() advances it in budgeted slices while Purpose is
+     at rest; prepare() finishes whatever is left (all of it, if nothing
+     was warmed — exactly the old cost) and, when the key is unchanged,
+     reinstates the stored result without touching the shared buffers.
+     The job works in scratch arrays and commits them in one step, because
+     a phone's Purpose draws through the same plan and tiers meanwhile. */
+  const keyOf = (from, aspect) => [from.position.x, from.position.y, from.position.z,
+    from.target.x, from.target.y, from.target.z, from.fov, from.roll || 0,
+    from.fieldCenter?.x ?? 0, from.fieldCenter?.z ?? 0, aspect]
+    .map(v => (+v).toFixed(4)).join(',') + `|${typeof window !== 'undefined' ? window.innerHeight : 900}`;
+  let job = null, prepared = null;
+  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  function newJob(from, aspect, key) {
+    return { key, from, aspect, stage: 0, i: 0, warmups: 0, plan: new Float32Array(bodies.length * 2),
+      near: null, frames: null, halfH: (typeof window !== 'undefined' ? window.innerHeight : 900) / 2,
+      links: null, gates: null, groundIndex: null, sporeIndex: null, result: null };
+  }
+  // Each stage does a bounded unit and returns true when it is complete.
+  const STAGES = [
+    // planAerialReveals is one indivisible call (pose.js) and, cold, the
+    // largest unit. Ahead of the press it is first run over a few bodies at
+    // a time, one call a slice, until the engine has compiled it: the full
+    // call then costs what a warm one does (measured ~15 ms cold -> ~2 ms).
+    (j, until) => {
+      if (until === Infinity || j.warmups >= 6) return true;
+      planAerialReveals(bodies.slice(0, 40), j.from, j.aspect, new Float32Array(80));
+      j.warmups++;
+      return false;
+    },
+    (j) => { planAerialReveals(bodies, j.from, j.aspect, j.plan); return true; },
+    (j, until) => {
+      j.links ||= new Float32Array(links.array.length);
+      for (; j.i < owners.length; j.i++) {
+        const owner = owners[j.i];
+        j.links[j.i*2] = owner < 0 ? -1 : j.plan[owner*2];
+        j.links[j.i*2+1] = owner < 0 ? 1 : j.plan[owner*2+1];
+        if ((j.i & 4095) === 4095 && now() > until) { j.i++; return false; }
+      }
+      j.i = 0;
+      return true;
+    },
+    (j) => {
+      j.gates = new Float32Array(sporeGate.array.length);
+      for (let k = 0; k < sporeCount; k++) {
+        const owner = sporeOwner[k];
+        j.gates[k*2] = j.plan[owner*2]; j.gates[k*2+1] = j.plan[owner*2+1];
+      }
+      j.groundStarts = groundBatches.map(batch => {
+        const first = batch.first, ia = owners[first*2], ib = owners[first*2+1];
+        const sa = ia < 0 || j.plan[ia*2] < 0 ? -1e3 : j.plan[ia*2];
+        const sb = ib < 0 || j.plan[ib*2] < 0 ? -1e3 : j.plan[ib*2];
+        return Math.max(sa, sb) - .5 * (.9 + paths[first*2+1] * .07);
+      });
+      j.sporeStarts = sporeBatches.map(batch => j.plan[batch.owner*2] + .6*j.plan[batch.owner*2+1]);
+      j.groundIndex = new Uint32Array(groundDraw.index.array.length);
+      j.sporeIndex = new Uint32Array(sporeDraw.index.array.length);
+      j.groundOrder = orderBatches(groundDraw, j.groundStarts, j.groundIndex);
+      j.sporeOrder = orderBatches(sporeDraw, j.sporeStarts, j.sporeIndex);
+      return true;
+    },
+    (j, until) => {
+      j.frames ||= nearFrames(j.from, j.aspect);
+      j.near ||= new Uint8Array(bodies.length);
+      for (; j.i < bodies.length; j.i++) {
+        j.near[j.i] = isNearBody(bodies[j.i], j.plan[j.i*2], j.frames, j.aspect, j.halfH) ? 1 : 0;
+        if ((j.i & 15) === 15 && now() > until) { j.i++; return false; }
+      }
+      j.i = 0;
+      return true;
+    },
+    (j) => {
+      const order = bodies.map((_, i) => i).filter(i => j.plan[i*2] <= CAMERA_SECONDS)
+        .sort((a, b) => j.plan[a*2] - j.plan[b*2]);
+      // each body's tier, from the tallest it gets on screen on this flight
+      j.tiers = tiers.map(tier => Int32Array.from(order.filter(i => !!j.near[i] === (tier.name === 'near'))));
+      return true;
+    },
+    // commit: the shared draw data, in one step
+    (j) => {
+      links.array.set(j.links); uploadWhole(links);
+      sporeGate.array.set(j.gates); uploadWhole(sporeGate);
+      groundDraw.index.array.set(j.groundIndex); uploadWhole(groundDraw.index);
+      sporeDraw.index.array.set(j.sporeIndex); uploadWhole(sporeDraw.index);
+      prepared = { key: j.key, plan: j.plan, tiers: j.tiers,
+        ground: { starts: j.groundStarts, ...j.groundOrder }, spores: { starts: j.sporeStarts, ...j.sporeOrder } };
+      return true;
+    },
+  ];
+  function runJob(j, until) {
+    while (j.stage < STAGES.length) {
+      if (!STAGES[j.stage](j, until)) return false;
+      j.stage++;
+      if (now() > until) return j.stage >= STAGES.length;
+    }
+    return true;
+  }
+  function applyBatches(state, stored) {
+    stored.starts.forEach((start, i) => { state.batches[i].start = start; });
+    state.order = stored.order; state.ends = stored.ends; state.arrived = 0;
+  }
+  /** The colony's buffers, first-sight uploads included, sent to the GPU
+   *  ahead of the flight: one draw of the real scene (so every program
+   *  variant matches the frame's) through a camera that sees only the
+   *  colony's layer, into the composer's own buffer (overwritten by the
+   *  next frame), scissored to one pixel, with every instance count and
+   *  draw range at zero — the bindings upload, nothing is drawn. */
+  const WARM_LAYER = 31;
+  let warmCamera = null, warmed = false, warmReport = null;
+  group.traverse(o => { if (o !== group) o.layers.enable(WARM_LAYER); });
+  function warmDraw() {
+    const r = sceneApi.renderer, scene = sceneApi.scene, camera = sceneApi.camera;
+    if (!r || typeof r.render !== 'function' || !scene || !camera) return false;
+    warmCamera ||= camera.clone();
+    warmCamera.copy(camera);
+    warmCamera.layers.set(WARM_LAYER);
+    const objects = group.children;
+    const saved = objects.map(o => [o.visible, o.geometry.instanceCount, o.geometry.drawRange.start, o.geometry.drawRange.count, o.frustumCulled]);
+    const groupVisible = group.visible;
+    const previous = r.getRenderTarget(), scissorTest = r.getScissorTest(), autoClear = r.autoClear;
+    const scissor = r.getScissor(new THREE.Vector4());
+    try {
+      group.visible = true;
+      for (const o of objects) {
+        // every buffer, whether or not this view frames it
+        o.visible = true; o.frustumCulled = false;
+        if (o.geometry.isInstancedBufferGeometry) o.geometry.instanceCount = 0;
+        else o.geometry.setDrawRange(0, 0);
+      }
+      r.setRenderTarget(sceneApi.composer?.readBuffer || null);
+      r.autoClear = false;
+      r.setScissorTest(true);
+      r.setScissor(0, 0, 1, 1);
+      const before = r.info?.memory?.geometries;
+      r.render(scene, warmCamera);
+      warmReport = { geometries: before === undefined ? null : r.info.memory.geometries - before, at: now() };
+      return true;
+    } finally {
+      r.setScissor(scissor); r.setScissorTest(scissorTest); r.autoClear = autoClear;
+      r.setRenderTarget(previous);
+      group.visible = groupVisible;
+      objects.forEach((o, i) => {
+        const [visible, instances, start, count, culled] = saved[i];
+        o.visible = visible; o.frustumCulled = culled;
+        if (o.geometry.isInstancedBufferGeometry) o.geometry.instanceCount = instances;
+        else o.geometry.setDrawRange(start, count);
+      });
+    }
+  }
+
+  const api = {
     group,
     // the placements, for layers that dress the same field (sky.js plumes)
     bodies,
+    /** Advance the flight's preparation for this opening pose by about
+     *  `budgetMs`, then (in a later call) upload its buffers. Idempotent and
+     *  abandonable: a different pose restarts it, and prepare() completes
+     *  whatever is left. Returns true once nothing is left to do. */
+    prewarm(from, aspect, budgetMs = 8) {
+      const key = keyOf(from, aspect);
+      if (prepared?.key === key) {
+        if (!warmed) warmed = warmDraw();
+        return true;
+      }
+      if (!job || job.key !== key) job = newJob(from, aspect, key);
+      if (runJob(job, now() + budgetMs)) { job = null; warmed = false; }
+      return false;
+    },
     prepare(from, aspect) {
       purposeMode = false;
       cullView = !!sceneApi.camera;
-      planAerialReveals(bodies, from, aspect, plan);
-      for (let i = 0; i < owners.length; i++) {
-        const owner = owners[i];
-        links.array[i*2] = owner < 0 ? -1 : plan[owner*2];
-        links.array[i*2+1] = owner < 0 ? 1 : plan[owner*2+1];
+      const key = keyOf(from, aspect);
+      if (prepared?.key !== key) {
+        if (!job || job.key !== key) job = newJob(from, aspect, key);
+        runJob(job, Infinity);
+        job = null;
       }
-      links.needsUpdate = true;
-      for (let k = 0; k < sporeCount; k++) {
-        const owner = sporeOwner[k];
-        sporeGate.array[k*2] = plan[owner*2]; sporeGate.array[k*2+1] = plan[owner*2+1];
-      }
-      sporeGate.needsUpdate = true;
-      for (const batch of groundBatches) {
-        const first = batch.first, ia = owners[first*2], ib = owners[first*2+1];
-        const sa = ia < 0 || plan[ia*2] < 0 ? -1e3 : plan[ia*2];
-        const sb = ib < 0 || plan[ib*2] < 0 ? -1e3 : plan[ib*2];
-        batch.start = Math.max(sa, sb) - .5 * (.9 + paths[first*2+1] * .07);
-      }
-      for (const batch of sporeBatches) batch.start = plan[batch.owner*2] + .6*plan[batch.owner*2+1];
-
-      const order = bodies.map((_, i) => i).filter(i => plan[i*2] <= CAMERA_SECONDS)
-        .sort((a, b) => plan[a*2] - plan[b*2]);
-      // each body's tier, from the tallest it gets on screen on this flight
-      const near = nearBodies(from, aspect);
-      for (const tier of tiers) {
-        const mine = order.filter(i => near[i] === (tier.name === 'near'));
-        tier.starts = new Float32Array(mine.length);
-        tier.bodyIds = Int32Array.from(mine);
+      // the flight's own frames upload whatever changed from here on
+      warmed = true;
+      plan.set(prepared.plan);
+      applyBatches(groundDraw, prepared.ground);
+      applyBatches(sporeDraw, prepared.spores);
+      tiers.forEach((tier, t) => {
+        const mine = prepared.tiers[t];
+        tier.starts = Float32Array.from(mine, src => plan[src*2]);
+        tier.bodyIds = mine;
         tier.activeIds.fill(-1);
-        mine.forEach((src, dst) => {
-          tier.starts[dst] = plan[src*2];
-          writeBody(tier, src, dst);
-        });
-        tier.arrivals.needsUpdate = true; tier.poses.needsUpdate = true; tier.tones.needsUpdate = true;
+        mine.forEach((src, dst) => writeBody(tier, src, dst));
+        uploadWhole(tier.arrivals); uploadWhole(tier.poses); uploadWhole(tier.tones);
         tier.drawn = -1;
-      }
+      });
       portrait.value = aspect < 0.9 ? 1 : 0;
     },
     /** Purpose reuses only its existing background seats, never the extra
@@ -712,6 +894,8 @@ ${seatRetirementGLSL}
     /** QA: how many bodies each tier holds on the prepared flight. */
     get lod() { return { near: tiers[0].starts.length, far: tiers[1].starts.length }; },
     get drawn() { return { near: tiers[0].drawn, far: tiers[1].drawn }; },
+    /** QA: the last warm draw (geometries newly seen by the renderer). */
+    get warm() { return { prepared: prepared?.key || null, warmed, report: warmReport }; },
     setSeatLight(v, retreat = false) {
       const next = Math.max(0, Math.min(1, v));
       if (retreat && !seatRetiring.value) seatRetirementStart.value = Math.max(next, seatLight.value);
@@ -749,4 +933,9 @@ ${seatRetirementGLSL}
       fogNear.value = near; fogFar.value = far;
     },
   };
+  // The live colony, for the Manifesto branch's ahead-of-press warm-up: the
+  // branch reaches Final only through its setManifesto field contract, and
+  // importing this module would pull three into the branch's own graph.
+  globalThis[AERIAL_COLONY] = api;
+  return api;
 }
