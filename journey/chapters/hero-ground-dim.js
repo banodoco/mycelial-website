@@ -84,6 +84,9 @@ export function createHeroGroundDimClaim(sceneApi, {
       active = true;
       paint(ledger);
     },
+    /** A flight may let the point clouds fade in from zero instead of
+     *  flipping visible at the rest threshold; restore the threshold after. */
+    setPointThreshold(v) { claim.pointThreshold = v; },
     clear() {
       if (!active) return;
       ledger.claims.delete(token);
