@@ -864,6 +864,9 @@
   .st-screen { position: relative; border-radius: 10px; background: #12100d; overflow: hidden; }
   .st-pic { position: absolute; left: 50%; top: 50%; height: 95%; aspect-ratio: 16 / 9; transform: translate(-50%, -50%); }
   .st-pic video { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .st-pic .st-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .st-pic video { position: relative; opacity: 0; }
+  .st-pic.is-video-ready video { opacity: 1; }
   .st-pic span, .st-carry span { position: absolute; left: 0; right: 0; bottom: 13%; text-align: center; font: italic 500 30px/1 "Cormorant Garamond", Georgia, serif; color: #fffaf0; text-shadow: 0 1px 3px rgb(70 45 20 / .6), 0 0 18px rgb(60 35 15 / .5); }
   .st-transport { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--as-muted); }
   .st-btn { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--as-ink); }
@@ -2053,10 +2056,14 @@
   // pace or pause state: a delayed callback must never throw elapsed time away.
   let timeline = 0, timelineAt = performance.now();
   const paused = () => document.hidden || ov.classList.contains('on');
+  let timelinePaused = paused();
   window.deckNow = () => {
     const at = performance.now();
-    if (!paused()) timeline += Math.max(0, at - timelineAt) * pace;
+    // Charge the interval according to its previous state. Visibility events
+    // arrive after document.hidden changes, including after OS suspension.
+    if (!timelinePaused) timeline += Math.max(0, at - timelineAt) * pace;
     timelineAt = at;
+    timelinePaused = paused();
     return timeline;
   };
   const syncTimeline = () => { window.deckNow(); };
@@ -2185,6 +2192,20 @@
   };
   window.deckTurnDone = (slideEl, context) => completePhase('network', slideEl, context);
   window.deckArrived = (context) => { if (turn?.context === context && context.isCurrent()) turn.arrive('completed'); };
+  // Scene faults are observable, but this reporter never changes visibility
+  // or schedules a repair. Each scene owns its bounded local recovery.
+  const sceneFaults = [];
+  window.deckReportSceneFault = (scene, phase, error, context = window.deckNav) => {
+    if (context && !context.isCurrent()) return;
+    const fault = { scene, phase, generation: context?.generation ?? null,
+      message: String(error?.message || error), at: Math.round(performance.now()) };
+    sceneFaults.push(fault); if (sceneFaults.length > 24) sceneFaults.shift();
+    console.warn('Deck scene fault', fault);
+    dispatchEvent(new CustomEvent('deck-scene-fault', { detail: fault }));
+  };
+  if (window.__deckDebug) Object.defineProperty(window.__deckDebug, 'sceneFaults', {
+    get: () => sceneFaults.slice(),
+  });
   // A static dispatcher, not another slide-selection authority.
   const scenes = new Map();
   let networkScene = null;
@@ -2749,10 +2770,16 @@
       }
       pending.push(warmedMedia.get(url).then((objectUrl) => {
         if (!video.isConnected) return;
+        // Preserve pre-load intent; load() resets paused and pending play promises.
+        // A readiness handler must not resume a departed visit or override motion-off.
+        const owner = window.deckNav, resume = !video.paused;
+        if (resume) video.addEventListener('loadeddata', () => {
+          if (owner?.isCurrent() && slide.classList.contains('on') && !paused() && !window.deckStill())
+            video.play().catch(() => {});
+        }, { once: true });
         video.src = objectUrl;
         video.removeAttribute('data-src');
         video.load();
-        if (slide.classList.contains('on') && !video.paused) video.play().catch(() => {});
       }).catch((error) => {
         video.dataset.warmed = '';
         console.error(error);

@@ -788,7 +788,7 @@
   document.fonts?.addEventListener?.('loadingdone', () => {
     for (const key in labels) lsz.set(labels[key], [labels[key].offsetWidth, labels[key].offsetHeight]);
     dirty.fill(true); fullW = 0; lastPlaceKey = null; prepared = false;
-    if (!running && begun && cur) frame();
+    if (!running && begun && cur && activeStage >= 0 && entryCtx?.isCurrent()) frame();
   });
   const inCard = (el, card) => { // an element's middle in its card's own coordinates (borders included, transforms not)
     let x = el.offsetWidth / 2, y = el.offsetHeight / 2;
@@ -1162,11 +1162,27 @@
     const elapsed = Math.max(0, (clock - (last || clock)) / 1000) / stretch, dt = Math.min(0.05, elapsed);
     last = clock;
     // Lifecycle deadlines use the semantic clock even if rendering stalls. Only visual integration is capped.
-    if (unhanding) { if (!unstep(dt, elapsed)) return; } else advance(dt, elapsed, ctx);
-    frame();
+    try {
+      if (unhanding) { if (!unstep(dt, elapsed)) return; } else advance(dt, elapsed, ctx);
+      frame();
+    } catch (error) { recoverFrame(ctx, error); return; }
+    if (running && ctx === entryCtx && ctx.isCurrent()) raf = requestAnimationFrame((t) => tick(ctx, t));
+  };
+  const start = (ctx = entryCtx) => {
+    if (raf || !ctx?.isCurrent() || still || document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return;
+    entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now();
     raf = requestAnimationFrame((t) => tick(ctx, t));
   };
-  const start = (ctx = entryCtx) => { if (running || still || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now(); raf = requestAnimationFrame((t) => tick(ctx, t)); };
+  let frameRecoveredFor = null;
+  const recoverFrame = (ctx, error) => {
+    stop(); window.deckReportSceneFault?.('flywheel', 'frame', error, ctx);
+    if (!ctx?.isCurrent() || ctx !== entryCtx || frameRecoveredFor === ctx) return;
+    frameRecoveredFor = ctx;
+    try {
+      if (unhanding) endUnhand();
+      else restore(ctx); // existing endpoint; no new text or picture renderer
+    } catch (failure) { stop(); window.deckReportSceneFault?.('flywheel', 'recovery', failure, ctx); }
+  };
   const stop = () => { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; };
   const reset = () => {
     stop();
@@ -1443,11 +1459,12 @@
       begun = false;
       const ctx = entryCtx;
       if (ctx?.isCurrent?.()) begin(ctx, activeStage);
-    } else if (document.getElementById('overview')?.classList.contains('on')) {
+    } else if (document.hidden || document.getElementById('overview')?.classList.contains('on')) {
       if (unhanding) endUnhand();
       stop();
     } else if (activeStage >= 0 && begun) start(entryCtx);
   };
+  document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
 

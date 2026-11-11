@@ -24,7 +24,7 @@
   const easeIO = (q) => (q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2);
   const seep = (k) => 0.5 - 0.5 * Math.cos(Math.PI * k);
   let paused = false, pendingCtx = null, pausedVideos = [];
-  const motionBlocked = () => document.getElementById('overview')?.classList.contains('on') || window.deckStill?.();
+  const motionBlocked = () => document.hidden || document.getElementById('overview')?.classList.contains('on') || motionOff();
   const now = () => window.deckNow();
   const current = (ctx) => !!ctx && ctx.isCurrent();
   // Canvases are decoration/snapshot aids. A browser refusing one must not
@@ -87,7 +87,7 @@
   const FRAMES = [['start', 0], ['mountains', 6.5], ['descent', 10], ['town', 13]];
   const media = '../assets/astrid/lantern-valley';
   const CONTENT = {
-    preview: `<div class="st-screen"><div class="st-pic"><video data-src="${media}/final.mp4" data-type='video/mp4; codecs="avc1.64001e"' data-fallback="${media}/final-vp9.webm" data-poster="${media}/final-poster.webp" muted loop playsinline preload="none"></video><span></span></div></div>
+    preview: `<div class="st-screen"><div class="st-pic"><img class="st-poster" data-src="${media}/final-poster.webp" alt=""><video data-src="${media}/final.mp4" data-type='video/mp4; codecs="avc1.64001e"' data-fallback="${media}/final-vp9.webm" data-poster="${media}/final-poster.webp" muted loop playsinline preload="none"></video><span></span></div></div>
       <div class="st-transport"><b class="st-btn">${I.back}</b><b class="st-btn is-play">${I.pause}</b><span class="st-time">0:00 / 0:14</span><span class="st-pill">1280×720 · 30 fps</span></div>`,
     timeline: `<div class="st-th"></div><div class="st-ruler">${[0, 2, 4, 6, 8, 10, 12, 14].map((t) => `<span style="left:${(t / SPAN) * 100}%">0:${String(t).padStart(2, '0')}</span>`).join('')}</div>
       <div class="st-th">${I.film}<span>V3</span><em>Video</em></div><div class="st-lane"><span class="st-clip" style="${span(0, SPAN)}" data-bg="${media}/final-poster.webp"><img data-src="${media}/final-poster.webp" alt=""><b>MiniMax H3</b><i>14 s</i></span><i class="st-head"></i></div>
@@ -143,6 +143,12 @@
   const cv = document.createElement('canvas');
   cv.className = 'st-threads';
   const g = context2D(cv);
+  // A cropped cache contains only the completed roots/registration artwork.
+  // The moving guide and leaders remain live; no extra full-screen canvas.
+  const baseCv = document.createElement('canvas'), baseG = context2D(baseCv);
+  let threadBox = { x: 0, y: 0, w: 1, h: 1 }, baseReady = false, baseFailed = false, drawFaults = 0;
+  const metrics = { frames: 0, baseDraws: 0, cacheHits: 0, frameRecoveries: 0 };
+  const reportFault = (phase, error, ctx = activeCtx) => window.deckReportSceneFault?.('stack', phase, error, ctx);
   // The flags (buttons, so keyboard users can reach them) and the cards they unfold into.
   const flags = TAGS.map((t, i) => {
     const b = document.createElement('button');
@@ -183,33 +189,39 @@
     el.style.transform = `scale(${(w / nw).toFixed(5)}, ${(h / nh).toFixed(5)})`;
   };
   const applyPlanes = () => st.forEach((s, i) => {
-    const el = planes[i], was = shown[i], p = PL[i];
-    const moved = was.x !== s.x || was.y !== s.y || was.w !== s.w || was.h !== s.h, turned = was.rx !== s.rx || was.rz !== s.rz;
-    if (moved) {
+    const el = planes[i], was = shown[i], p = PL[i], gh = ghosts[i];
+    const moved = was.x !== s.x || was.y !== s.y || was.w !== s.w || was.h !== s.h;
+    const resized = was.w !== s.w || was.h !== s.h;
+    const turned = was.rx !== s.rx || was.rz !== s.rz;
+    // At rest the six-pixel tour lift is a translation, not five re-layouts.
+    const ambient = !!amb && !build?.back && !gh?.firstChild;
+    if (ambient) {
+      if (!was.ambient || resized || was.x !== s.x) box(el, { ...s, y: p.cy });
+      const lift = `0 ${(s.y - p.cy).toFixed(3)}px`;
+      if (el.style.translate !== lift) el.style.translate = lift;
+    } else if (moved || was.ambient) {
+      el.style.translate = '';
       box(el, s);
-      // The chat changes aspect ratio as it becomes a wide agent layer. Both
-      // renderings share that changing frame; contain-fit would leave the old
-      // narrow chat floating inside it until the new wide chat suddenly appears.
-      if (i === 3 && ghosts[i].firstChild) stretch(inners[i], s.w - 2, s.h - 2, p.w - 2, p.h - 2);
+    }
+    const stretchChat = i === 3 && !!gh?.firstChild;
+    if (resized || was.stretchChat !== stretchChat) {
+      if (stretchChat) stretch(inners[i], s.w - 2, s.h - 2, p.w - 2, p.h - 2);
       else fit(inners[i], s.w - 2, s.h - 2, p.w - 2, p.h - 2);
     }
     if (turned) el.style.transform = `rotateX(${s.rx.toFixed(2)}deg) rotateZ(${s.rz.toFixed(2)}deg)`;
     if (was.o !== s.o) el.style.opacity = s.o.toFixed(3);
     if (was.c !== s.c) inners[i].style.opacity = s.c.toFixed(3);
-    const gh = ghosts[i];
     if (gh && (was.g !== s.g || (s.g > 0 && (moved || turned)))) {
       gh.style.display = s.g > 0 && gh.firstChild ? 'block' : 'none';
       if (s.g > 0 && gh.firstChild) {
         box(gh, s); gh.style.transform = el.style.transform; gh.style.opacity = s.g.toFixed(3);
         if (i === 3) stretch(gh.firstChild, s.w, s.h, gh.dataset.w, gh.dataset.h);
         else fit(gh.firstChild, s.w, s.h, gh.dataset.w, gh.dataset.h);
-        // A hidden clone has no scroll box. Restore its viewport only once it
-        // has layout, synchronously before its first visible animation frame.
         const scroll = ghostScrolls[i];
         if (scroll && !scroll.ready) { scroll.sync(); scroll.ready = true; }
       }
     }
-    Object.assign(was, s);
+    Object.assign(was, s, { ambient, stretchChat });
   });
   const apply = () => { applyPlanes(); placeCarry(); };
   const placeCarry = () => {
@@ -278,7 +290,14 @@
     const cw0 = view.mobile ? W - 32 : low ? CARDW_L : CARDW;
     cards.forEach((c) => { c.style.width = `${cw0}px`; });
     const ch = cards.map((c) => c.offsetHeight);
-    const slotH = view.mobile ? Math.max(...ch) : 0, slotT = view.mobile ? H - 70 - slotH : h1.bottom + 12;
+    const slotH = view.mobile ? Math.max(...ch) : 0;
+    const naturalSlotT = view.mobile ? H - 70 - slotH : h1.bottom + 12;
+    const slotT = view.mobile ? Math.max(naturalSlotT, h1.bottom + 144) : naturalSlotT;
+    const compact = view.mobile && slotT > naturalSlotT;
+    // Short browser viewports scroll the existing composition rather than
+    // producing a negative scale. Normal phone/desktop geometry is unchanged.
+    slide.style.overflowY = compact ? 'auto' : '';
+    root.style.height = compact ? `${Math.ceil(slotT + slotH + 80)}px` : '';
     root.style.setProperty('--st-card-top', `${slotT.toFixed(1)}px`);
     root.style.setProperty('--st-card-height', `${slotH.toFixed(1)}px`);
     const Rg = view.mobile ? { l: 16, r: W - 16, t: h1.bottom + 12, b: slotT - 12 }
@@ -288,7 +307,7 @@
     // The flags stay readable in screen pixels: include their measured width once in the mobile fit,
     // then centre flags, leaders and planes together rather than pinning labels to the viewport edge.
     const mobileFlagW = view.mobile ? Math.max(...flags.map((f) => f.offsetWidth)) : 0;
-    const k = Math.min((Rg.r - Rg.l - mobileFlagW) / (box.r - box.l), (Rg.b - Rg.t) / (box.b - box.t));
+    const k = Math.max(0.01, Math.min((Rg.r - Rg.l - mobileFlagW) / (box.r - box.l), (Rg.b - Rg.t) / (box.b - box.t)));
     view.k = k;
     view.ox = (Rg.l + Rg.r + mobileFlagW) / 2 - ((box.l + box.r) / 2) * k;
     view.oy = (Rg.t + Rg.b) / 2 - ((box.t + box.b) / 2) * k;
@@ -298,9 +317,6 @@
       world.style.transform = `translate(${(+view.ox.toFixed(1) / kz).toFixed(4)}px, ${(+view.oy.toFixed(1) / kz).toFixed(4)}px)`;
     } else world.style.transform = `translate(${view.ox.toFixed(1)}px, ${view.oy.toFixed(1)}px) scale(${k.toFixed(4)})`;
     dpr = Math.min(2, Math.round(devicePixelRatio || 1) || 1);
-    const pixelW = Math.round(W * dpr), pixelH = Math.round(H * dpr);
-    if (cv.width !== pixelW) cv.width = pixelW;
-    if (cv.height !== pixelH) cv.height = pixelH;
     // Settled geometry, in screen px: the corners the threads tie together, the flags' places, the roots.
     const corners = cw.map((c) => Object.fromEntries(Object.entries(c).map(([key, p]) => [key, toS(p)])));
     const callX = toS({ x: callXw, y: 0 }).x;
@@ -361,6 +377,17 @@
     flagY = (openI >= 0 && !view.mobile ? geo.place[openI].flags : geo.base).slice();
     flags.forEach((el, i) => { el.style.top = `${flagY[i].toFixed(1)}px`; });
     if (openI >= 0 && !view.mobile) cards[openI].style.top = `${geo.place[openI].top.toFixed(1)}px`;
+    // Include every possible accordion position and glow, not just the open card.
+    const art = [...roots.flatMap(r => r.pts), ...pts.map(p => [p.x, p.y]),
+      ...geo.place.flatMap(p => p.flags.map(y => [callX, y])), ...geo.base.map(y => [callX, y])];
+    const pad = 24, x = Math.floor(Math.min(...art.map(p => p[0])) - pad), y = Math.floor(Math.min(...art.map(p => p[1])) - pad);
+    const w = Math.ceil(Math.max(...art.map(p => p[0])) + pad - x), h = Math.ceil(Math.max(...art.map(p => p[1])) + pad - y);
+    threadBox = { x, y, w, h };
+    Object.assign(cv.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` });
+    const pixelW = Math.max(1, Math.ceil(w * dpr)), pixelH = Math.max(1, Math.ceil(h * dpr));
+    if (cv.width !== pixelW) cv.width = pixelW;
+    if (cv.height !== pixelH) cv.height = pixelH;
+    baseReady = false; baseFailed = false; drawFaults = 0;
   };
 
   // ---- Drawing the threads -----------------------------------------------------------------------
@@ -369,7 +396,8 @@
   const vis = { sh: 1, lb: PL.map(() => 1), rt: 1 };
   // Flags are DOM controls: their reveal must not depend on a canvas draw succeeding.
   const syncFlagVisibility = () => vis.lb.forEach((q, i) => {
-    flags[i].style.setProperty('--in', (q * q).toFixed(3));
+    const value = (q * q).toFixed(3);
+    if (flags[i].style.getPropertyValue('--in') !== value) flags[i].style.setProperty('--in', value);
   });
   const GOLD = (a) => `rgba(240,200,119,${a.toFixed(3)})`;
   // Each bead's glow is stamped from one sprite (the same radial light, .55 at its heart to nothing at 4r, faded by its
@@ -384,12 +412,12 @@
       sg.fillStyle = rg; sg.fillRect(0, 0, 128, 128);
     }
   }
-  const dot = (x, y, r, a) => {
+  const dot = (g, x, y, r, a) => {
     if (a <= 0.01) return;
     g.globalAlpha = a; g.drawImage(glow, x - r * 4, y - r * 4, r * 8, r * 8); g.globalAlpha = 1;
     g.fillStyle = `rgba(255,236,200,${a.toFixed(3)})`; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
   };
-  const partial = (pts, q) => { // a polyline drawn to fraction q of its points
+  const partial = (g, pts, q) => { // a polyline drawn to fraction q of its points
     if (q <= 0) return;
     const n = (pts.length - 1) * q, m = Math.floor(n);
     g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
@@ -397,23 +425,18 @@
     if (m < pts.length - 1) { const f = n - m, a = pts[m], b = pts[m + 1]; g.lineTo(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f); }
     g.stroke();
   };
-  const drawThreads = () => {
-    if (!g) return;
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.clearRect(0, 0, cv.width, cv.height);
-    if (!geo) return;
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.lineCap = 'round'; g.lineJoin = 'round';
-    const { corners: C, roots } = geo, k = view.k;
+  const drawBaseThreads = (g) => {
+    metrics.baseDraws++;
+    const { corners: C, roots } = geo;
     // Roots under the foundation, and the long threads out to the right.
     if (vis.rt > 0) {
       for (const r of roots) {
         const q = clamp((vis.rt - r.delay) / (1 - r.delay * 0.6));
         if (q <= 0) continue;
         g.lineWidth = r.w; g.strokeStyle = GOLD(r.a * (0.6 + 0.4 * q));
-        partial(r.pts, ease(q));
+        partial(g, r.pts, ease(q));
         const tip = clamp((q - 0.85) / 0.15);
-        if (tip > 0) { const [x, y] = r.pts.at(-1); dot(x, y, 1, 0.75 * tip); r.dots.forEach(([dx, dy]) => dot(dx, dy, 0.8, 0.5 * tip)); }
+        if (tip > 0) { const [x, y] = r.pts.at(-1); dot(g, x, y, 1, 0.75 * tip); r.dots.forEach(([dx, dy]) => dot(g, dx, dy, 0.8, 0.5 * tip)); }
       }
     }
     // Registration threads, corner to corner down the stack, drawn from the top: down both near corners and the far
@@ -432,8 +455,35 @@
         }
       }
       g.setLineDash([]);
-      C.forEach((c, i) => { const a = clamp(vis.sh * segs - i + 1); RUNS.forEach((key) => dot(c[key].x, c[key].y, 1.9, a * (key === far ? 0.75 : 1))); dot(c[faint].x, c[faint].y, 1.4, a * 0.55); });
+      C.forEach((c, i) => { const a = clamp(vis.sh * segs - i + 1); RUNS.forEach((key) => dot(g, c[key].x, c[key].y, 1.9, a * (key === far ? 0.75 : 1))); dot(g, c[faint].x, c[faint].y, 1.4, a * 0.55); });
     }
+  };
+  const prepareThreadContext = (ctx) => {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.setTransform(dpr, 0, 0, dpr, -threadBox.x * dpr, -threadBox.y * dpr);
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.setLineDash([]);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  };
+  const drawThreads = () => {
+    if (!g || !geo) return;
+    prepareThreadContext(g);
+    if (baseG && !baseFailed && vis.sh === 1 && vis.rt === 1) {
+      try {
+        if (!baseReady) {
+          if (baseCv.width !== cv.width) baseCv.width = cv.width;
+          if (baseCv.height !== cv.height) baseCv.height = cv.height;
+          prepareThreadContext(baseG); drawBaseThreads(baseG); baseReady = true;
+        }
+        g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(baseCv, 0, 0);
+        g.setTransform(dpr, 0, 0, dpr, -threadBox.x * dpr, -threadBox.y * dpr);
+        metrics.cacheHits++;
+      } catch (error) {
+        baseFailed = true; baseReady = false; reportFault('thread-cache', error);
+        prepareThreadContext(g); drawBaseThreads(g); // optional cache, not an availability dependency
+      }
+    } else { baseReady = false; drawBaseThreads(g); }
+    const C = geo.corners, k = view.k;
     // Flag leaders: from each plane's outer edge out to its flag; the layer being explained burns brighter.
     vis.lb.forEach((q, i) => {
       if (q <= 0) return;
@@ -444,9 +494,9 @@
         const pts = [];
         for (let n = 0; n <= 16; n++) { const u = n / 16, a = 1 - u, cx0 = x0 + (x1 - x0) * 0.55, cx1 = x0 + (x1 - x0) * 0.45;
           pts.push([a * a * a * x0 + 3 * a * a * u * cx0 + 3 * a * u * u * cx1 + u * u * u * x1, a * a * a * m.y + 3 * a * a * u * m.y + 3 * a * u * u * y1 + u * u * u * y1]); }
-        partial(pts, ease(q));
+        partial(g, pts, ease(q));
       }
-      dot(x0, m.y, 1.5, q * (0.7 + 0.3 * l));
+      dot(g, x0, m.y, 1.5, q * (0.7 + 0.3 * l));
     });
     // The guide: a bead of light with a short tail along its way, breathing while it waits at a flag.
     if (guide.a > 0.01 && guide.pos) {
@@ -456,13 +506,20 @@
         tl.addColorStop(0, GOLD(0)); tl.addColorStop(1, GOLD(0.8 * guide.a));
         g.lineWidth = 1.3; g.strokeStyle = tl; g.beginPath(); g.moveTo(tx, ty); g.lineTo(x, y); g.stroke();
       }
-      dot(x, y, 2.3 + 0.5 * guide.breath, guide.a);
+      dot(g, x, y, 2.3 + 0.5 * guide.breath, guide.a);
     }
   };
   const draw = () => {
-    if (cv.hidden) return;
-    try { drawThreads(); } catch { cv.hidden = true; }
+    // Two failed attempts stop decoration until a fresh layout/visit/context.
+    // A fault never disables the independent HTML labels, cards or planes.
+    if (drawFaults >= 2) return;
+    try { drawThreads(); }
+    catch (error) { baseReady = false; drawFaults++; reportFault('threads', error); }
   };
+  cv.addEventListener('contextrestored', () => {
+    baseReady = false; baseFailed = false; drawFaults = 0;
+    if (current(activeCtx)) { draw(); wake(); }
+  });
 
   // ---- States ------------------------------------------------------------------------------------
   let snapshotRelease = null;
@@ -470,7 +527,7 @@
     Object.assign(cy, { on: false, A: null, P: null, nw: 0, nh: 0, a: 1, back: false });
     carry.remove(); carry.style.display = 'none'; carry.classList.remove('is-back');
     carryPic.style.removeProperty('width'); carryPic.style.removeProperty('height');
-    carryG?.clearRect(0, 0, carryCv.width, carryCv.height);
+    carryCv.width = carryCv.height = 1; // detached snapshot no longer needs its backing pixels
     planes[0].classList.remove('is-carrying');
   };
   const ghostCanvases = PL.map(() => []);
@@ -479,6 +536,7 @@
     if (!gh) return;
     ghostScrolls[i]?.observer.disconnect(); ghostScrolls[i] = null;
     gh.remove(); gh.replaceChildren(); gh.removeAttribute('style');
+    ghostCanvases[i].forEach(c => { c.width = c.height = 1; });
     delete gh.dataset.w; delete gh.dataset.h; delete shown[i].g;
   });
   const clearGhosts = () => {
@@ -608,7 +666,8 @@
     if (carryCv.width !== Math.round(dw)) carryCv.width = Math.round(dw);
     if (carryCv.height !== Math.round(dh)) carryCv.height = Math.round(dh);
     carryG.clearRect(0, 0, carryCv.width, carryCv.height);
-    try { carryG.drawImage(pic, dx, dy, dw, dh, 0, 0, carryCv.width, carryCv.height); } catch { /* empty */ }
+    try { carryG.drawImage(pic, dx, dy, dw, dh, 0, 0, carryCv.width, carryCv.height); }
+    catch (error) { reportFault('preview-capture', error); endCarry(); return; }
     copy.getContext('2d').clearRect(0, 0, copy.width, copy.height); copy.dataset.carried = '1';
     const pe = planes[0].querySelector('.st-pic'), scr = pe.parentElement, n = (PL[0].w - 2) / (inners[0].offsetWidth || 1); // laid out unscaled
     cy.P = { x: (scr.offsetLeft + pe.offsetLeft - pe.offsetWidth / 2) * n, y: (scr.offsetTop + pe.offsetTop - pe.offsetHeight / 2) * n, w: pe.offsetWidth * n, h: pe.offsetHeight * n };
@@ -624,7 +683,9 @@
     const t0 = now();
     if (from5) {
       hideAll();
-      const src = snapFrom5(activeCtx);
+      let src = null;
+      try { src = snapFrom5(activeCtx); }
+      catch (error) { reportFault('panel-capture', error); clearGhosts(); }
       if (src) {
         build = { t0, from5: true, src, ctx: activeCtx };
         step(t0);
@@ -819,12 +880,41 @@
   const tick = (ctx) => {
     raf = 0;
     if (!current(ctx) || activeCtx !== ctx || !running || paused) { if (activeCtx === ctx && !current(ctx)) stop(ctx); return; }
-    const t = now();
-    if (build && build.back) { if (!unfold(t)) return; } else step(t);
-    raf = requestAnimationFrame(() => tick(ctx));
+    try {
+      const t = now();
+      if (build && build.back) { if (!unfold(t)) return; } else step(t);
+      metrics.frames++;
+    } catch (error) { recoverFrame(ctx, error); return; }
+    if (current(ctx) && activeCtx === ctx && running && !paused) raf = requestAnimationFrame(() => tick(ctx));
   };
   const wake = () => { const ctx = activeCtx; if (current(ctx) && running && !paused && !raf) raf = requestAnimationFrame(() => tick(ctx)); };
-  const play = () => { if (!still && running && !paused && !build?.back) video.play().catch(() => {}); }; // not while folding back
+  let playRequest = null, frameRecoveredFor = null;
+  const mayPlay = () => current(activeCtx) && slide.classList.contains('on') && running && !paused && !motionBlocked() && !build?.back;
+  const play = () => {
+    if (!mayPlay() || playRequest || !video.paused || !video.getAttribute('src')) return;
+    const request = { ctx: activeCtx }; playRequest = request;
+    video.play().then(() => {
+      if (playRequest === request && (!mayPlay() || activeCtx !== request.ctx)) video.pause();
+    }).catch(error => {
+      if (playRequest === request && mayPlay() && error.name !== 'AbortError') reportFault('playback', error);
+    }).finally(() => { if (playRequest === request) playRequest = null; });
+  };
+  const recoverFrame = (ctx, error) => {
+    reportFault('frame', error, ctx);
+    running = false; raf = 0; video.pause();
+    if (!current(ctx) || activeCtx !== ctx) return;
+    if (build?.back) { endFold(); return; }
+    if (frameRecoveredFor === ctx) return; // at most one recovery per visit
+    frameRecoveredFor = ctx; metrics.frameRecoveries++;
+    try {
+      build = null; amb = null; clearGhosts(); layout(); settleAll(); stepHead();
+      flags.forEach(f => { f.tabIndex = 0; });
+      if (view.mobile && openI < 0) show(0);
+      entryFinished = true; entryCompletion?.(ctx, 'completed');
+      amb = { t: now() }; tourFrom(Math.max(0, openI), now());
+      running = true; play(); wake();
+    } catch (failure) { reportFault('recovery', failure, ctx); }
+  };
 
   // As on slide 5, the network stays visible behind; only where its threads pass behind the text are they softened.
   // Only ever clear a mask this slide set, so a neighbour that set its own (slide 5) keeps it.
@@ -865,7 +955,7 @@
     if (!current(ctx) || activeCtx !== ctx) return;
     window.warmDeckMedia?.(slide);
     pendingCtx = null;
-    running = true;
+    running = true; paused = false; playRequest = null;
     layout();
     slide.classList.remove('st-arrive');
     softenNet(ctx, true);
@@ -899,7 +989,8 @@
     flags.forEach((f) => { f.tabIndex = -1; });
     slide.classList.remove('st-arrive');
     softenNet(ctx, false);
-    video.pause();
+    video.pause(); playRequest = null;
+    baseReady = false; baseCv.width = baseCv.height = 1;
     if (activeCtx === ctx) activeCtx = null;
   };
 
@@ -1002,11 +1093,12 @@
       if (!paused) return;
       paused = false;
       guide.last = 0;
-      pausedVideos.forEach((v) => v.play().catch(() => {}));
+      if (pausedVideos.length) play();
       pausedVideos = [];
       if (!still) wake();
     }
   };
+  document.addEventListener('visibilitychange', syncMotion);
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
   const sceneEnter = (ctx) => start(ctx);
@@ -1193,7 +1285,24 @@
     close: () => { hold.pin = -1; react(); },
   });
   // Loading resets the film to paused, so one that arrives after the slide has started (a cold load) plays then.
-  video.addEventListener('loadeddata', () => { if (still) stepHead(); else play(); });
+  const preview = video.closest('.st-pic');
+  const mediaReady = () => {
+    if (video.readyState >= 2 && !video.error) preview.classList.add('is-video-ready');
+    if (motionOff()) stepHead(); else play();
+  };
+  video.addEventListener('loadeddata', mediaReady);
+  video.addEventListener('canplay', mediaReady);
+  video.addEventListener('emptied', () => { playRequest = null; preview.classList.remove('is-video-ready'); });
+  video.addEventListener('error', () => { playRequest = null; preview.classList.remove('is-video-ready'); });
+  if (window.__deckDebug) Object.defineProperty(window.__deckDebug, 'stack', { get: () => ({
+    generation: activeCtx?.generation ?? null, running, paused, scheduled: !!raf,
+    building: !!build, reverse: !!build?.back, entryFinished, open: openI, drawFaults,
+    metrics: { ...metrics }, scale: view.k, threadBox: { ...threadBox },
+    canvasPixels: cv.width * cv.height + baseCv.width * baseCv.height,
+    ghostPixels: ghostCanvases.flat().reduce((n, c) => n + c.width * c.height, 0) + carryCv.width * carryCv.height,
+    flags: flags.map(f => ({ reveal: f.style.getPropertyValue('--in'), opacity: getComputedStyle(f).opacity,
+      rect: [f.getBoundingClientRect().x, f.getBoundingClientRect().y] })),
+  }) });
 
   layout();
   hideAll();
