@@ -4,62 +4,68 @@ on:
     branches: [fix/flowers-return-mobile-stack-20261111]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Install browser engines
-        run: |
-          python -m pip install playwright Pillow numpy
-          python -m playwright install --with-deps chromium webkit
-      - name: Probe full-deck reverse handoff
+        with:
+          fetch-depth: 0
+      - name: Apply reviewed candidate to pinned baseline
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p evidence
-          PORT=8240 python3 serve.py > evidence/server.log 2>&1 &
-          cat > /tmp/probe.py <<'PY'
-          import asyncio,json
+          cat .flowers-validation/part{0,1,2,3} | base64 -d > /tmp/flowers.patch.gz
+          echo 'ab002f8f81d307274adbe66f004af54c107590a0a4bd5ceb0f4b8c88cf283c46  /tmp/flowers.patch.gz' | sha256sum --check
+          git worktree add /tmp/flowers-candidate cce3de31d634699b55166a629ed9255cb8635c89
+          gzip -dc /tmp/flowers.patch.gz > evidence/production.patch
+          git -C /tmp/flowers-candidate apply --unidiff-zero --check "$GITHUB_WORKSPACE/evidence/production.patch"
+          git -C /tmp/flowers-candidate apply --unidiff-zero "$GITHUB_WORKSPACE/evidence/production.patch"
+          cp .flowers-validation/test.mjs /tmp/flowers-candidate/tests/deck-flowers-return.test.mjs
+          cp .flowers-validation/check.py /tmp/flowers-candidate/tools/deck/check-flowers-return.py
+          cp .flowers-validation/documentation.md /tmp/flowers-candidate/docs/flowers-return-mobile-stack.md
+          python - <<'PY'
           from pathlib import Path
-          from playwright.async_api import async_playwright
-          OUT=Path('evidence')
-          READ="""() => {const c=document.querySelector('.fl-canvas'), s=c.closest('.slide'), g=c.getContext('2d');const p=g.getImageData(0,0,c.width,c.height).data;let pixels=0;for(let i=3;i<p.length;i+=4)if(p[i]>15)pixels++;return {selected:window.deckNav.to+1,canvasPixels:pixels,opacity:getComputedStyle(c).opacity,inline:c.getAttribute('style'),hidden:c.hidden,lost:g.isContextLost?.(),size:[c.width,c.height],flowers:window.__flowersProbe?.(),settled:s.hasAttribute('data-settled'),classes:s.className,clock:window.deckNow(),faults:window.__faults}}"""
-          async def run(pw,engine,w,h):
-            b=await getattr(pw,engine).launch();ctx=await b.new_context(viewport={'width':w,'height':h},device_scale_factor=2,is_mobile=w<761,has_touch=w<761)
-            await ctx.add_init_script("window.__faults=[];addEventListener('deck-scene-fault',e=>__faults.push(e.detail));")
-            p=await ctx.new_page();errors=[];p.on('pageerror',lambda e:errors.append(str(e)))
-            async def source(route):
-              res=await route.fetch();s=await res.text();i=s.rfind('})();');s=s[:i]+"window.__flowersProbe=()=>({running,raf,ta,off,coreHeld,handed,retained,prepared:!!preparedReturn,ctx:entryCtx?.generation,current:entryCtx?.isCurrent(),apps:apps.length,dots:dots.length});\n"+s[i:];await route.fulfill(response=res,body=s)
-            await p.route('**/flowers.js',source)
-            label=f'{engine}-{w}-{h}';records=[]
-            async def settled(n):
-              await p.wait_for_function("n=>window.deckNav?.to===n-1&&document.querySelector('.slide.on')?.hasAttribute('data-settled')",arg=n,timeout=30000)
-            async def snap(name):
-              await p.screenshot(path=str(OUT/f'{label}-{name}.png'));r=await p.evaluate(READ);r['name']=name;records.append(r);print(label,name,json.dumps(r),flush=True)
-            try:
-              await p.goto('http://127.0.0.1:8240/mycelial/index.html?debug#8',wait_until='domcontentloaded');await p.evaluate('document.fonts.ready');await settled(8);await p.wait_for_timeout(1200);await snap('direct')
-              for i in range(4):
-                await p.keyboard.press('ArrowRight');await settled(9)
-                if i==1:await p.set_viewport_size({'width':w,'height':h-55});await p.wait_for_timeout(800)
-                if i==2:await p.evaluate("document.fonts.dispatchEvent(new Event('loadingdone'))")
-                await p.keyboard.press('ArrowLeft');await settled(8);await p.wait_for_timeout(700);await snap('return-'+str(i))
-              for delay in [80,350,900]:
-                await p.keyboard.press('ArrowRight');await p.wait_for_timeout(delay);await p.keyboard.press('ArrowLeft');await settled(8);await p.wait_for_timeout(700);await snap('interrupt-'+str(delay))
-            except Exception as e:errors.append(str(e));await p.screenshot(path=str(OUT/f'{label}-FAIL.png'))
-            finally:
-              (OUT/f'{label}.json').write_text(json.dumps({'records':records,'errors':errors},indent=2));await b.close()
-          async def main():
-            async with async_playwright() as p:
-              for engine,w,h in [('webkit',390,670),('webkit',390,844),('chromium',1280,800)]:await run(p,engine,w,h)
-          asyncio.run(main())
+          p=Path('/tmp/flowers-candidate/tests/deck-scene-resilience.test.mjs')
+          s=p.read_text();old='expose(media,{current:'
+          assert s.count(old)==3
+          p.write_text(s.replace(old,'expose(media,{window:{},current:'))
           PY
-          python /tmp/probe.py | tee evidence/probe.txt
+          cd /tmp/flowers-candidate
+          node --check mycelial/flowers.js
+          node --check mycelial/stack.js
+          node --test --test-concurrency=1 tests/deck-story.test.mjs tests/deck-copy-surfaces.test.mjs tests/deck-scene-resilience.test.mjs tests/deck-flowers-return.test.mjs | tee "$GITHUB_WORKSPACE/evidence/unit.txt"
+      - name: Install browser engines
+        run: |
+          python -m pip install playwright Pillow numpy
+          python -m playwright install --with-deps chromium webkit
+      - name: Validate real artwork and unchanged text choreography
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/flowers-candidate && PORT=8240 python3 serve.py) > evidence/server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8240/mycelial/index.html >/dev/null && break; sleep 1; done
+          cd /tmp/flowers-candidate
+          python tools/deck/check-flowers-return.py --out "$GITHUB_WORKSPACE/evidence/flowers" | tee "$GITHUB_WORKSPACE/evidence/flowers.txt"
+          python tools/deck/check-copy-ownership.py --out "$GITHUB_WORKSPACE/evidence/copy" | tee "$GITHUB_WORKSPACE/evidence/copy.txt"
+      - name: Publish tested candidate without temporary validation files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/flowers-candidate
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add mycelial/flowers.js mycelial/stack.js mycelial/index.html tests/deck-scene-resilience.test.mjs tests/deck-flowers-return.test.mjs tools/deck/check-flowers-return.py docs/flowers-return-mobile-stack.md
+          git diff --cached > "$GITHUB_WORKSPACE/evidence/candidate.patch"
+          git commit -m 'Restore Flowers canvas safely on return and use still stack preview on mobile'
+          git rev-parse HEAD | tee "$GITHUB_WORKSPACE/evidence/candidate-sha.txt"
+          git push origin HEAD:refs/heads/candidate/flowers-return-mobile-stack-20261111
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: flowers-return-evidence
+          name: flowers-return-validation
           path: evidence/
           retention-days: 7
