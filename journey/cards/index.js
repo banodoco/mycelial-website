@@ -99,6 +99,13 @@ const WARM_HEAVY = [
 // stop; whatever fetch was already in flight for the current slice is left
 // to finish/abort on its own -- this does not attempt to abort in-flight
 // requests), or after the cascade has already finished (no-op).
+//
+// `overrides.enqueue(job)` (2026-11, hitch pass P1): the production caller.
+// The journey's rest-time warm queue (journey.js warmHiddenChapters) passes
+// it once the journey is interactive, and each job runs in one of its idle
+// slices, never during a flight. Media fetches then ask for low priority so
+// they cannot outbid anything the page is still loading. Without `enqueue`
+// the original timer cascade below runs unchanged (the tests' contract).
 export function startCardWarming(overrides = {}) {
   const setTimeoutFn = overrides.setTimeoutFn || setTimeout;
   const clearTimeoutFn = overrides.clearTimeoutFn || clearTimeout;
@@ -106,6 +113,14 @@ export function startCardWarming(overrides = {}) {
   const doc = overrides.doc || document;
 
   let cancelled = false;
+
+  if (typeof overrides.enqueue === 'function') {
+    overrides.enqueue(() => { if (!cancelled) for (const f of WARM_FONTS) doc.fonts.load(`1em '${f}'`).catch(() => {}); });
+    for (const p of [...WARM_LIGHT, ...WARM_HEAVY]) {
+      overrides.enqueue(() => { if (!cancelled) fetchFn(`${CARD_ASSETS}/${p}`, { priority: 'low' }).catch(() => {}); });
+    }
+    return function cancelCardWarming() { cancelled = true; };
+  }
 
   function warmCardAssets() {
     const ric = typeof overrides.requestIdleCallbackFn === 'function'
@@ -138,13 +153,11 @@ export function startCardWarming(overrides = {}) {
   };
 }
 
-if (typeof document !== 'undefined') {
-  // let the journey's own boot work land first; warming is strictly surplus.
-  // Self-start by design (U01a preserves today's behavior) -- a later order
-  // (U01c/B-series) replaces this with an explicit call site from main.js
-  // or the journey facade so the cascade can actually be cancelled.
-  startCardWarming();
-}
+/* NO SELF-START any more (2026-11, hitch pass P1). The import-time
+   `startCardWarming()` began ~6 MB of fetches 1.5 s after the journey's
+   module graph evaluated — inside the intro, against the baked geometry and
+   the module graph themselves. The explicit call site U01c planned is now
+   journey.js's rest-time warm queue (see `enqueue` above). */
 
 /* Chip glyphs — the `I()` helper and the CARD_ICONS table.
    U01c (2026-08-22): moved to ./icons.js, one data-only owner, unchanged in
