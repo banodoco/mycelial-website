@@ -1,0 +1,187 @@
+import assert from 'node:assert/strict';
+import { manifestoPose, descentU, CAMERA_SECONDS, smoother, ascentAt } from '/home/user/mycelial-website/journey/manifesto/pose.js';
+const from = { position: { x: -15.4864, y: 5.2453, z: 3.4893 },
+  target: { x: -3.023, y: 1.3933, z: -1.8471 }, fov: 53.5004, roll: -5 * Math.PI / 180 };
+for (const aspect of [390 / 844, 430 / 932]) {
+  for (const start of [0.06, 0.5, 1]) {
+    const top = manifestoPose(from, start * CAMERA_SECONDS, aspect);
+    let previousY = top.position.y;
+    for (let i = 0; i <= 120; i++) {
+      const k = i / 120;
+      const pose = manifestoPose(from, descentU(start, k, aspect, from.position.y) * CAMERA_SECONDS, aspect);
+      assert.ok(pose.position.y <= previousY + 1e-6, 'return descends monotonically');
+      previousY = pose.position.y;
+      if (k >= 0.9) {
+        assert.ok((pose.position.y - from.position.y) / (top.position.y - from.position.y) < 0.015,
+          'final tenth is a settle, not a second downward flight');
+        assert.ok(Math.abs(pose.fov - from.fov) < 0.8, 'lens has substantially reached Purpose before the final settle');
+        assert.ok(Math.abs(pose.roll - from.roll) < 0.009, 'five-degree bank returns with the flight');
+      }
+    }
+    const landing = manifestoPose(from, descentU(start, 1, aspect, from.position.y) * CAMERA_SECONDS, aspect);
+    assert.deepEqual(landing.position, from.position);
+    assert.deepEqual(landing.target, from.target);
+    assert.equal(landing.fov, from.fov);
+    assert.equal(landing.roll, from.roll);
+  }
+}
+// Desktop and phone returns are one eased glide from any height (2026-11:
+// desktop's height-only key crossed the climb's sideways frame shift in
+// 0.2 s, a 126 u/s whip, then re-accelerated and pitched in its last second).
+// Step the real clock at 60 Hz from the authored Purpose rests.
+const { returnSecondsFrom } = await import('/home/user/mycelial-website/journey/manifesto/pose.js');
+const deskRest = { position: { x: -14.72, y: 2.73, z: 2.70 }, target: { x: -3.06, y: 0.83, z: -1.94 }, fov: 45.5, roll: 0 };
+const phoneRest = { ...from, fieldCenter: { x: .251658, z: -1.823989 } };
+const gaze = p => { const d = ['x', 'y', 'z'].map(c => p.target[c] - p.position[c]); const n = Math.hypot(...d); return d.map(v => v / n); };
+for (const [rest, aspect, maxSpeed, maxAccel] of [[deskRest, 1.6, 100, 1000], [phoneRest, 390 / 844, 25, 600]]) {
+  for (const start of [0.1, 0.36, 0.5, 0.75, 1]) {
+    const seconds = returnSecondsFrom(start);
+    let previous = manifestoPose(rest, start * CAMERA_SECONDS, aspect), velocity = null, k = 0;
+    const rows = [];
+    while (k < 1) {
+      k = Math.min(1, k + 1 / seconds / 60);
+      const pose = manifestoPose(rest, descentU(start, k, aspect, rest.position.y) * CAMERA_SECONDS, aspect);
+      const v = ['x', 'y', 'z'].map(c => (pose.position[c] - previous.position[c]) * 60);
+      const a = gaze(previous), b = gaze(pose);
+      const turn = Math.acos(Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])) * 60;
+      if (velocity) assert.ok(Math.hypot(...v.map((c, i) => (c - velocity[i]) * 60)) < maxAccel,
+        `${aspect}: return from ${start} has no velocity spike`);
+      rows.push({ speed: Math.hypot(...v), turn });
+      assert.ok(rows.at(-1).speed < maxSpeed, `${aspect}: return from ${start} stays under ${maxSpeed} u/s`);
+      velocity = v; previous = pose;
+    }
+    const last = rows.slice(-60);
+    for (let i = 1; i < last.length; i++) {
+      assert.ok(last[i].speed <= last[i - 1].speed + 1e-6, `${aspect}: return from ${start} decelerates through its last second`);
+      if (i > 6) assert.ok(last[i].turn <= last[i - 1].turn + 0.002, `${aspect}: return from ${start} stops turning as it lands`);
+    }
+    assert.deepEqual(previous.position, rest.position);
+    assert.deepEqual(previous.target, rest.target);
+  }
+}
+console.log('PASS early/late returns: monotone descent, no final dip, lens/bank settle, exact landing; desktop/phone single glide without spikes');
+
+// Real camera quaternions catch a smooth-position/abrupt-heading return.
+const THREE = await import('/home/user/mycelial-website/vendor/three/three.module.js');
+const { applyCameraRoll } = await import('/home/user/mycelial-website/journey/camera-roll.js');
+const { awaySecondsFrom } = await import('/home/user/mycelial-website/journey/manifesto/pose.js');
+const { createReturnFlight, sampleReturnFlight, returnVelocity, returnChannels } =
+  await import('/home/user/mycelial-website/journey/manifesto/return-flight.js');
+const origin = { ...from, fieldCenter: { x: .251658, z: -1.823989 } };
+const home = { position: { x: -.10953, y: 3.575, z: 11.67944 },
+  target: { x: -.25953, y: 3.655816, z: 0 }, fov: 46, roll: 0 };
+const camera = new THREE.PerspectiveCamera(), target = new THREE.Vector3();
+let fullPeak = 0;
+for (const seconds of [.2, 1, 2, 3, 4, 4.5, 5, 15, CAMERA_SECONDS]) {
+  const start = manifestoPose(origin, seconds, .462);
+  const velocity = returnVelocity(manifestoPose(origin, Math.max(0, seconds - 1/60), .462), start, 1/60);
+  const duration = awaySecondsFrom(seconds / CAMERA_SECONDS);
+  const flight = createReturnFlight(start, home, duration, velocity);
+  const first = sampleReturnFlight(flight, 0), last = sampleReturnFlight(flight, 1);
+  assert.deepEqual(first.position, start.position); assert.deepEqual(first.target, start.target);
+  assert.deepEqual(last.position, home.position); assert.deepEqual(last.target, home.target);
+  const epsilon = .00001;
+  const actualVelocity = returnVelocity(first, sampleReturnFlight(flight, epsilon/duration), epsilon);
+  for (const key of Object.keys(velocity)) assert.ok(Math.abs(actualVelocity[key] - velocity[key]) < .001,
+    `return preserves presented ${key} velocity at ${seconds}s`);
+  let previous = null, priorSpeed = null, peak = 0;
+  const step = 1/240;
+  for (let time = 0; time <= duration; time += step) {
+    const pose = sampleReturnFlight(flight, time/duration);
+    camera.position.set(pose.position.x, pose.position.y, pose.position.z);
+    camera.up.set(pose.up.x, pose.up.y, pose.up.z);
+    camera.lookAt(target.set(pose.target.x, pose.target.y, pose.target.z));
+    assert.ok(camera.quaternion.toArray().every(Number.isFinite));
+    if (previous) {
+      const speed = camera.quaternion.angleTo(previous) / step;
+      peak = Math.max(peak, speed);
+      if (priorSpeed !== null) assert.ok(Math.abs(speed-priorSpeed) < .025,
+        `angular velocity changes continuously, including the straight-down pole (${seconds}s at ${time}s: ${priorSpeed} -> ${speed})`);
+      priorSpeed = speed;
+    }
+    previous = camera.quaternion.clone();
+  }
+  assert.ok(peak < 1.2, `no mid-flight yaw spike at ${seconds}s (${peak}rad/s)`);
+  if (seconds === CAMERA_SECONDS) fullPeak = peak;
+  const endCamera = new THREE.PerspectiveCamera();
+  endCamera.position.set(home.position.x,home.position.y,home.position.z);
+  applyCameraRoll(endCamera,target.set(home.target.x,home.target.y,home.target.z),home.roll);
+  camera.position.copy(endCamera.position); camera.up.set(last.up.x,last.up.y,last.up.z);camera.lookAt(target);
+  assert.ok(camera.quaternion.angleTo(endCamera.quaternion)<1e-6,'exact landing orientation survives handoff');
+
+  const middle = sampleReturnFlight(flight,.43);
+  const middleVelocity = returnVelocity(sampleReturnFlight(flight,.43-epsilon/duration),middle,epsilon);
+  const changed = createReturnFlight(middle,origin,2.2,middleVelocity);
+  assert.deepEqual(returnChannels(sampleReturnFlight(changed,0)),returnChannels(middle),'retarget starts on the displayed pose');
+  const changedVelocity = returnVelocity(sampleReturnFlight(changed,0),sampleReturnFlight(changed,epsilon/2.2),epsilon);
+  for(const key of Object.keys(middleVelocity)) assert.ok(Math.abs(changedVelocity[key]-middleVelocity[key])<.001,
+    'retarget preserves the displayed velocity');
+}
+console.log(`PASS continuous mobile away flight: early/late/retarget velocity, pole-safe orientation, exact landing; full-return peak ${(fullPeak*180/Math.PI).toFixed(1)}°/s`);
+
+// Inspire lies across the overhead heading from Purpose. The old desktop
+// blend of independently rewound targets nearly cancelled its horizontal
+// direction and spun >1000 degrees/s. Use the authored rests on both sizes.
+const { installVendorResolver } = await import('/home/user/mycelial-website/tools/render-report-lib.mjs');
+installVendorResolver();
+const { poseAt } = await import('/home/user/mycelial-website/journey/director.js');
+const { restProgress } = await import('/home/user/mycelial-website/journey/route.js');
+for (const [aspect, width] of [[390/844, 390], [1.6, 1280]]) {
+  const rest = id => {
+    const p = poseAt(restProgress(id), { pos: new THREE.Vector3(), target: new THREE.Vector3() }, undefined, aspect, width);
+    return { position: { ...p.pos }, target: { ...p.target }, fov: p.fov, roll: p.roll || 0 };
+  };
+  const purpose = rest('final'), inspire = rest('inspire');
+  for (const seconds of [.3, 1, 2, 4, 12, CAMERA_SECONDS]) {
+    const start = manifestoPose(purpose, seconds, aspect);
+    const velocity = returnVelocity(manifestoPose(purpose, seconds - 1/240, aspect), start, 1/240);
+    const duration = awaySecondsFrom(seconds / CAMERA_SECONDS);
+    const flight = createReturnFlight(start, inspire, duration, velocity);
+    let previous = null;
+    for (let i = 0; i <= 1000; i++) {
+      const pose = sampleReturnFlight(flight, i/1000);
+      camera.position.set(pose.position.x, pose.position.y, pose.position.z);
+      camera.up.set(pose.up.x, pose.up.y, pose.up.z);
+      camera.lookAt(target.set(pose.target.x, pose.target.y, pose.target.z));
+      if (previous) assert.ok(camera.quaternion.angleTo(previous) / (duration/1000) < 1.6,
+        `Inspire return has no pole flip (${width}px, ${seconds}s departure)`);
+      previous = camera.quaternion.clone();
+    }
+    const end = new THREE.PerspectiveCamera();
+    end.position.set(inspire.position.x, inspire.position.y, inspire.position.z);
+    applyCameraRoll(end, target, inspire.roll);
+    assert.ok(camera.quaternion.angleTo(end.quaternion) < 1e-6, 'Inspire handoff keeps exact rest orientation');
+  }
+}
+console.log('PASS authored desktop/mobile Inspire returns: early/late heading continuity and exact landing');
+
+// A settled departure introduces its destination during the descent. Project
+// the actual authored landing aim through the sampled camera, rather than
+// checking only mathematical pose continuity or the final frame.
+for (const [aspect, width] of [[390/844, 390], [1.6, 1280]]) {
+  const rest = id => {
+    const p = poseAt(restProgress(id), { pos: new THREE.Vector3(), target: new THREE.Vector3() }, undefined, aspect, width);
+    return { position: { ...p.pos }, target: { ...p.target }, fov: p.fov, roll: p.roll || 0 };
+  };
+  const start = manifestoPose(rest('final'), CAMERA_SECONDS, aspect);
+  for (const id of ['mission', 'inspire', 'equip', 'connect', 'owned']) {
+    const landing = rest(id), flight = createReturnFlight(start, landing, awaySecondsFrom(1));
+    let previous = null;
+    for (let i = 0; i <= 1000; i++) {
+      const k = i / 1000, pose = sampleReturnFlight(flight, k);
+      camera.aspect = aspect; camera.fov = pose.fov; camera.updateProjectionMatrix();
+      camera.position.set(pose.position.x, pose.position.y, pose.position.z);
+      camera.up.set(pose.up.x, pose.up.y, pose.up.z);
+      camera.lookAt(target.set(pose.target.x, pose.target.y, pose.target.z)); camera.updateMatrixWorld();
+      if (previous) assert.ok(camera.quaternion.angleTo(previous) / (flight.seconds / 1000) < 2.2,
+        `${id} approach remains continuous on ${width}px at ${k}: ${camera.quaternion.angleTo(previous) / (flight.seconds / 1000)}`);
+      previous = camera.quaternion.clone();
+      if (k >= .7 && k < 1) {
+        const projected = new THREE.Vector3(landing.target.x, landing.target.y, landing.target.z).project(camera);
+        assert.ok(Math.abs(projected.x) < .001 && Math.abs(projected.y) < .001,
+          `${id} remains framed through the final descent on ${width}px`);
+      }
+    }
+  }
+}
+console.log('PASS desktop/mobile destination framing through descent and continuous orientation for every landing');
