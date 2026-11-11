@@ -9,7 +9,7 @@ import { applyCameraRoll } from '../camera-roll.js';
 import { attachManifestoNote } from '../../manifesto-note.js';
 import { CONTENT } from '../../content/content.js';
 import { manifestoConcepts } from '../../content/manifesto-concepts.js';
-import { descentFieldPresence, manifestoPose, mobileFieldCenter, isMobileManifesto, smoother, ascentAt, descentU, returnSecondsFrom, awaySecondsFrom, lineSecondsFor, mobileReadingSchedule, CAMERA_SECONDS, TITLE_SECONDS, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, WORD_VISIBLE_SECONDS } from './pose.js';
+import { descentFieldPresence, manifestoPose, descentPose, mobileFieldCenter, isMobileManifesto, smoother, ascentAt, returnSecondsFrom, awaySecondsFrom, lineSecondsFor, mobileReadingSchedule, CAMERA_SECONDS, TITLE_SECONDS, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, WORD_VISIBLE_SECONDS } from './pose.js';
 
 // The opening beat the navigation rides when the camera starts on Purpose's
 // own rest, and the longer departure when it starts from another section.
@@ -360,15 +360,20 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     pose.roll = (pose.roll || 0) + ((there.roll || 0) - (pose.roll || 0)) * w;
   }
   function apply(value, frameSeconds = 0) {
-    const pose = manifestoPose(from, value * CAMERA_SECONDS, camera.aspect);
+    // A descent's pose is its own (pose.js descentPose): the climb's place
+    // from descentU, with the orbit and frame shift on the descent clock.
+    const descending = direction < 0 && !reduceMotion.matches;
+    const poseOf = rest => descending ? descentPose(rest, returnStart, returnK, camera.aspect).pose
+      : manifestoPose(rest, value * CAMERA_SECONDS, camera.aspect);
+    const pose = poseOf(from);
     // the world's depth at the two ends of the flight, blended like the pose
     let fogNear0 = from.fogNear, fogFar0 = from.fogFar;
     if (landing && landW > 0) {
-      let there = manifestoPose(landing, value * CAMERA_SECONDS, camera.aspect);
+      let there = poseOf(landing);
       let fogN = landing.fogNear, fogF = landing.fogFar;
       const w = retargetW();
       if (landPrev && w < 1) {
-        const before = manifestoPose(landPrev, value * CAMERA_SECONDS, camera.aspect);
+        const before = poseOf(landPrev);
         blendToward(before, there, w);
         there = before;
         fogN = landPrev.fogNear + (fogN - landPrev.fogNear) * w;
@@ -966,7 +971,7 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       } else {
         returnK = Math.min(1, returnK + step * returnRate);
         const k = returnK;
-        u = reduceMotion.matches ? 0 : descentU(returnStart, k, camera.aspect, from.position.y);
+        u = reduceMotion.matches ? 0 : descentPose(from, returnStart, k, camera.aspect).u;
         landW = reduceMotion.matches ? 1 : smoother(k);
         // a flight that had not finished leaving its departure pose hands
         // that remainder back over the same descent
