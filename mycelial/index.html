@@ -2887,6 +2887,11 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
     [data-deck-debug-font], [data-deck-debug-font] * { font-family:Georgia,serif!important; }
     [data-deck-debug-ink], [data-deck-debug-ink] * { color:red!important; -webkit-text-fill-color:red!important; }
     html[data-deck-debug-canvases] canvas { visibility:hidden!important; }
+    /* Compositing experiments: each removes or isolates one family of layers, not a style on the text itself. */
+    html[data-deck-debug-layers] :is(.fw, .fw-cards, .dt-net, .dt-mark, .dt-dot) { display:none!important; }
+    html[data-deck-debug-slides] .slide:not(.on) { display:none!important; }
+    html[data-deck-debug-scroll] .slide { overflow:visible!important; }
+    [data-deck-debug-lift] { position:relative!important; z-index:2147483000!important; will-change:transform!important; }
   `;
   document.head.appendChild(overrides);
   const retain = (label) => {
@@ -2958,9 +2963,18 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
     record('ink');
     copyColumn(document.querySelector('.slide.on'))?.toggleAttribute('data-deck-debug-ink');
   });
+  // The four below test where the text's compositing layer goes wrong; computed style and repaint are already cleared.
+  for (const name of ['layers', 'slides', 'scroll']) button(name, () => {
+    record(name);
+    document.documentElement.toggleAttribute(`data-deck-debug-${name}`);
+  });
+  button('lift', () => {
+    record('lift');
+    copyColumn(document.querySelector('.slide.on'))?.toggleAttribute('data-deck-debug-lift');
+  });
   button('reset', () => {
     record('reset');
-    for (const name of ['flat', 'font', 'ink', 'canvases']) {
+    for (const name of ['flat', 'font', 'ink', 'canvases', 'layers', 'slides', 'scroll', 'lift']) {
       document.querySelectorAll(`[data-deck-debug-${name}]`).forEach(n => n.removeAttribute(`data-deck-debug-${name}`));
     }
     canvasesHidden = false;
@@ -3081,7 +3095,10 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
         ancestors: copyAncestors(slide?.querySelector('h1')) },
       art: artState(slide),
       fonts: fontsOf(slide), experiments: { flat: !!document.querySelector('[data-deck-debug-flat]'),
-        font: !!copyColumn(slide)?.hasAttribute('data-deck-debug-font'), ink: !!copyColumn(slide)?.hasAttribute('data-deck-debug-ink'), canvasesHidden },
+        font: !!copyColumn(slide)?.hasAttribute('data-deck-debug-font'), ink: !!copyColumn(slide)?.hasAttribute('data-deck-debug-ink'), canvasesHidden,
+        layers: document.documentElement.hasAttribute('data-deck-debug-layers'), slides: document.documentElement.hasAttribute('data-deck-debug-slides'),
+        scroll: document.documentElement.hasAttribute('data-deck-debug-scroll'), lift: !!copyColumn(slide)?.hasAttribute('data-deck-debug-lift') },
+      onTopOfH1: hitsAt(slide?.querySelector('h1')),
       actions: taps.slice(), samples: samples.slice(), network: debug.network || null, ...cap };
     if (changed && snapshot.art) retain(demoVisits++ ? 'slide5 return' : 'slide5 entry');
     if (snapshot.art && snapshot.slide.settled && demoSettledGeneration !== c.generation) {
