@@ -34,6 +34,7 @@ jobs:
           assert s.count(old)==3
           p.write_text(s.replace(old,'expose(media,{window:{},current:'))
           PY
+          python .flowers-validation/refine.py
           cd /tmp/flowers-candidate
           node --check mycelial/flowers.js
           node --check mycelial/stack.js
