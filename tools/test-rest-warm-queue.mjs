@@ -10,7 +10,7 @@
 //   W4  one texture upload per unit; an upload three declines is not retried
 //   W5  nearest chapter first, in rail order (Purpose before its Owned branch)
 //   W6  a registered rest task runs only at its chapter, after that chapter's
-//       own units; card media is queued here, not self-started
+//       own units
 // Run: node tools/test-rest-warm-queue.mjs
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -101,16 +101,14 @@ const chapters = Object.fromEntries(Object.entries(groups).map(([id, group]) => 
 const transition = { blend: null, cameraStateDisagree: false };
 let progressId = 'mission';
 const journey = { progress: 0 };
-const cardJobs = [];
 const factory = new Function('sceneApi', 'chapters', 'transition', 'manifestoBranch', 'journey', 'chapterAt',
-  'CHAPTER_IDS', 'compileForFrame', 'prepareGpuWarmup', 'startCardWarming', 'window', 'performance',
+  'CHAPTER_IDS', 'compileForFrame', 'prepareGpuWarmup', 'window', 'performance',
   'setTimeout', 'requestAnimationFrame', 'location', 'console', 'state',
   'let startupFailed = false;\n' + src.slice(start, end)
   + '\nreturn { warmHiddenChapters, registerRestWarmTask, isAtRest };');
 const q = factory(sceneApi, chapters, transition, null, journey, () => ({ id: progressId }),
   ['mission', 'inspire', 'equip', 'connect', 'owned', 'final'],
   (api, o) => api.renderer.compileAsync(o), null,
-  (o) => { o.enqueue(() => cardJobs.push('font')); o.enqueue(() => cardJobs.push('media')); },
   { requestIdleCallback: (fn) => idles.push(fn) }, { now: () => now }, fakeSetTimeout,
   (fn) => fakeSetTimeout(fn, 16), { search: '' }, { warn() {}, info() {} }, {});
 
@@ -154,7 +152,6 @@ assert(firstOf('owned') < firstOf('inspire'), 'W5 nearer before farther');
 
 // W6: the Purpose task waits for a Purpose rest; card media queued here.
 assert.equal(taskRuns, 0, 'W6 chapter task does not run away from its chapter');
-assert.deepEqual(cardJobs, ['font', 'media'], 'W6 card media runs from the rest queue');
 transition.blend = { dur: 3 }; progressId = 'final';
 await advance(2000);
 assert.equal(taskRuns, 0, 'W6 not during the flight');

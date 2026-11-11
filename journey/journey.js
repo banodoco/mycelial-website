@@ -25,7 +25,6 @@ import { createDirector, poseAt } from './director.js';
 import { createSeams } from './seams.js';
 import { createLens } from './lens.js';
 import { createUI } from './ui.js';
-import { startCardWarming } from './cards/index.js';
 import { createRail } from './rail.js';
 import {
   CHAPTERS, CHAPTER_IDS, chapterAt, restProgress, startOf, HERO_REST_P,
@@ -2189,11 +2188,9 @@ export function boot(opts = {}) {
        `?warmdraw=1` keeps them, so the GL harness can measure them. */
     const softwareGl = /swiftshader|llvmpipe|softpipe|software/i.test(sceneApi.rendererName || '')
       && !/[?&]warmdraw=1(?:&|$)/.test(location.search);
-    // The card media no longer self-starts against the boot: it is queued
-    // here, one fetch or font load per slice, at rest. (The Owned remix's
-    // first arrangement belongs to its chapter owner, which can register the
-    // same way — tools/test-ui-closure.mjs A2b keeps journey.js out of it.)
-    startCardWarming({ enqueue: (job) => registerRestWarmTask(() => { job(); return false; }) });
+    // CARD MEDIA belongs in this queue too (one fetch per slice, at rest,
+    // priority 'low'); journey/cards/index.js still self-starts 1.5 s after
+    // import because its move proofs freeze that file — see the perf report.
 
     const busy = () => !isAtRest();
     const lost = () => {
