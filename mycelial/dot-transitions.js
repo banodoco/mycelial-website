@@ -1022,9 +1022,18 @@
   const copyExtra = (context) => {
     if (!(context?.dir > 0) || context.direct || context.rest) return 0;
     if (context.from === 0 && context.to === 1) return 1000;
+    // Slide 7 arrives on a quickened clock (deckStoryPacing, 1.45×). Its words
+    // keep slide 2's unhurried spread: about the same two seconds on screen.
+    if (context.from === 5 && context.to === 6) return 2000;
     return (context.from === 3 && context.to === 4) || (context.from === 4 && context.to === 5) ? 500 : 0;
   };
-  const revealDuration = (slide, at, context) => Math.max(0, ...textOf(slide).map((el) => clamp(reach(el, at, context?.geometry?.box(el)) / 0.62, 1100, 1600) + copyExtra(context)));
+  // A step back unwinds: the words return by the gather played backwards (the
+  // same 400 ms on screen, whatever pace the step back runs at), not by a
+  // second forward entrance.
+  const unwinding = (context) => context?.dir < 0 && !context.direct;
+  const unwindMs = () => GATHER * (window.deckPace?.() || 1);
+  const revealDuration = (slide, at, context) => unwinding(context) ? unwindMs()
+    : Math.max(0, ...textOf(slide).map((el) => clamp(reach(el, at, context?.geometry?.box(el)) / 0.62, 1100, 1600) + copyExtra(context)));
   // Points spread through a text block, for threads to run to or from.
   const spots = (el, n, bounds) => {
     const b = bounds || el.getBoundingClientRect();
@@ -1035,6 +1044,7 @@
   };
   const seep = (k) => 0.5 - 0.5 * Math.cos(Math.PI * k); // gentle in, gentle out
   const easeIn = (k) => k * k * (3 - 2 * k) * k;
+  const easeUnwind = (k) => 1 - easeIn(1 - k); // the gather's own curve, run backwards
   const textTweens = new Set(), textTweensByContext = new Map();
   const tween = (duration, ease, step, delay = 0, context = window.deckNav) => {
     let raf = 0, stopped = false, resolve;
@@ -1124,16 +1134,19 @@
         : at;
       copy.paint(el, origin, 0, bounds, state);
       const far = reach(el, origin, bounds);
-      const duration = clamp(far / 0.62, 1100, 1600) + copyExtra(context);
+      const back = unwinding(context) && !timing;
+      const duration = back ? unwindMs() : clamp(far / 0.62, 1100, 1600) + copyExtra(context);
       if (!still) {
-        for (const p of spots(el, 7, bounds)) {
+        for (const p of spots(el, back ? 6 : 7, bounds)) {
           const pts = wander(at, p);
           const d = lengths(pts).at(-1);
-          hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 1.1, rest: 0, smooth: true, owner: context, delay: delay / 1000, duration: ((duration + (timing ? 1000 : 0)) / 1000) * clamp(d / (far - SOFT), 0.3, 1) });
+          // The gather's threads, running out from the node instead of into it.
+          if (back) hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38, owner: context, delay: delay / 1000 });
+          else hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 1.1, rest: 0, smooth: true, owner: context, delay: delay / 1000, duration: ((duration + (timing ? 1000 : 0)) / 1000) * clamp(d / (far - SOFT), 0.3, 1) });
         }
       }
       const motion = timing?.(duration);
-      const run = tween(motion?.duration || duration, motion?.ease || seep, (k) => {
+      const run = tween(motion?.duration || duration, motion?.ease || (back ? easeUnwind : seep), (k) => {
         if (!s.classList.contains('on')) return;
         if (copyStates.get(s) !== state) return;
         copy.paint(el, origin, k * far, context.geometry?.box(el), state);

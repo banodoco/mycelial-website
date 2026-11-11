@@ -181,7 +181,7 @@
       .as-copy.as-spreading .num,
       .as-copy.as-spreading .num .act,
       .as-copy.as-spreading .story-title,
-      .as-copy.as-spreading .story-title .story-astrid,
+      html[data-ver="f"] .as-host.story-refined .as-copy.as-spreading .story-title .story-astrid,
       .as-copy.as-spreading .story-links,
       .as-copy.as-spreading .story-links a,
       .as-copy.as-spreading .story-links .story-divider,

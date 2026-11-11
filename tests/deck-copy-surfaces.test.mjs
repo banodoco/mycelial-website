@@ -169,7 +169,7 @@ test('no registry-driven endpoint or CSS force-visible escape hatch remains',()=
 test('renderer, coordinates, final grouping and reveal duration remain the restored version',()=>{
   const hash=s=>createHash('sha256').update(s).digest('hex');
   assert.equal(hash(section('  const textOf =','  const place = (p)')),'09188a673d65a59b6fb7c657a56f9ce2a61619b5be9a18746a749649811dcba0');
-  assert.equal(hash(section('  const copyExtra =','  const textTweens =')),'3c7effaf0a5d40f096a2cf4ae6e3505846c6e842a0b90f9c5bb71528ada1d18e');
+  assert.equal(hash(section('  const copyExtra =','  const textTweens =')),'c7f4c90d6283a616167271d19ab1ed031602483b4c2dcd0150e474de91048238');
   assert.match(source,/const GATHER = 400;/);assert.match(source,/const SOFT = 150;/);
   assert.match(source,/const x = at\.x - b\.left, y = at\.y - b\.top;/);
 });
