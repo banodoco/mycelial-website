@@ -1031,11 +1031,13 @@
     if (context.from === 5 && context.to === 6) return 2000;
     return (context.from === 3 && context.to === 4) || (context.from === 4 && context.to === 5) ? 500 : 0;
   };
-  // A step back unwinds: the words return by the gather played backwards (the
-  // same 400 ms on screen, whatever pace the step back runs at), not by a
-  // second forward entrance.
+  // A step back unwinds: the words return by the gather played backwards, not
+  // by a second forward entrance. It runs at a third of the gather's speed
+  // (1.2 s on screen, whatever pace the step back runs at), so the words come
+  // back alongside the picture's own reverse instead of snapping in ahead of it.
   const unwinding = (context) => context?.dir < 0 && !context.direct;
-  const unwindMs = () => GATHER * (window.deckPace?.() || 1);
+  const UNWIND = 3; // how many times longer than the gather its reverse takes
+  const unwindMs = () => GATHER * UNWIND * (window.deckPace?.() || 1);
   const revealDuration = (slide, at, context) => unwinding(context) ? unwindMs()
     : Math.max(0, ...textOf(slide).map((el) => clamp(reach(el, at, context?.geometry?.box(el)) / 0.62, 1100, 1600) + copyExtra(context)));
   // Points spread through a text block, for threads to run to or from.
@@ -1145,7 +1147,7 @@
           const pts = wander(at, p);
           const d = lengths(pts).at(-1);
           // The gather's threads, running out from the node instead of into it.
-          if (back) hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38, owner: context, delay: delay / 1000 });
+          if (back) hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38 * UNWIND, owner: context, delay: delay / 1000 });
           else hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 1.1, rest: 0, smooth: true, owner: context, delay: delay / 1000, duration: ((duration + (timing ? 1000 : 0)) / 1000) * clamp(d / (far - SOFT), 0.3, 1) });
         }
       }
