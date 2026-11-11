@@ -442,36 +442,51 @@ export function aerialBodyInView(body, frame) {
     && Math.abs(x*frame.rx+y*frame.ry+z*frame.rz) <= depth*tx+radius*Math.hypot(1, tx)
     && Math.abs(x*frame.ux+y*frame.uy+z*frame.uz) <= depth*ty+radius*Math.hypot(1, ty);
 }
-export function planAerialReveals(bodies, from, aspect, output) {
-  const frames = [];
+/** planAerialReveals as a RESUMABLE job (2026-11, warm queue): the same
+ *  arithmetic in the same order, cut into steps — the camera frames, the
+ *  phone's view union, then the bodies in runs — so a rest-time prewarm can
+ *  stop between them. `step(stop)` returns true once `output` is complete;
+ *  `stop()` is asked between runs. The carried state (frames, view union,
+ *  edgeLoad, i) is exactly what the one-call loop carried, so the output is
+ *  bit-identical however it is sliced (tools/test-manifesto-motion.mjs). */
+export function aerialRevealJob(bodies, from, aspect, output) {
   const clockScale = CAMERA_SECONDS / 28;
   const phone = isMobileManifesto(aspect);
-  for (let seconds = 2.5 * clockScale; seconds <= CAMERA_SECONDS - clockScale; seconds += 0.25 * clockScale) {
-    const pose = manifestoPose(from, seconds, aspect);
-    const { position: p, target: q } = pose;
-    const n = Math.hypot(q.x-p.x,q.y-p.y,q.z-p.z);
-    const fx = (q.x-p.x)/n, fy = (q.y-p.y)/n, fz = (q.z-p.z)/n;
-    const h = Math.hypot(fx,fz), rx = -fz/h, rz = fx/h;
-    frames.push({ seconds, p, fx, fy, fz, rx, rz,
-      ux: -fy*rz, uy: fx*rz-fz*rx, uz: fy*rx,
-      tangent: Math.tan(pose.fov*Math.PI/360) });
+  let frames = null, phoneFrames = phone ? null : undefined, i = 0;
+  const edgeLoad = new Uint16Array(4 * 7);
+  function cameraFrames() {
+    frames = [];
+    for (let seconds = 2.5 * clockScale; seconds <= CAMERA_SECONDS - clockScale; seconds += 0.25 * clockScale) {
+      const pose = manifestoPose(from, seconds, aspect);
+      const { position: p, target: q } = pose;
+      const n = Math.hypot(q.x-p.x,q.y-p.y,q.z-p.z);
+      const fx = (q.x-p.x)/n, fy = (q.y-p.y)/n, fz = (q.z-p.z)/n;
+      const h = Math.hypot(fx,fz), rx = -fz/h, rz = fx/h;
+      frames.push({ seconds, p, fx, fy, fz, rx, rz,
+        ux: -fy*rz, uy: fx*rz-fz*rx, uz: fy*rx,
+        tangent: Math.tan(pose.fov*Math.PI/360) });
+    }
   }
   // Prepare the union of the actual phone views, including both endpoints.
   // The same path is replayed on return. Distance from the field's origin
   // cannot say whether a mushroom ever enters this narrow camera frame.
-  const phoneFrames = phone ? [] : null;
-  if (phone) {
-    for (let t = 0; t < CAMERA_SECONDS; t += .25) {
-      phoneFrames.push(manifestoViewFrame(manifestoPose(from, t, aspect), aspect));
+  // (resumable too: ~150 poses, the largest step left on a phone)
+  let views = null, viewT = 0;
+  function phoneViews(stop) {
+    views ||= [];
+    for (; viewT < CAMERA_SECONDS; viewT += .25) {
+      views.push(manifestoViewFrame(manifestoPose(from, viewT, aspect), aspect));
+      if ((views.length & 31) === 0 && stop()) { viewT += .25; return false; }
     }
-    phoneFrames.push(manifestoViewFrame(manifestoPose(from, CAMERA_SECONDS, aspect), aspect));
+    views.push(manifestoViewFrame(manifestoPose(from, CAMERA_SECONDS, aspect), aspect));
+    phoneFrames = views;
+    return true;
   }
-  const edgeLoad = new Uint16Array(4 * 7);
-  for (let i = 0; i < bodies.length; i++) {
+  function body(i) {
     const b = bodies[i];
-    if (b.tier >= 4) { output[i*2] = -1; output[i*2+1] = 1; continue; }
+    if (b.tier >= 4) { output[i*2] = -1; output[i*2+1] = 1; return; }
     if (phoneFrames && !phoneFrames.some(frame => aerialBodyInView(b, frame))) {
-      output[i*2] = CAMERA_SECONDS + 1; output[i*2+1] = 1; continue;
+      output[i*2] = CAMERA_SECONDS + 1; output[i*2+1] = 1; return;
     }
     const hash = Math.sin(b.x*12.9898 + b.z*78.233) * 43758.5453;
     const jitter = hash - Math.floor(hash);
@@ -498,5 +513,20 @@ export function planAerialReveals(bodies, from, aspect, output) {
     output[i*2] = Math.min(CAMERA_SECONDS-duration, Math.max(2.5 * clockScale, start + jitter*0.55 * clockScale));
     output[i*2+1] = duration;
   }
+  return {
+    output,
+    step(stop = () => false) {
+      if (!frames) { cameraFrames(); if (stop()) return false; }
+      if (phoneFrames === null) { if (!phoneViews(stop) || stop()) return false; }
+      for (; i < bodies.length; i++) {
+        body(i);
+        if ((i & 31) === 31 && i + 1 < bodies.length && stop()) { i++; return false; }
+      }
+      return true;
+    },
+  };
+}
+export function planAerialReveals(bodies, from, aspect, output) {
+  aerialRevealJob(bodies, from, aspect, output).step();
   return output;
 }
