@@ -26,6 +26,7 @@ import { createSeams } from './seams.js';
 import { createLens } from './lens.js';
 import { createUI } from './ui.js';
 import { createRail } from './rail.js';
+import { startCardWarming } from './cards/index.js';
 import {
   CHAPTERS, CHAPTER_IDS, chapterAt, restProgress, startOf, HERO_REST_P,
 } from './route.js';
@@ -2195,9 +2196,10 @@ export function boot(opts = {}) {
        `?warmdraw=1` keeps them, so the GL harness can measure them. */
     const softwareGl = /swiftshader|llvmpipe|softpipe|software/i.test(sceneApi.rendererName || '')
       && !/[?&]warmdraw=1(?:&|$)/.test(location.search);
-    // CARD MEDIA belongs in this queue too (one fetch per slice, at rest,
-    // priority 'low'); journey/cards/index.js still self-starts 1.5 s after
-    // import because its move proofs freeze that file — see the perf report.
+    /* CARD MEDIA warming (fonts, posters, preview clips: ~6 MB) rides this
+       queue: one job per rest slice, fetched at priority 'low'. Cards fetch
+       their own media on demand when built, so never resting costs nothing. */
+    startCardWarming({ enqueue: (job) => registerRestWarmTask(() => { job(); return false; }) });
 
     const busy = () => !isAtRest();
     const lost = () => {

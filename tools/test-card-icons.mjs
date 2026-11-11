@@ -127,10 +127,10 @@ const HAND_DERIVED = {
   // journey/cards/index.js's public surface, unchanged by this move.
   // Namespace keys come back sorted.
   exportNames: ['CARD_ASSETS', 'CARD_BUILDERS', 'CARD_ICONS', 'REDUCE', 'startCardWarming'],
-  // THE ACCEPTANCE CRITERION'S QUALIFIER. The import-time self-start: one
-  // timer, 1500 ms, scheduled once, in BOTH trees. If moving the glyphs
-  // shifted the warming epoch this array would change length or value.
-  selfStartDelays: [1500],
+  // THE ACCEPTANCE CRITERION'S QUALIFIER. Re-based 2026-11 (P1): the SHIPPED
+  // index.js no longer self-starts, so importing it schedules nothing. The
+  // pre-move FIXTURE still does (PRE_SELF_START_DELAYS) -- it is history.
+  selfStartDelays: [],
   // Evaluating the glyph owner itself must do nothing observable at all.
   iconsModuleTimers: 0,
   iconsModuleFetches: 0,
@@ -139,6 +139,9 @@ const HAND_DERIVED = {
 
 /** The `I()` factory, hand-derived from its arrow in journey/cards/icons.js.
  *  `paths` is interpolated raw into the element's body. */
+/** The pre-move fixture is the historical file: one 1500 ms timer at import. */
+const PRE_SELF_START_DELAYS = [1500];
+
 const HAND_DERIVED_FACTORY = {
   arity: 1,
   wrapperOf: (paths) => `<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">${paths}</svg>`,
@@ -175,6 +178,24 @@ function deepEq(a, b) {
 }
 
 const read = (rel) => fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+
+/* RE-BASED 2026-11 (card-warming deferral, hitch pass P1). The owner approved
+   removing journey/cards/index.js's import-time self-start, which is a byte
+   change to the file these move proofs pin. The pre-move fixture stays the
+   untouched historical snapshot; instead the P1 edits are recorded, as
+   machine-generated old/new pairs in tools/fixtures/p1-card-warming-deferral
+   .edits.json, and reverse-applied (each must occur exactly once) BEFORE the
+   move is reverse-applied. So the proof still shows "the moves added and
+   lost nothing"; it now ALSO shows P1 is exactly the recorded edits. */
+function undoP1(src) {
+  const { edits } = JSON.parse(read('tools/fixtures/p1-card-warming-deferral.edits.json'));
+  let out = src;
+  for (const e of edits) {
+    if (out.split(e.shipped).length !== 2) throw new Error('reverse application refused: a recorded P1 edit is not present exactly once in the shipped index.js');
+    out = out.replace(e.shipped, () => e.previous);
+  }
+  return out;
+}
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 
 /** Slice [startAnchor, endAnchor] inclusive. REFUSES on miss and on ambiguity:
@@ -409,7 +430,7 @@ async function main() {
   const post = await materialise('post');
   check(deepEq(pre.record, PRE_MOVE_RECORD()), 'PRE-move tree matches the hand-derived expectation (the expectation describes the code that shipped before U01c)');
   check(deepEq(post.record, HAND_DERIVED_RECORD()), 'POST-move tree matches the same hand-derived expectation');
-  check(deepEq(pre.record, movedOnly(post.record)), 'pre-move and post-move trees are observationally identical on the moved six: icon key order, value shape, index.js export names, and the warming self-start epoch');
+  check(deepEq(pre.record, movedOnly(post.record)), 'pre-move and post-move trees are observationally identical on the moved six: icon key order, value shape, index.js export names (the self-start is the one deliberate difference, P1 -- compared as PRE_SELF_START_DELAYS vs []).');
   check(pre.mapIsIconsOwn === null, 'the pre-move tree has no icons module, so table-identity has no pre-move counterpart (recorded as null, not silently as false)');
   check(post.mapIsIconsOwn === true, 'POST: index.js FORWARDS the glyph owner\'s own CARD_ICONS object rather than copying it');
 
@@ -427,8 +448,8 @@ async function main() {
   check(pre.markup.arca !== pre.markup.discord, 'CONTROL — two different glyphs are NOT equal, so the byte comparison above is live');
 
   console.log('\n-- 5. "no warming side effect", measured at the source --');
-  check(deepEq(pre.record.selfStartDelays, HAND_DERIVED.selfStartDelays), `PRE: importing index.js schedules exactly ${JSON.stringify(HAND_DERIVED.selfStartDelays)}`);
-  check(deepEq(post.record.selfStartDelays, HAND_DERIVED.selfStartDelays), `POST: importing index.js schedules exactly ${JSON.stringify(HAND_DERIVED.selfStartDelays)} — the epoch did not move`);
+  check(deepEq(pre.record.selfStartDelays, PRE_SELF_START_DELAYS), `PRE: importing the fixture index.js schedules exactly ${JSON.stringify(PRE_SELF_START_DELAYS)}`);
+  check(deepEq(post.record.selfStartDelays, HAND_DERIVED.selfStartDelays), `POST: importing index.js schedules exactly ${JSON.stringify(HAND_DERIVED.selfStartDelays)} — no import-time self-start (deferral, P1)`);
   check(post.iconsOnly !== null, 'the glyph owner was imported on its own, before the package face, so its evaluation could be measured in isolation');
   check(post.iconsOnly.timers === HAND_DERIVED.iconsModuleTimers, `evaluating journey/cards/icons.js ALONE schedules ${HAND_DERIVED.iconsModuleTimers} timers (got ${post.iconsOnly.timers})`);
   check(post.iconsOnly.fetches === HAND_DERIVED.iconsModuleFetches, `evaluating journey/cards/icons.js ALONE starts ${HAND_DERIVED.iconsModuleFetches} fetches (got ${post.iconsOnly.fetches})`);
@@ -584,11 +605,12 @@ async function main() {
     'CONTROL — a behaviour-neutral mutate() (one appended newline) leaves every observable green (the reddenings above are the mutations, not the harness)');
 
   console.log('\n-- 8. reverse application: rebuild the pre-move file from the shipped pair --');
+  const indexSrcPreP1 = undoP1(indexSrc);
   // Every moved line is taken FROM THE SHIPPED BYTES, never retyped. Only the
   // structural glue is named here, and each cut refuses on miss/ambiguity.
   const REEXPORT_HEAD = '/* Chip glyphs — the `I()` helper and the CARD_ICONS table.\n';
-  const indexHead = before(indexSrc, INDEX_REL, REEXPORT_HEAD);
-  const reexportStanza = from(indexSrc, INDEX_REL, REEXPORT_HEAD);
+  const indexHead = before(indexSrcPreP1, INDEX_REL, REEXPORT_HEAD);
+  const reexportStanza = from(indexSrcPreP1, INDEX_REL, REEXPORT_HEAD);
   if (!reexportStanza.endsWith("export { CARD_ICONS } from './icons.js';\n")) {
     throw new Error('reverse application refused: the shipped index.js does not end with the icons re-export');
   }
@@ -635,14 +657,14 @@ function PRE_MOVE_RECORD() {
     iconKeys: [...HAND_DERIVED.movedKeys],
     iconValuesAreSvgElements: HAND_DERIVED.iconValuesAreSvgElements.slice(0, n),
     exportNames: [...HAND_DERIVED.exportNames],
-    selfStartDelays: [...HAND_DERIVED.selfStartDelays],
+    selfStartDelays: [...PRE_SELF_START_DELAYS],
   };
 }
 
 /** A shipped record restricted to the moved six, for the pre/post comparison. */
 function movedOnly(record) {
   const n = HAND_DERIVED.movedKeys.length;
-  return { ...record, iconKeys: record.iconKeys.slice(0, n), iconValuesAreSvgElements: record.iconValuesAreSvgElements.slice(0, n) };
+  return { ...record, iconKeys: record.iconKeys.slice(0, n), iconValuesAreSvgElements: record.iconValuesAreSvgElements.slice(0, n), selfStartDelays: [...PRE_SELF_START_DELAYS] };
 }
 
 /** The hand-derived record, rebuilt per comparison so no assertion can mutate

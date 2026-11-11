@@ -126,10 +126,12 @@ const HAND_DERIVED = {
   cardAssets: './assets/cards',
   cardAssetsIsRuntimeBinding: true,
   reduceIsRuntimeBinding: true,
-  // The import-time self-start: one timer, 1500 ms, scheduled once. (The
-  // cascade itself is tools/test-card-warming.mjs's subject, not this one's.)
-  selfStartDelays: [1500],
+  // Re-based 2026-11 (P1): the shipped index.js no longer self-starts. The
+  // pre-move FIXTURE does (PRE_SELF_START_DELAYS). The cascade itself is
+  // tools/test-card-warming.mjs's subject, not this one's.
+  selfStartDelays: [],
 };
+const PRE_SELF_START_DELAYS = [1500];
 
 /** Same tree, but with two builder modules default-exporting null — the
  *  "module still under construction" case the filter exists for. tworp and
@@ -143,7 +145,7 @@ const HAND_DERIVED_NULLS = {
   cardAssets: './assets/cards',
   cardAssetsIsRuntimeBinding: true,
   reduceIsRuntimeBinding: true,
-  selfStartDelays: [1500],
+  selfStartDelays: [],
 };
 
 /* ------------------------------------------------------------------ *
@@ -174,6 +176,24 @@ function deepEq(a, b) {
 }
 
 const read = (rel) => fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+
+/* RE-BASED 2026-11 (card-warming deferral, hitch pass P1). The owner approved
+   removing journey/cards/index.js's import-time self-start, which is a byte
+   change to the file these move proofs pin. The pre-move fixture stays the
+   untouched historical snapshot; instead the P1 edits are recorded, as
+   machine-generated old/new pairs in tools/fixtures/p1-card-warming-deferral
+   .edits.json, and reverse-applied (each must occur exactly once) BEFORE the
+   move is reverse-applied. So the proof still shows "the moves added and
+   lost nothing"; it now ALSO shows P1 is exactly the recorded edits. */
+function undoP1(src) {
+  const { edits } = JSON.parse(read('tools/fixtures/p1-card-warming-deferral.edits.json'));
+  let out = src;
+  for (const e of edits) {
+    if (out.split(e.shipped).length !== 2) throw new Error('reverse application refused: a recorded P1 edit is not present exactly once in the shipped index.js');
+    out = out.replace(e.shipped, () => e.previous);
+  }
+  return out;
+}
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 
 /** Slice [startAnchor, endAnchor] inclusive. REFUSES on miss and on
@@ -394,18 +414,18 @@ async function main() {
   console.log('\n-- 3. all six builders present: pre vs post, and both vs hand-derived --');
   const pre = await materialise('pre', []);
   const post = await materialise('post', []);
-  check(deepEq(pre.record, HAND_DERIVED), 'PRE-move tree matches the hand-derived expectation (the expectation describes the code that shipped before U01b)');
+  check(deepEq(pre.record, { ...HAND_DERIVED, selfStartDelays: [...PRE_SELF_START_DELAYS] }), 'PRE-move tree matches the hand-derived expectation (the expectation describes the code that shipped before U01b)');
   check(deepEq(post.record, HAND_DERIVED), 'POST-move tree matches the same hand-derived expectation');
-  check(deepEq(pre.record, post.record), 'pre-move and post-move trees are observationally identical: builder evaluation order, CARD_BUILDERS key order, per-key module-default identity, export names, CARD_ASSETS/REDUCE binding identity, and the self-start epoch');
+  check(deepEq({ ...pre.record, selfStartDelays: [] }, post.record), 'pre-move and post-move trees are observationally identical (the self-start, 1500 -> none, being the one deliberate P1 difference, asserted above): builder evaluation order, CARD_BUILDERS key order, per-key module-default identity, export names, CARD_ASSETS/REDUCE binding identity, and the self-start epoch');
   check(pre.mapIsRegistryOwn === null, 'the pre-move tree has no registry module, so map-identity has no pre-move counterpart (recorded as null, not silently as false)');
   check(post.mapIsRegistryOwn === true, 'POST: index.js FORWARDS the registry owner\'s own CARD_BUILDERS object rather than copying it');
 
   console.log('\n-- 4. the null filter (a module still under construction) --');
   const preNulls = await materialise('pre', ['tworp', 'hivemind']);
   const postNulls = await materialise('post', ['tworp', 'hivemind']);
-  check(deepEq(preNulls.record, HAND_DERIVED_NULLS), 'PRE-move tree drops null builders and keeps the survivors\' relative order');
+  check(deepEq(preNulls.record, { ...HAND_DERIVED_NULLS, selfStartDelays: [...PRE_SELF_START_DELAYS] }), 'PRE-move tree drops null builders and keeps the survivors\' relative order');
   check(deepEq(postNulls.record, HAND_DERIVED_NULLS), 'POST-move tree drops null builders identically');
-  check(deepEq(preNulls.record, postNulls.record), 'pre and post agree under the null-builder case too');
+  check(deepEq({ ...preNulls.record, selfStartDelays: [] }, postNulls.record), 'pre and post agree under the null-builder case too');
 
   console.log('\n-- 5. the shipped modules themselves (no stubs) --');
   // Node has no ambient `document` here, so index.js's self-start guard is
@@ -554,6 +574,7 @@ async function main() {
   );
 
   console.log('\n-- 7. reverse application: rebuild the pre-move file from the shipped pair --');
+  const indexSrcPreP1 = undoP1(indexSrc);
   // Every moved line is taken FROM THE SHIPPED BYTES, never retyped. Only the
   // structural glue is named here, and each cut refuses on miss/ambiguity.
   const CONTRACT_HEAD = '// CONTRACT (consumed by ui.js showPop/hidePop):\n';
@@ -573,17 +594,17 @@ async function main() {
   const registryTailSix = registryTail.replace(ADDED_ENTRIES, ', discord })');
 
   const runtimeImportLine = "import { CARD_ASSETS } from './runtime.js';\n";
-  if ((indexSrc.split(runtimeImportLine).length - 1) !== 1) {
+  if ((indexSrcPreP1.split(runtimeImportLine).length - 1) !== 1) {
     throw new Error('reverse application refused: the runtime import line is not unique in the shipped index.js');
   }
 
-  const head = before(indexSrc, INDEX_REL, '// CONTRACT (consumed by ui.js showPop/hidePop): the builder registry and the\n');
+  const head = before(indexSrcPreP1, INDEX_REL, '// CONTRACT (consumed by ui.js showPop/hidePop): the builder registry and the\n');
   const statsBlock = sliceOnce(
-    indexSrc, INDEX_REL,
+    indexSrcPreP1, INDEX_REL,
     '//\n// STATS POLICY',
     '// failed verification and are corrected in the modules).\n\n',
   );
-  const warmingTail = from(indexSrc, INDEX_REL, '/* ---- idle-time warming');
+  const warmingTail = from(indexSrcPreP1, INDEX_REL, '/* ---- idle-time warming');
 
   /* U01c (2026-08-22): this reconstruction now composes TWO moves, and the
      assertion below says so rather than continuing to claim it isolates U01b.

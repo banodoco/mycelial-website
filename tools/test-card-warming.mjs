@@ -23,43 +23,22 @@
 //        B4. cancel-mid-cascade: remaining slices stop; already-issued
 //            fetches are not required to (and are not) aborted
 //        B5. cancel is idempotent (double-cancel, cancel-after-completion)
-//   C. Cross-check against the PRE-CHANGE implementation: the exact bytes
-//      of journey/cards/index.js and journey/cards/runtime.js at HEAD
-//      (fetched via `git show`, not retyped) are written into a directory
-//      OUTSIDE this repo, alongside null-builder stubs for the other five
-//      card modules (a legitimate substitution under this file's own
-//      documented contract: "A module still under construction exports
-//      null"). That pre-change module is executed for real, with the same
-//      kind of synchronous global doubles, and its captured delay sequence
-//      and font/fetch call sequence are compared byte-for-byte against the
-//      new module's B1 run.
+//   C. (re-based 2026-11) No import-time self-start; `enqueue` mode hands
+//      one job per unit to the journey's rest queue and every fetch asks
+//      for priority 'low'. (The old Part C diffed against pre-U01a bytes via
+//      `git show <sha>`; that timer contract no longer exists.)
 //
 // Run directly: node tools/test-card-warming.mjs
 // (not yet wired into package.json's test:contracts -- a concurrent order
 // owns that file; see the report for the reviewer.)
 
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
 const REAL_MODULE_PATH = path.join(REPO_ROOT, 'journey/cards/index.js');
-
-// QA-02 TIME BOMB FIX: this run's starting commit, pinned explicitly.
-// `git show HEAD:...` used to be read below, but HEAD is a MOVING ref --
-// this order's own changes to journey/cards/index.js are still uncommitted,
-// so today HEAD still points at the pre-change bare-setTimeout
-// implementation and the cross-check passes. The moment this run's work is
-// committed, HEAD advances past the change, the "sanity" check that the
-// fetched HEAD copy is genuinely pre-change would start failing, and the
-// Part C cross-check would be diffing the new implementation against
-// itself. Pinning this SHA instead of HEAD is the fix -- do not revert this
-// back to `HEAD:journey/cards/index.js` / `HEAD:journey/cards/runtime.js`.
-const RUN_START_SHA = '6967a36ab309af7057336be64d6f0f9dd3c41b21';
 
 let failures = 0;
 function check(condition, msg) {
@@ -319,147 +298,71 @@ async function main() {
     'calling cancel() after natural completion is a pure no-op (no state changes)'
   );
 
-  console.log('-- C. cross-check against the pre-change implementation at HEAD --');
-  // Pinned to RUN_START_SHA, not HEAD -- see the comment above its definition.
-  const headIndexJs = execFileSync('git', ['show', `${RUN_START_SHA}:journey/cards/index.js`], { cwd: REPO_ROOT, encoding: 'utf8' });
-  const headRuntimeJs = execFileSync('git', ['show', `${RUN_START_SHA}:journey/cards/runtime.js`], { cwd: REPO_ROOT, encoding: 'utf8' });
-  // QA-02 R1 BLOCKER FIX: the previous sanity check was
-  // `headIndexJs.includes('setTimeout(warmCardAssets, 1500)')` -- HOLLOW.
-  // That literal string also survives, verbatim, into the CURRENT file's
-  // own prose (see the "idle-time warming" block comment and the
-  // startCardWarming() doc comment in journey/cards/index.js, which both
-  // quote the old bare-setTimeout shape while explaining what replaced
-  // it). So `.includes` matched whichever version was fetched -- reverting
-  // the RUN_START_SHA pin back to the moving `HEAD` ref did NOT make this
-  // suite fail, which is exactly what a time-bomb fix must do.
-  //
-  // The genuinely discriminating property is STRUCTURAL, not textual: the
-  // identifier `startCardWarming` does not appear ANYWHERE in the
-  // pre-change file -- not as code, not in a comment -- because U01a's
-  // change is what introduces that name. (Verified: zero matches for
-  // `startCardWarming` against the RUN_START_SHA copy, including
-  // comments.) The current file both defines `export function
-  // startCardWarming` and calls it from the self-start guard. Anchoring on
-  // that export is something a comment describing the OLD behavior cannot
-  // accidentally satisfy, because the old behavior never had this name.
-  // ANCHOR CONVERTED (U01b, 2026-08-22). The recorded debt from QA-02's
-  // closure review said: this suite and tools/test-discord-card.mjs anchor
-  // their pre/post pair on a TEXTUAL match, where
-  // tools/test-animation-lifecycle.mjs and tools/test-intro-lifecycle.mjs use
-  // whole-file byte inequality; "if either file is touched again in this
-  // program, its anchor should be converted to the whole-file byte-inequality
-  // form the other two use." U01b touched journey/cards/index.js (it moved the
-  // builder registry out to journey/cards/registry.js), so the trigger fired
-  // and the conversion is done here.
-  //
-  // PRIMARY ANCHOR, structural: the whole file, byte for byte. No comment
-  // anyone writes in either copy can make this true or false by accident --
-  // the only way it holds is that the two copies genuinely differ, and the
-  // only way it breaks is that they genuinely do not. This is what makes
-  // reverting RUN_START_SHA back to the moving `HEAD` ref fail once this run
-  // is committed.
-  const CURRENT_INDEX_JS = fs.readFileSync(REAL_MODULE_PATH, 'utf8');
-  check(
-    headIndexJs !== CURRENT_INDEX_JS,
-    'sanity (whole-file byte inequality): the copy fetched via `git show` and the working journey/cards/index.js are not the same bytes -- a genuine pre/post pair, provable without reading a single token'
-  );
-  // SUPPLEMENTARY, and kept only because it says something the byte
-  // comparison does not: WHICH side is the pre-change one. Byte inequality is
-  // symmetric; this names the direction. U01a's narrowing still holds -- the
-  // regex requires `export function` ADJACENT to the identifier, so a comment
-  // merely naming startCardWarming cannot satisfy it.
-  const HEAD_EXPORTS_START_CARD_WARMING = /\bexport\s+function\s+startCardWarming\b/.test(headIndexJs);
-  const CURRENT_EXPORTS_START_CARD_WARMING = /\bexport\s+function\s+startCardWarming\b/.test(CURRENT_INDEX_JS);
-  check(
-    !HEAD_EXPORTS_START_CARD_WARMING,
-    'direction: the `git show` copy is the PRE-change side -- it does NOT export startCardWarming (the identifier appears nowhere in the pre-change file, comments included)'
-  );
-  check(
-    CURRENT_EXPORTS_START_CARD_WARMING,
-    'direction: the current journey/cards/index.js DOES export startCardWarming -- so the pair is oriented pre -> post, not post -> pre'
-  );
-
-  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'card-warming-baseline-'));
-  // tmpRoot lives under the OS temp dir, never under REPO_ROOT.
-  check(!tmpRoot.startsWith(REPO_ROOT), 'baseline fixture directory is outside the repo');
+  console.log('-- C. no import-time self-start; enqueue mode defers every fetch (low priority) --');
+  // Re-based 2026-11 (hitch pass P1). The old Part C diffed this module
+  // against its pre-U01a bytes (`git show <sha>`) to prove the 1500 ms
+  // self-start; that contract is deliberately gone. The new contract:
+  //   1. importing index.js with a document present schedules NOTHING.
+  //   2. startCardWarming({ enqueue }) runs nothing itself: it hands one job
+  //      per unit (1 fonts job + 20 fetches) to `enqueue`, no timers.
+  //   3. each fetch job asks for { priority: 'low' }, in fonts -> light ->
+  //      heavy order, and does nothing until the queue runs it.
+  //   4. cancel() turns not-yet-run jobs into no-ops.
+  const realDoc = global.document;
+  const realFetch = global.fetch;
+  const realSetTimeout2 = global.setTimeout;
+  const realRIC = global.requestIdleCallback;
+  const ambientTimers = [];
+  const ambientFetches = [];
+  global.document = { fonts: { load: () => Promise.resolve() } };
+  global.fetch = (...a) => { ambientFetches.push(a); return Promise.resolve(); };
+  global.setTimeout = (fn, delay) => { ambientTimers.push(delay); return 0; };
+  global.requestIdleCallback = () => { ambientTimers.push('ric'); return 0; };
   try {
-    fs.writeFileSync(path.join(tmpRoot, 'index.js'), headIndexJs);
-    fs.writeFileSync(path.join(tmpRoot, 'runtime.js'), headRuntimeJs);
-    // The other five card builders are irrelevant to warming; stub them as
-    // null builders, which is this very file's own documented contract
-    // ("A module still under construction exports null; a null builder
-    // means the node simply keeps the plain popover") -- not a rewrite of
-    // their behavior, just standing in for modules the warming code never
-    // touches, so we don't have to execute unrelated builder internals
-    // outside their real directory.
-    for (const name of ['arca.js', 'artcompute.js', 'tworp.js', 'ados.js', 'hivemind.js', 'discord.js']) {
-      fs.writeFileSync(path.join(tmpRoot, name), 'export default null;\n');
-    }
-
-    const baselineFontsLoaded = [];
-    const baselineFetchCalls = [];
-    const baselineDelays = [];
-
-    const realDoc = global.document;
-    const realFetch = global.fetch;
-    const realSetTimeout2 = global.setTimeout;
-    const realRIC = global.requestIdleCallback;
-    delete global.requestIdleCallback; // ensure the fallback path is exercised, matching B1
-    global.document = {
-      fonts: {
-        load: (spec) => {
-          baselineFontsLoaded.push(spec);
-          return Promise.resolve();
-        },
-      },
-    };
-    global.fetch = (url) => {
-      baselineFetchCalls.push(url);
-      return Promise.resolve();
-    };
-    // Fire every setTimeout synchronously and immediately (recording the
-    // delay first) so the entire 1500ms + 21*400ms cascade drains inline
-    // during import, with no real waiting.
-    global.setTimeout = (fn, delay) => {
-      baselineDelays.push(delay);
-      fn();
-      return 0;
-    };
-
-    try {
-      // tmpRoot is freshly minted per run (mkdtempSync), so the module URL
-      // is already unique -- no cache-busting query needed.
-      await import(pathToFileURL(path.join(tmpRoot, 'index.js')).href);
-    } finally {
-      global.document = realDoc;
-      global.fetch = realFetch;
-      global.setTimeout = realSetTimeout2;
-      if (realRIC !== undefined) global.requestIdleCallback = realRIC;
-    }
-
-    assert.deepEqual(
-      baselineDelays,
-      sch1.calls.map((c) => c.delay),
-      'the pre-change implementation schedules the exact same delay sequence (1500, then 400 per slice) as the new startCardWarming()'
-    );
-    console.log('  ok - delay sequence identical to pre-change (length ' + baselineDelays.length + ')');
-
-    assert.deepEqual(
-      baselineFontsLoaded,
-      d1.fontsLoaded,
-      'the pre-change implementation warms the identical font set, in the identical order'
-    );
-    console.log(`  ok - font warm sequence identical to pre-change (${baselineFontsLoaded.length} fonts)`);
-
-    assert.deepEqual(
-      baselineFetchCalls,
-      d1.fetchCalls,
-      'the pre-change implementation fetches the identical asset set, in the identical order (fonts -> light -> heavy)'
-    );
-    console.log(`  ok - fetch sequence identical to pre-change (${baselineFetchCalls.length} assets)`);
+    // fresh URL query = a fresh evaluation, with `document` defined
+    await import(pathToFileURL(REAL_MODULE_PATH).href + '?with-document');
   } finally {
-    fs.rmSync(tmpRoot, { recursive: true, force: true });
+    global.document = realDoc;
+    global.fetch = realFetch;
+    global.setTimeout = realSetTimeout2;
+    if (realRIC !== undefined) global.requestIdleCallback = realRIC; else delete global.requestIdleCallback;
   }
+  check(ambientTimers.length === 0, `importing index.js WITH a document schedules no timer and no idle callback (got ${JSON.stringify(ambientTimers)})`);
+  check(ambientFetches.length === 0, 'importing index.js with a document fetches nothing');
+
+  const sch7 = makeFakeScheduler();
+  const d7 = makeDoubles();
+  const fetchOpts = [];
+  const fetchWithOpts = (url, opts) => { fetchOpts.push(opts); return d7.fetchFn(url); };
+  const jobs = [];
+  const cancel7 = startCardWarming({
+    setTimeoutFn: sch7.setTimeoutFn,
+    clearTimeoutFn: sch7.clearTimeoutFn,
+    fetchFn: fetchWithOpts,
+    doc: d7.doc,
+    enqueue: (job) => jobs.push(job),
+  });
+  check(typeof cancel7 === 'function', 'enqueue mode still returns a cancel handle');
+  check(jobs.length === 21, `enqueue mode hands over exactly 21 jobs (1 fonts + 20 fetches); got ${jobs.length}`);
+  check(sch7.calls.length === 0, 'enqueue mode schedules no timer of its own');
+  check(d7.fontsLoaded.length === 0 && d7.fetchCalls.length === 0, 'nothing is fetched or loaded until the queue runs a job');
+  jobs[0]();
+  check(d7.fontsLoaded.length === 6 && d7.fetchCalls.length === 0, 'job 0 warms the 6 fonts and fetches nothing');
+  for (let i = 1; i < 11; i++) jobs[i]();
+  check(d7.fetchCalls.length === 10, 'each later job issues exactly one fetch (one per queue slice)');
+  cancel7();
+  for (let i = 11; i < jobs.length; i++) jobs[i]();
+  check(d7.fetchCalls.length === 10, 'after cancel(), the remaining queued jobs are no-ops');
+  const d8 = makeDoubles();
+  const opts8 = [];
+  const jobs8 = [];
+  startCardWarming({ fetchFn: (u, o) => { opts8.push(o); return d8.fetchFn(u); }, doc: d8.doc, enqueue: (j) => jobs8.push(j) });
+  jobs8.forEach((j) => j());
+  check(d8.fetchCalls.length === 20 && opts8.every((o) => o && o.priority === 'low'), 'all 20 enqueued fetches ask for priority "low"');
+  check(
+    JSON.stringify(d8.fetchCalls) === JSON.stringify(d1.fetchCalls),
+    'enqueue mode fetches the identical asset set, in the identical fonts -> light -> heavy order, as the timer cascade'
+  );
 
   console.log('');
   if (failures > 0) {

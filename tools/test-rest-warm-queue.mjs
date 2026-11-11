@@ -101,16 +101,20 @@ const chapters = Object.fromEntries(Object.entries(groups).map(([id, group]) => 
 const transition = { blend: null, cameraStateDisagree: false };
 let progressId = 'mission';
 const journey = { progress: 0 };
+const cardWarmCalls = [];
+const cardJobs = [];
 const factory = new Function('sceneApi', 'chapters', 'transition', 'manifestoBranch', 'journey', 'chapterAt',
   'CHAPTER_IDS', 'compileForFrame', 'prepareGpuWarmup', 'window', 'performance',
-  'setTimeout', 'requestAnimationFrame', 'location', 'console', 'state',
+  'setTimeout', 'requestAnimationFrame', 'location', 'console', 'state', 'startCardWarming',
   'let startupFailed = false;\n' + src.slice(start, end)
   + '\nreturn { warmHiddenChapters, registerRestWarmTask, isAtRest };');
 const q = factory(sceneApi, chapters, transition, null, journey, () => ({ id: progressId }),
   ['mission', 'inspire', 'equip', 'connect', 'owned', 'final'],
   (api, o) => api.renderer.compileAsync(o), null,
   { requestIdleCallback: (fn) => idles.push(fn) }, { now: () => now }, fakeSetTimeout,
-  (fn) => fakeSetTimeout(fn, 16), { search: '' }, { warn() {}, info() {} }, {});
+  (fn) => fakeSetTimeout(fn, 16), { search: '' }, { warn() {}, info() {} }, {},
+  /* the card-media warmer: records how journey.js wires it (P1 deferral) */
+  (o) => { cardWarmCalls.push(o); for (let i = 0; i < 3; i++) o.enqueue(() => { cardJobs.push(i); }); });
 
 let taskRuns = 0;
 q.registerRestWarmTask(() => { taskRuns++; log.push(['task', progressId]); }, { chapter: 'final' });
@@ -120,6 +124,9 @@ transition.blend = { dur: 3 };
 q.warmHiddenChapters();
 await advance(5000);
 assert.equal(log.length, 0, 'W1 nothing runs during a flight');
+assert.equal(cardWarmCalls.length, 1, 'W7 journey.js hands card-media warming to the queue exactly once');
+assert.equal(typeof cardWarmCalls[0].enqueue, 'function', 'W7 via the enqueue option (no timers of its own)');
+assert.equal(cardJobs.length, 0, 'W7 no card-media job runs during a flight');
 assert.equal(q.isAtRest(), false);
 // lands at Connect; nothing within the 300 ms rest window
 transition.blend = null; progressId = 'connect';
@@ -166,4 +173,5 @@ const late = tex('owned-late');
 groups.owned.children[0].material.uniforms.uMapH = { value: late };
 transition.blend = { dur: 3 }; await advance(1000); transition.blend = null; await advance(5000);
 assert(log.some((e) => e[0] === 'tex' && e[1] === 'owned-late'), 'a late texture is uploaded at the next rest');
-console.log('rest warm queue: W1-W6 passed');
+assert.deepEqual(cardJobs, [0, 1, 2], 'W7 queued card-media jobs all ran, in order, once the journey rested');
+console.log('rest warm queue: W1-W7 passed');
