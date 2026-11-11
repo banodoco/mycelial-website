@@ -1134,19 +1134,32 @@
   // the same picture runs the other way. q: 0 the stack at rest, 1 gone; s: its length (deck s), both ways.
   // stand: where she is upright; meet: how far toward her size in the lens she grows; close: where the gaps have closed; fade: where the labels have gone; roots: where the roots have drawn in;
   // shrink: the stretch over which the pile shrinks to its tucked size (its end is the small frame a late frame
-  // must still show); tuck: the tucked pile's width, in her widths.
-  const GATHER = { s: 1.6, stand: 0.25, meet: 0.5, pitch: 12, close: 0.55, fade: 0.35, roots: 0.5, shrink: [0.12, 0.92], tuck: 1.2 };
+  // must still show); tuck: the tucked pile's width, in her widths (and never taller than she is).
+  // up: in the last stretch the pile turns on end as it shrinks, each card spinning on in its own plane, the way it
+  // is already turned, until its long side runs straight up (turn), and lifting toward upright (to tilt rx), so it
+  // stands behind her: over q in at.
+  const GATHER = { s: 1.6, stand: 0.25, meet: 0.5, pitch: 12, close: 0.55, fade: 0.35, roots: 0.5, shrink: [0.12, 0.92], tuck: 1.2,
+    up: { at: [0.5, 0.92], rx: 24, turn: 90 } };
+  // A gathered plane: pulled q of the way into the pile, turned u of the way on end.
+  const pileOf = (p, i, c, u) => {
+    const s = settledOf(p);
+    return { ...s, y: p.cy + (PL[3].cy + (i - 3) * GATHER.pitch - p.cy) * c,
+      rx: lerp(s.rx, GATHER.up.rx, u), rz: lerp(s.rz, Math.sign(s.rz || 1) * GATHER.up.turn, u) };
+  };
   let piled = null; // what the gathering changed, to give back
   const pileAt = (q) => {
     if (!geo) return;
-    if (!piled) piled = { lb: vis.lb.slice(), rt: vis.rt, gd: vis.gd };
+    if (!piled) piled = { vis: { lb: vis.lb.slice(), rt: vis.rt, gd: vis.gd }, turn: st.map((s) => [s.rx, s.rz]) };
     const c = seep(clamp(q / GATHER.close)), a = 1 - seep(clamp(q / GATHER.fade));
-    st.forEach((s, i) => { s.pile = (PL[3].cy + (i - 3) * GATHER.pitch - PL[i].cy) * c; });
+    const [u0, u1] = GATHER.up.at, u = seep(clamp((q - u0) / (u1 - u0)));
+    const gathered = PL.map((p, i) => pileOf(p, i, c, u));
+    st.forEach((s, i) => { s.pile = gathered[i].y - PL[i].cy; s.rx = gathered[i].rx; s.rz = gathered[i].rz; });
     apply();
-    geo.corners = PL.map((p, i) => onScreen(edgesOf({ ...settledOf(p), y: p.cy + st[i].pile })));
+    geo.corners = gathered.map((g) => onScreen(edgesOf(g)));
     geo.rootDy = geo.corners[4].nl.y - geo.rest[4].nl.y;
     baseReady = false; // the cached roots and threads are the settled ones
-    vis.lb = piled.lb.map((l) => l * a); vis.rt = piled.rt * (1 - seep(clamp(q / GATHER.roots))); vis.gd = piled.gd * a;
+    const was = piled.vis;
+    vis.lb = was.lb.map((l) => l * a); vis.rt = was.rt * (1 - seep(clamp(q / GATHER.roots))); vis.gd = was.gd * a;
     flags.forEach((f) => { f.style.transition = 'none'; });
     syncFlagVisibility();
     cards.forEach((card, i) => {
@@ -1160,24 +1173,24 @@
     if (!piled) return;
     const was = piled;
     piled = null;
-    st.forEach((s) => { s.pile = 0; });
+    st.forEach((s, i) => { s.pile = 0; [s.rx, s.rz] = was.turn[i]; });
     if (geo) { geo.corners = geo.rest; geo.rootDy = 0; }
     baseReady = false;
-    Object.assign(vis, was);
+    Object.assign(vis, was.vis);
     flags.forEach((f) => { f.style.transition = ''; });
     cards.forEach((card) => { card.style.transition = ''; card.style.opacity = ''; });
     root.classList.remove('is-gathering'); root.style.removeProperty('--st-gather');
     apply(); syncFlagVisibility(); draw();
   };
-  // The pile's tight extent on screen, for its tucked size and where it slides to.
+  // The pile's extent on screen, on end, for its tucked size and where it slides to.
   const pileBox = () => {
     const pts = PL.flatMap((p, i) => {
-      const c = onScreen(edgesOf({ ...settledOf(p), y: PL[3].cy + (i - 3) * GATHER.pitch }));
+      const c = onScreen(edgesOf(pileOf(p, i, 1, 1)));
       return [c.nl, c.nr, c.fl, c.fr];
     });
     const l = Math.min(...pts.map((p) => p.x)), r = Math.max(...pts.map((p) => p.x));
     const t = Math.min(...pts.map((p) => p.y)), b = Math.max(...pts.map((p) => p.y));
-    return { x: (l + r) / 2, y: (t + b) / 2, w: r - l };
+    return { x: (l + r) / 2, y: (t + b) / 2, w: r - l, h: b - t };
   };
   // Its size and its slide under her: at its tucked size (the end of shrink) its middle is under her middle.
   const gatherAt = (q, tuck) => {
@@ -1249,7 +1262,7 @@
     const sx = root.offsetWidth / box.width, sy = root.offsetHeight / box.height, P = pileBox();
     const O = { x: (rect.left + rect.width / 2 - box.left) * sx, y: (rect.top + rect.height / 2 - box.top) * sy };
     const C = { x: (P.x - box.left) * sx, y: (P.y - box.top) * sy };
-    const tuck = clamp(GATHER.tuck * rect.width / (P.w || 1), 0.002, 1);
+    const tuck = clamp(Math.min(GATHER.tuck * rect.width / (P.w || 1), rect.height / (P.h || 1)), 0.002, 1);
     let shownQ = null;
     const flight = { ctx, copy, hideCopy() { flight.draw(1); }, stand(q) { copy.style.visibility = 'visible'; pose(q); }, draw(q) {
       if (stackFlight !== flight || !ctx.isCurrent() || ctx.terminal) return;
