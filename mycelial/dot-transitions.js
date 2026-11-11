@@ -1041,7 +1041,7 @@
   // On a step back the words land with the picture. Each reverse picture's length on
   // the deck clock (ms from the turn's start to its landing), by the slide stepped back
   // from: measured, and the same within a few percent on phone and desktop screens.
-  const REVERSE_PICTURE = [0, 2240, 1965, 3320, 2250, 3860, 3660, 2725, 2700, 1640, 1620];
+  const REVERSE_PICTURE = [0, 2240, 1965, 3320, 2250, 3860, 4720, 2725, 2700, 1640, 1620];
   const UNWIND_FLOOR = 700; // wall ms: the shortest the unwind may be squeezed to when the words had to wait
   // Step-backs set by eye where landing together is not what reads best, by the slide stepped
   // back from, in ms on screen: when the unwind starts, how long it takes, and (free) whether it
