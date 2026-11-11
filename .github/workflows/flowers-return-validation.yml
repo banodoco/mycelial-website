@@ -1,0 +1,65 @@
+name: Validate Flowers return and mobile stack
+on:
+  push:
+    branches: [fix/flowers-return-mobile-stack-20261111]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install browser engines
+        run: |
+          python -m pip install playwright Pillow numpy
+          python -m playwright install --with-deps chromium webkit
+      - name: Probe full-deck reverse handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          PORT=8240 python3 serve.py > evidence/server.log 2>&1 &
+          cat > /tmp/probe.py <<'PY'
+          import asyncio,json
+          from pathlib import Path
+          from playwright.async_api import async_playwright
+          OUT=Path('evidence')
+          READ="""() => {const c=document.querySelector('.fl-canvas'), s=c.closest('.slide'), g=c.getContext('2d');const p=g.getImageData(0,0,c.width,c.height).data;let pixels=0;for(let i=3;i<p.length;i+=4)if(p[i]>15)pixels++;return {selected:window.deckNav.to+1,canvasPixels:pixels,opacity:getComputedStyle(c).opacity,inline:c.getAttribute('style'),hidden:c.hidden,lost:g.isContextLost?.(),size:[c.width,c.height],flowers:window.__flowersProbe?.(),settled:s.hasAttribute('data-settled'),classes:s.className,clock:window.deckNow(),faults:window.__faults}}"""
+          async def run(pw,engine,w,h):
+            b=await getattr(pw,engine).launch();ctx=await b.new_context(viewport={'width':w,'height':h},device_scale_factor=2,is_mobile=w<761,has_touch=w<761)
+            await ctx.add_init_script("window.__faults=[];addEventListener('deck-scene-fault',e=>__faults.push(e.detail));")
+            p=await ctx.new_page();errors=[];p.on('pageerror',lambda e:errors.append(str(e)))
+            async def source(route):
+              res=await route.fetch();s=await res.text();i=s.rfind('})();');s=s[:i]+"window.__flowersProbe=()=>({running,raf,ta,off,coreHeld,handed,retained,prepared:!!preparedReturn,ctx:entryCtx?.generation,current:entryCtx?.isCurrent(),apps:apps.length,dots:dots.length});\n"+s[i:];await route.fulfill(response=res,body=s)
+            await p.route('**/flowers.js',source)
+            label=f'{engine}-{w}-{h}';records=[]
+            async def settled(n):
+              await p.wait_for_function("n=>window.deckNav?.to===n-1&&document.querySelector('.slide.on')?.hasAttribute('data-settled')",arg=n,timeout=30000)
+            async def snap(name):
+              await p.screenshot(path=str(OUT/f'{label}-{name}.png'));r=await p.evaluate(READ);r['name']=name;records.append(r);print(label,name,json.dumps(r),flush=True)
+            try:
+              await p.goto('http://127.0.0.1:8240/mycelial/index.html?debug#8',wait_until='domcontentloaded');await p.evaluate('document.fonts.ready');await settled(8);await p.wait_for_timeout(1200);await snap('direct')
+              for i in range(4):
+                await p.keyboard.press('ArrowRight');await settled(9)
+                if i==1:await p.set_viewport_size({'width':w,'height':h-55});await p.wait_for_timeout(800)
+                if i==2:await p.evaluate("document.fonts.dispatchEvent(new Event('loadingdone'))")
+                await p.keyboard.press('ArrowLeft');await settled(8);await p.wait_for_timeout(700);await snap('return-'+str(i))
+              for delay in [80,350,900]:
+                await p.keyboard.press('ArrowRight');await p.wait_for_timeout(delay);await p.keyboard.press('ArrowLeft');await settled(8);await p.wait_for_timeout(700);await snap('interrupt-'+str(delay))
+            except Exception as e:errors.append(str(e));await p.screenshot(path=str(OUT/f'{label}-FAIL.png'))
+            finally:
+              (OUT/f'{label}.json').write_text(json.dumps({'records':records,'errors':errors},indent=2));await b.close()
+          async def main():
+            async with async_playwright() as p:
+              for engine,w,h in [('webkit',390,670),('webkit',390,844),('chromium',1280,800)]:await run(p,engine,w,h)
+          asyncio.run(main())
+          PY
+          python /tmp/probe.py | tee evidence/probe.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flowers-return-evidence
+          path: evidence/
+          retention-days: 7
