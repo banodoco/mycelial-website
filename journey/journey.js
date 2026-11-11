@@ -25,6 +25,7 @@ import { createDirector, poseAt } from './director.js';
 import { createSeams } from './seams.js';
 import { createLens } from './lens.js';
 import { createUI } from './ui.js';
+import { startCardWarming } from './cards/index.js';
 import { createRail } from './rail.js';
 import {
   CHAPTERS, CHAPTER_IDS, chapterAt, restProgress, startOf, HERO_REST_P,
@@ -1992,6 +1993,10 @@ export function boot(opts = {}) {
     hero: sceneApi,
     heroIntroSkipped: !!opts.heroIntroSkipped,
     heroIntroMs: HERO_INTRO_MS,
+    /** The shared at-rest predicate (see isAtRest). */
+    get atRest() { return isAtRest(); },
+    /** Queue rest-time preparation (see warmHiddenChapters). */
+    registerRestWarmTask: (fn, options) => registerRestWarmTask(fn, options),
     get p() { return journey.progress; },
     get travelP() { return presentedP; },
     get transitionSeconds() { return transition.blend?.dur ?? 0; },
@@ -2114,44 +2119,272 @@ export function boot(opts = {}) {
   }
 
 
-  /* Refresh chapter shader variants and upload their textures in idle
-     slices after activation. Three's compile uses traverse(), so the boot
-     pass already includes hidden materials; this later pass also covers
-     variants/textures whose chapter state has changed since preparation. */
+  /* REST-TIME GPU WARMING (2026-11, hitch pass; ledger P1/P2/P5). Three
+     creates a chapter's GPU resources inside the frame that first draws it:
+     refreshed program variants, each texture's upload and mipmaps, and —
+     the largest — every attribute and index buffer, which only a real draw
+     creates. Measured on Connect->Purpose: ~4.5 MB of bufferData in one
+     frame of the flight, plus Owned's 2.3 MB on its first approach. The old
+     pass (one whole chapter per idle callback from activation + 7.6 s,
+     deadline and flight ignored) also put 26 MB of texture uploads inside
+     the first hop.
+
+     So the work is cut into small units — a chapter's compile, then ONE
+     texture, then one warm draw per subtree of at most ~WARM_DRAW_BYTES —
+     and run in idle slices only while the camera has been at rest for
+     WARM_REST_MS. Nearest chapter first, measured from where the journey is;
+     a jump places p at its destination on the click frame, so after a
+     flight "where it is" is where it went. A unit never starts in a nearly
+     spent idle period; a page that never goes idle still gets one unit per
+     WARM_STARVE_MS of rest, because a hitch at rest is the lesser one. */
+  const WARM_REST_MS = 300;
+  const WARM_POLL_MS = 150;
+  const WARM_STARVE_MS = 1500;
+  const WARM_SLICE_MIN_MS = 6;
+  const WARM_DRAW_BYTES = 1 << 20;
+  const WARM_DRAW_OBJECTS = 160;
+  /* REST WARM TASKS. Extra rest-time preparation registers here and runs in
+     the same slices, under the same rules (never mid-flight, one call per
+     unit, nearest chapter first). `chapter` given: runs only while the
+     journey rests AT that chapter. `fn(deadline)` may return true for "call
+     me again" or a promise to wait on. Wire such a task with one line, e.g.
+       registerRestWarmTask(() => manifestoBranch.prewarm(), { chapter: 'final' });
+     (prewarmManifesto, agent mperf's NEEDS-WIRING request, belongs here). */
+  const restWarmTasks = [];
+  function registerRestWarmTask(fn, { chapter = null } = {}) {
+    if (typeof fn === 'function') restWarmTasks.push({ fn, chapter });
+    return state;
+  }
+  /** THE ONE "AT REST" PREDICATE: no camera blend or rail/camera
+   *  disagreement, the hero growth finished, no Manifesto ascent or descent
+   *  under way. The warm queue below and the resolution governor
+   *  (organism/performance.js canStep, through `state.atRest`) both ask it. */
+  function isAtRest() {
+    return !(transition.blend || transition.cameraStateDisagree
+      || (sceneApi.intro && sceneApi.intro.complete === false)
+      || (manifestoBranch && manifestoBranch.active
+        && (manifestoBranch.returning || manifestoBranch.progress < 1)));
+  }
+  let warmStarted = false;
   function warmHiddenChapters() {
     const r = sceneApi.renderer;
-    if (!r || typeof r.compileAsync !== 'function') return;
-    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 200));
-    const groups = Object.values(chapters).map((c) => c && c.group).filter(Boolean);
-    const next = () => {
-      if (startupFailed) return;
-      const group = groups.shift();
-      if (!group) return;
-      idle(() => {
-        if (startupFailed) return;
-        // The idle pass deliberately includes every hidden material variant.
-        // Also reveal the subtree for texture upload, then restore visibility.
-        const hidden = [];
-        group.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
-        let pending;
-        try {
-          pending = compileForFrame(sceneApi, group);
-          // and upload its textures, which otherwise also wait for first sight
-          if (typeof r.initTexture === 'function') {
-            const seen = new Set();
-            group.traverse((o) => {
-              for (const m of [].concat(o.material || [])) {
-                const slots = [m.map, ...Object.values(m.uniforms || {}).map((u) => u && u.value)];
-                for (const t of slots) if (t && t.isTexture && !seen.has(t)) { seen.add(t); r.initTexture(t); }
-              }
-            });
-          }
-        } catch { pending = null; }
-        finally { for (const o of hidden) o.visible = false; }
-        Promise.resolve(pending).catch(() => {}).then(next);
-      }, { timeout: 4000 });
+    if (warmStarted || !r || typeof r.compileAsync !== 'function') return;
+    warmStarted = true;
+    const props = r.properties && typeof r.properties.get === 'function' ? r.properties : null;
+    const uploaded = new WeakMap();   // fallback when the renderer hides its texture state
+    const order = (id) => CHAPTER_IDS.indexOf(id);
+    const jobs = new Map();           // chapter id -> [unit, ...]
+    for (const id of Object.keys(chapters)) {
+      const group = chapters[id] && chapters[id].group;
+      if (group) jobs.set(id, [{ compile: group }, { textures: group }, ...drawUnits(group)]);
+    }
+    let restSince = null;
+    let lastUnitAt = performance.now();
+    /* A software rasteriser draws a hidden 4 MB chapter in seconds, not
+       milliseconds, so the warm DRAWS are skipped there (compile and texture
+       units still run) — the same carve-out boot's warm-up always made.
+       `?warmdraw=1` keeps them, so the GL harness can measure them. */
+    const softwareGl = /swiftshader|llvmpipe|softpipe|software/i.test(sceneApi.rendererName || '')
+      && !/[?&]warmdraw=1(?:&|$)/.test(location.search);
+    // The card media no longer self-starts against the boot: it is queued
+    // here, one fetch or font load per slice, at rest. (The Owned remix's
+    // first arrangement belongs to its chapter owner, which can register the
+    // same way — tools/test-ui-closure.mjs A2b keeps journey.js out of it.)
+    startCardWarming({ enqueue: (job) => registerRestWarmTask(() => { job(); return false; }) });
+
+    const busy = () => !isAtRest();
+    const lost = () => {
+      const gl = typeof r.getContext === 'function' && r.getContext();
+      return !!(gl && typeof gl.isContextLost === 'function' && gl.isContextLost());
     };
-    setTimeout(next, HERO_INTRO_MS);
+
+    /** Subtrees small enough to upload in one slice. A node over budget
+     *  draws its own geometry alone and hands its children down. */
+    function drawUnits(root) {
+      const units = [];
+      const visit = (node) => {
+        let bytes = 0, objects = 0;
+        const seen = new Set();
+        node.traverse((o) => {
+          objects++;
+          const g = o.geometry;
+          if (!g || seen.has(g)) return;
+          seen.add(g);
+          for (const a of Object.values(g.attributes || {})) {
+            bytes += ((a && (a.array || (a.data && a.data.array))) || { byteLength: 0 }).byteLength;
+          }
+          if (g.index) bytes += g.index.array.byteLength;
+        });
+        if ((bytes <= WARM_DRAW_BYTES && objects <= WARM_DRAW_OBJECTS) || !node.children.length) {
+          if (bytes > 0) units.push({ draw: node, deep: true });
+          return;
+        }
+        if (node !== root && node.geometry) units.push({ draw: node, deep: false });
+        for (const child of node.children) visit(child);
+      };
+      visit(root);
+      return units;
+    }
+
+    /** One draw of `node` (its subtree when `deep`) into a 1x1 target of the
+     *  composer's own format and sample count, everything else hidden and
+     *  culling off — the hero-gpu.js precedent, minus its full-size target:
+     *  no pixel, viewport, scissor or TAA history the frame reads is touched.
+     *  The real Scene is rendered so fog and the program variants match. */
+    let warmTarget = null;
+    function warmDraw(node, deep) {
+      const scene = sceneApi.scene;
+      const source = sceneApi.composer && sceneApi.composer.readBuffer;
+      if (!scene || !source || typeof r.render !== 'function' || typeof r.setRenderTarget !== 'function') return;
+      if (!warmTarget) { warmTarget = source.clone(); warmTarget.setSize(1, 1); }
+      const shown = [], culled = [];
+      const show = (o, v) => { if (o.visible !== v) { shown.push(o); o.visible = v; } };
+      for (let o = node; o && o !== scene; o = o.parent) {
+        show(o, true);
+        if (o.parent) for (const sib of o.parent.children) if (sib !== o) show(sib, false);
+      }
+      if (deep) {
+        node.traverse((o) => {
+          show(o, true);
+          if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; }
+        });
+      } else {
+        if (node.frustumCulled) { culled.push(node); node.frustumCulled = false; }
+        for (const child of node.children) show(child, false);
+      }
+      const previous = r.getRenderTarget();
+      try {
+        r.setRenderTarget(warmTarget);
+        r.render(scene, sceneApi.camera);
+      } finally {
+        r.setRenderTarget(previous);
+        for (const o of culled) o.frustumCulled = true;
+        for (let i = shown.length - 1; i >= 0; i--) shown[i].visible = !shown[i].visible;
+      }
+    }
+
+    /** The next texture of `group` the GPU does not yet hold at its current
+     *  version (photo atlases arrive and remix swaps replace them later, so
+     *  this is asked again after every flight). */
+    function staleTexture(group) {
+      let found = null;
+      group.traverse((o) => {
+        if (found) return;
+        for (const m of [].concat(o.material || [])) {
+          const slots = [m.map, ...Object.values(m.uniforms || {}).map((u) => u && u.value)];
+          for (const t of slots) {
+            if (!t || !t.isTexture || t.isRenderTargetTexture || t.isVideoTexture || !(t.version > 0)) continue;
+            if (!t.image || t.image.complete === false) continue;
+            // tried once per version: an upload three declines is not retried
+            if (uploaded.get(t) === t.version) continue;
+            if (!props || props.get(t).__version !== t.version) { found = t; return; }
+          }
+        }
+      });
+      return found;
+    }
+
+    /** Run one unit of chapter `id`. Returns a promise to wait on, or null. */
+    function runUnit(id) {
+      const list = jobs.get(id);
+      const unit = list[0];
+      if (unit.compile) {
+        list.shift();
+        // Every hidden material variant, as at boot: reveal, compile, restore.
+        const hidden = [];
+        unit.compile.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+        try { return compileForFrame(sceneApi, unit.compile); }
+        finally { for (const o of hidden) o.visible = false; }
+      }
+      if (unit.textures) {
+        const t = staleTexture(unit.textures);
+        if (!t) { list.shift(); return null; }
+        r.initTexture(t);
+        uploaded.set(t, t.version);
+        return null;
+      }
+      list.shift();
+      if (!softwareGl) warmDraw(unit.draw, unit.deep);
+      return null;
+    }
+
+    /** The nearest chapter with work left; textures re-checked after rests. */
+    function nextChapter(here) {
+      let best = null, bestD = Infinity;
+      for (const [id, list] of jobs) {
+        if (!list.length) continue;
+        const d = Math.abs(order(id) - here) * 2 + (order(id) < here ? 1 : 0);
+        if (d < bestD) { best = id; bestD = d; }
+      }
+      return best;
+    }
+
+    const idle = typeof window.requestIdleCallback === 'function'
+      ? (fn) => window.requestIdleCallback(fn, { timeout: WARM_STARVE_MS })
+      : (fn) => requestAnimationFrame(() => setTimeout(() => fn({ didTimeout: true, timeRemaining: () => 0 }), 0));
+    const later = (ms) => setTimeout(() => idle(slice), ms);
+
+    function slice(deadline) {
+      if (startupFailed) return;
+      const now = performance.now();
+      if (busy() || lost()) { restSince = null; later(WARM_POLL_MS); return; }
+      if (restSince === null) {
+        restSince = now;
+        // A new rest: anything swapped in since (atlases, remix) is re-checked.
+        for (const [id, list] of jobs) {
+          const group = chapters[id].group;
+          if (!list.some((u) => u.textures)) list.unshift({ textures: group });
+        }
+      }
+      if (now - restSince < WARM_REST_MS) { later(WARM_REST_MS - (now - restSince)); return; }
+      const here = Math.max(0, order(chapterAt(journey.progress).id));
+      const hereId = CHAPTER_IDS[here];
+      let pending = null;
+      let ran = 0;
+      const starved = deadline.didTimeout || now - lastUnitAt >= WARM_STARVE_MS;
+      while (!pending && (deadline.timeRemaining() >= WARM_SLICE_MIN_MS || (starved && ran === 0))) {
+        const task = restWarmTasks.find((t) => t.chapter === null || t.chapter === hereId);
+        const id = nextChapter(here);
+        // a chapter's own resources before an optional extra, nearest first
+        if (id !== null && (!task || order(id) === here)) {
+          try { pending = runUnit(id); } catch (error) {
+            jobs.get(id).length = 0;
+            console.warn('[journey-v6] rest-time GPU warming skipped a chapter', error);
+          }
+        } else if (task) {
+          restWarmTasks.splice(restWarmTasks.indexOf(task), 1);
+          try {
+            const result = task.fn(deadline);
+            // "again": put it back and give the slice a breath, not a spin
+            if (result === true) { restWarmTasks.push(task); pending = new Promise((res) => setTimeout(res, WARM_POLL_MS)); }
+            else if (result && typeof result.then === 'function') pending = result;
+          } catch (error) { console.warn('[journey-v6] rest warm task failed', error); }
+        } else break;
+        ran++;
+        lastUnitAt = performance.now();
+      }
+      const chaptersLeft = [...jobs.values()].some((l) => l.length);
+      if (!chaptersLeft && !restWarmTasks.some((t) => t.chapter === null || t.chapter === hereId)) {
+        // Nothing left to do at this rest. Later rests only re-check
+        // textures (and run tasks waiting for their chapter), so sleep until
+        // the next flight has landed.
+        restSince = null;
+        waitForFlight();
+        return;
+      }
+      if (pending) Promise.resolve(pending).catch(() => {}).then(() => idle(slice));
+      else idle(slice);
+    }
+    // Once drained, wake again only after the next flight has landed.
+    function waitForFlight() {
+      const poll = () => {
+        if (startupFailed) return;
+        if (busy()) later(WARM_POLL_MS);
+        else setTimeout(poll, 500);
+      };
+      setTimeout(poll, 500);
+    }
+    idle(slice);
   }
   state.ready = prepareGpu();
   if (!deferActivation) state.activate();
