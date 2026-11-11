@@ -51,12 +51,27 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
   // carrying its index as --w so the stylesheet staggers the reveal. The
   // heading's accessible name stays the plain title.
   title.setAttribute('aria-label', CONTENT.manifesto.title);
+  // A plain piece of text enters as stacked layers whose OPACITY alone
+  // animates (see "THE WORDS ARRIVE AS LAYERS", mycelial.css); the layers
+  // draw their text from data-w, so they add nothing to copy or to the
+  // accessibility tree. Anything with markup inside, a space that may wrap
+  // away from its word, or a break opportunity keeps the opacity-only entrance.
+  function addInkLayers(el, text) {
+    if (!text.trim() || /^\s|[-\u2010-\u2015/]/.test(text.trimEnd())) return;
+    el.setAttribute('data-w', text.trimEnd());
+    const fx = document.createElement('span');
+    fx.className = 'j-manifesto-fx';
+    fx.setAttribute('aria-hidden', 'true');
+    fx.setAttribute('data-w', text.trimEnd());
+    el.appendChild(fx);
+  }
   for (const [i, ch] of [...CONTENT.manifesto.title].entries()) {
     const glyph = document.createElement('span');
     glyph.className = 'j-manifesto-glyph';
     glyph.setAttribute('aria-hidden', 'true');
     glyph.setAttribute('style', `--w:${i}`);
     glyph.textContent = ch;
+    addInkLayers(glyph, ch);
     title.appendChild(glyph);
   }
   // The approved body is five paragraph beats, with its animated words
@@ -67,6 +82,7 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     || CONTENT.manifesto.body.match(/[^.!?]+[.!?]+/g) || [CONTENT.manifesto.body];
   const lineEls = [];
   const lastWordBeats = [];
+  const lineHasName = [];
   const chapterLinks = [];
   let note = null;
   for (const sentence of sentences) {
@@ -142,6 +158,7 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
         span.append(lead, ink);
       } else {
         span.textContent = `${lead}${word}${trail}`;
+        addInkLayers(span, span.textContent);
       }
       // A single inline decoration flows across words and line breaks. It is
       // outside word opacity, so the thread is never chopped into word pulses.
@@ -196,6 +213,7 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     lines.appendChild(line);
     lineEls.push(line);
     lastWordBeats.push(lastWordBeat);
+    lineHasName.push(words.some((_, i) => isName(i)));
   }
   /* NO CONTROLS ON THE PAGE (2026-10-03/04 — Hannah: "remove pause in
      general", then "remove the return button and just leave a reveal all
@@ -596,6 +614,29 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       if (!available) hint.close();
     }
   }
+  // The entrance layers exist only while a sentence (or the title) is
+  // arriving: ONE timer per sentence, not per word, drops them so the settled
+  // page is plain text again (.is-settled, mycelial.css).
+  const settleTimers = new Map();
+  function settleAfter(el, seconds) {
+    clearTimeout(settleTimers.get(el));
+    el.classList.remove('is-settled');
+    if (reduceMotion.matches) return;
+    settleTimers.set(el, setTimeout(() => { settleTimers.delete(el); el.classList.add('is-settled'); }, seconds * 1000 + 200));
+  }
+  function unsettle(el) {
+    clearTimeout(settleTimers.get(el));
+    settleTimers.delete(el);
+    el.classList.remove('is-settled');
+  }
+  let titleOn = false;
+  function showTitle(on) {
+    if (titleOn === on) return;
+    titleOn = on;
+    root.classList.toggle('title-shown', on);
+    if (on) settleAfter(root, 2.6 + [...CONTENT.manifesto.title].length * 0.07);
+    else unsettle(root);
+  }
   function paintLines(count, admitted = count) {
     paintChapterLinks();
     const next = Math.max(0, Math.min(sentences.length, count));
@@ -609,8 +650,10 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       if (i >= previous && i < shownLines) {
         // A frame may cross the scheduled beat by a few milliseconds. Catch
         // CSS up to that same clock so its final fade ends with the camera.
-        line.style.setProperty('--reveal-lateness', `${Math.max(0, elapsed - readingStarts[i])}s`);
-      }
+        const lateness = Math.max(0, elapsed - readingStarts[i]);
+        line.style.setProperty('--reveal-lateness', `${lateness}s`);
+        settleAfter(line, lastWordBeats[i] * WORD_STAGGER_SECONDS + (lineHasName[i] ? 4.2 : WORD_REVEAL_SECONDS) - lateness);
+      } else if (i >= shownLines) unsettle(line);
       line.hidden = scrollReading && i >= shownLines;
       line.classList.toggle('shown', i < shownLines);
     });
@@ -677,7 +720,7 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     onTravelLock(true);
     if (field) field.setManifesto(0, 0, from, camera.aspect, seatLight);
     // the title is written on the press itself (TITLE_SECONDS)
-    root.classList.toggle('title-shown', reduceMotion.matches || TITLE_SECONDS <= 0);
+    showTitle(reduceMotion.matches || TITLE_SECONDS <= 0);
     shownLines = -1; liftKey = '';
     paintLines(reduceMotion.matches ? sentences.length : 0);
     clearTimeout(closingTimer);
@@ -866,7 +909,7 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
            retire its own ring under them. */
         seatLight = smoother(elapsed / SEAT_IN_SECONDS);
         u = Math.min(1, elapsed / cameraSeconds);
-        root.classList.toggle('title-shown', elapsed >= TITLE_SECONDS);
+        showTitle(elapsed >= TITLE_SECONDS);
         paintLines(readingStarts.filter(s => elapsed >= s).length,
           readingAdmissions.filter(s => elapsed >= s).length);
         updateReadingFollow();
@@ -982,6 +1025,7 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       readingInputs.forEach(type => panel.removeEventListener(type, stopReadingFollow));
       window.removeEventListener('keydown', handleKey);
       root.remove();
+      settleTimers.forEach(clearTimeout);
       if (active) exit();
       if (latestBranch === api) latestBranch = null;
     },
