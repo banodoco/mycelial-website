@@ -58,15 +58,15 @@ test('stack persistent frame fault gets only one recovery per visit',()=>{
 });
 const media=section(stack,'  const mayPlay =','  const recoverFrame =');
 test('stack never starts media while user motion is disabled',()=>{
-  let plays=0;const f=expose(media,{current:()=>true,activeCtx:{},slide:{classList:{contains:()=>true}},running:true,paused:false,motionBlocked:()=>true,build:null,playRequest:null,video:{paused:true,getAttribute:()=>true,play(){plays++}}},'play');
+  let plays=0;const f=expose(media,{window:{},current:()=>true,activeCtx:{},slide:{classList:{contains:()=>true}},running:true,paused:false,motionBlocked:()=>true,build:null,playRequest:null,video:{paused:true,getAttribute:()=>true,play(){plays++}}},'play');
   f.fn();assert.equal(plays,0);
 });
 test('pending play is deduplicated and stale completion cannot pause a new visit',async()=>{
-  let resolve,plays=0,pauses=0;const ctx={};const f=expose(media,{current:()=>true,activeCtx:ctx,slide:{classList:{contains:()=>true}},running:true,paused:false,motionBlocked:()=>false,build:null,playRequest:null,video:{paused:true,getAttribute:()=>true,play(){plays++;return new Promise(r=>resolve=r)},pause(){pauses++}},reportFault(){}},'play');
+  let resolve,plays=0,pauses=0;const ctx={};const f=expose(media,{window:{},current:()=>true,activeCtx:ctx,slide:{classList:{contains:()=>true}},running:true,paused:false,motionBlocked:()=>false,build:null,playRequest:null,video:{paused:true,getAttribute:()=>true,play(){plays++;return new Promise(r=>resolve=r)},pause(){pauses++}},reportFault(){}},'play');
   f.fn();f.fn();assert.equal(plays,1);f.c.playRequest=null;f.c.activeCtx={};resolve();await Promise.resolve();await Promise.resolve();assert.equal(pauses,0);
 });
 test('a current pending playback is paused if the visit no longer permits it',async()=>{
-  let resolve,pauses=0;const f=expose(media,{current:()=>true,activeCtx:{},slide:{classList:{contains:()=>true}},running:true,paused:false,motionBlocked:()=>false,build:null,playRequest:null,video:{paused:true,getAttribute:()=>true,play(){return new Promise(r=>resolve=r)},pause(){pauses++}},reportFault(){}},'play');
+  let resolve,pauses=0;const f=expose(media,{window:{},current:()=>true,activeCtx:{},slide:{classList:{contains:()=>true}},running:true,paused:false,motionBlocked:()=>false,build:null,playRequest:null,video:{paused:true,getAttribute:()=>true,play(){return new Promise(r=>resolve=r)},pause(){pauses++}},reportFault(){}},'play');
   f.fn();f.c.paused=true;resolve();await Promise.resolve();assert.equal(pauses,1);
 });
 const warm=section(html,'        // Preserve pre-load intent','      }).catch((error)');

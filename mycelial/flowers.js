@@ -14,6 +14,23 @@
   const slide = root.closest('.slide');
   const canvas = root.querySelector('.fl-canvas');
   const g = canvas.getContext('2d');
+  // Retain the scene model across 8↔9, not an off-screen full-resolution bitmap.
+  let surfaceOwner = null, surfaceParked = false, surfaceLost = false;
+  const claimSurface = (ctx) => {
+    if (!ctx?.isCurrent?.()) return false;
+    surfaceOwner = ctx; surfaceParked = false;
+    canvas.style.transition = ''; canvas.style.opacity = '1';
+    if (W > 0 && H > 0) {
+      if (canvas.width !== Math.round(W * dpr)) canvas.width = Math.round(W * dpr);
+      if (canvas.height !== Math.round(H * dpr)) canvas.height = Math.round(H * dpr);
+    }
+    return true;
+  };
+  const parkSurface = (ctx) => {
+    if (surfaceOwner !== ctx || !ctx?.isCurrent?.() || slide.classList.contains('on')) return false;
+    surfaceParked = true; canvas.width = canvas.height = 1;
+    return true;
+  };
   const html = document.documentElement;
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const motionOff = () => still || window.deckStill?.();
@@ -274,7 +291,7 @@
   const layout = () => {
     const b = root.getBoundingClientRect();
     if (!b.width || !b.height) return false;
-    W = b.width; H = b.height;
+    W = b.width; H = b.height; surfaceParked = false;
     dpr = Math.min(2, devicePixelRatio || 1);
     if (canvas.width !== Math.round(W * dpr)) canvas.width = Math.round(W * dpr);
     if (canvas.height !== Math.round(H * dpr)) canvas.height = Math.round(H * dpr);
@@ -485,7 +502,7 @@
   };
 
   const draw = () => {
-    if (!g) return;
+    if (!g || surfaceParked || surfaceLost) return;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
     if (!core) return;
@@ -625,14 +642,33 @@
     const clock = window.deckNow?.() ?? now;
     const dt = Math.max(0, (clock - (last || clock)) / 1000);
     last = clock;
-    if (back7) { if (!step7(dt)) return; } else {
-      const stretch = ctx.from === 6 && ctx.to === 7 && !ctx.direct && !ctx.rest && from && ta - off < END ? PAYS_HANDOFF_STRETCH : 1;
-      advance(dt / stretch, ctx);
-    }
-    draw(); labels();
+    try {
+      if (back7) { if (!step7(dt)) return; } else {
+        const stretch = ctx.from === 6 && ctx.to === 7 && !ctx.direct && !ctx.rest && from && ta - off < END ? PAYS_HANDOFF_STRETCH : 1;
+        advance(dt / stretch, ctx);
+      }
+      draw(); labels();
+    } catch (error) { recoverFrame(ctx, error); return; }
+    if (running && entryCtx === ctx && ctx.isCurrent()) raf = requestAnimationFrame((t) => tick(ctx, t));
+  };
+  const start = (ctx = entryCtx) => {
+    if (raf || !ctx?.isCurrent?.() || surfaceLost || surfaceParked || still || document.hidden || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return;
+    entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now();
     raf = requestAnimationFrame((t) => tick(ctx, t));
   };
-  const start = (ctx = entryCtx) => { if (running || still || document.getElementById('overview')?.classList.contains('on') || window.deckStill?.()) return; entryCtx = ctx; running = true; last = window.deckNow?.() ?? performance.now(); raf = requestAnimationFrame((t) => tick(ctx, t)); };
+  let frameRecoveredFor = null;
+  const recoverFrame = (ctx, error) => {
+    if (ctx !== entryCtx || !ctx?.isCurrent?.()) return;
+    stop(); window.deckReportSceneFault?.('flowers', 'frame', error, ctx);
+    if (frameRecoveredFor === ctx || surfaceLost) return;
+    frameRecoveredFor = ctx;
+    try {
+      // Reset an interrupted canvas state/clip, not the scene clock or layout.
+      canvas.width = canvas.width;
+      for (const bucket of [...lvDim, ...lvLit]) bucket.length = 0;
+      draw(); labels(); start(ctx);
+    } catch (failure) { window.deckReportSceneFault?.('flowers', 'recovery', failure, ctx); }
+  };
   const stop = () => { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; };
   const reset = () => {
     retained = false; retainedSnapshot = null;
@@ -799,6 +835,7 @@
     preparedReturn = null;
     if (!prepared) reset();
     entryCtx = ctx;
+    claimSurface(ctx);
     let resolve;
     const done = new Promise((r) => { resolve = r; });
     entryDone = { ctx, resolve };
@@ -855,13 +892,27 @@
   };
   window.addEventListener('deck-overview', syncMotion);
   window.addEventListener('deck-motion', syncMotion);
-  window.deckOnResize(() => { retained = false; retainedSnapshot = null; });
-  document.fonts?.addEventListener?.('loadingdone', () => { retained = false; retainedSnapshot = null; });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { paused ||= running; stop(); } else syncMotion();
+  });
+  canvas.addEventListener('contextlost', () => { surfaceLost = true; stop(); });
+  canvas.addEventListener('contextrestored', () => {
+    surfaceLost = false;
+    const ctx = entryCtx;
+    if (!ctx?.isCurrent?.() || !slide.classList.contains('on')) return;
+    claimSurface(ctx);
+    try { draw(); labels(); start(ctx); } catch (error) { recoverFrame(ctx, error); }
+  });
+  // A layout change invalidates the projected snapshot, not the retained
+  // scene/time. Exit cleanup must not reset that model before prepareReturn.
+  const invalidateReturnGeometry = () => { retainedSnapshot = null; };
+  window.deckOnResize(invalidateReturnGeometry);
+  document.fonts?.addEventListener?.('loadingdone', invalidateReturnGeometry);
   const restore = (ctx) => {
     if (back7) end7();
     if (ctx.to !== 7) return true;
     coreOwner = null; coreHeld = false; handed = false;
-    canvas.style.transition = ''; canvas.style.opacity = '';
+    claimSurface(ctx);
     pool.forEach((p) => { p.el.style.transition = ''; });
     coreLabel.style.transition = count.style.transition = '';
     coreLabel.style.opacity = count.style.opacity = '';
@@ -905,19 +956,30 @@
   const canSnapshot = () => !!core && ta - off >= END;
   window.AstridFlowers = {
     prepareReturn(ctx) {
+      if (!ctx?.isCurrent?.()) return null;
       end7();
+      stop();
       const snap = retained && retainedSnapshot;
       if (snap) {
         timers.forEach(window.deckCancelLater); timers = [];
         retained = false; retainedSnapshot = null; handed = false; coreOwner = ctx; coreHeld = true; entryCtx = ctx;
         dots.forEach((d) => { delete d.handed; });
-        canvas.style.transition = ''; canvas.style.opacity = '';
+        claimSurface(ctx);
         pool.forEach((p) => { p.el.style.transition = ''; });
         coreLabel.style.transition = count.style.transition = '';
         coreLabel.style.opacity = count.style.opacity = '';
         html.classList.add('fl-quiet');
         draw(); labels();
-      } else { reset(); begin(ctx); }
+      } else {
+        const resumeAt = Math.max(END + 0.2, ta - off);
+        reset(); entryCtx = ctx;
+        if (!layout()) return null;
+        ta = resumeAt; off = 0;
+        claimSurface(ctx);
+        root.classList.add('is-labelled'); html.classList.add('fl-quiet');
+        coreOwner = ctx; coreHeld = true;
+        draw(); labels();
+      }
       preparedReturn = ctx;
       ctx.defer(() => { if (preparedReturn === ctx) preparedReturn = null; });
       return snap || this.snapshot(ctx);
@@ -943,20 +1005,30 @@
     holdCore(on, owner) {
       if (on) { if (!owner?.isTransitionCurrent?.()) return; coreOwner = owner; coreHeld = true; }
       else { if (!owner || coreOwner !== owner) return; coreOwner = null; coreHeld = false; }
-      if (!on && core && slide.classList.contains('on')) { draw(); start(entryCtx); }
+      if (!on && core && slide.classList.contains('on') && owner?.isCurrent?.()) {
+        claimSurface(owner); entryCtx = owner;
+        try { draw(); labels(); start(owner); } catch (error) { recoverFrame(owner, error); }
+      }
     },
     hide(ctx) { // fade out as the next slide's picture takes over; its people are drawn there from now on
       if (!ctx?.isTransitionCurrent?.()) return;
-      coreOwner = ctx; handed = true; coreHeld = true; draw(); // the core goes at once: slide 9 draws it from this frame, in the same place
+      surfaceOwner = ctx; coreOwner = ctx; handed = true; coreHeld = true; draw(); // the core goes at once: slide 9 draws it from this frame, in the same place
       canvas.style.transition = 'opacity .5s ease'; canvas.style.opacity = '0';
       pool.forEach((p) => { p.el.style.transition = 'opacity .4s ease'; p.el.style.opacity = '0'; p.o = 0; });
       coreLabel.style.opacity = '0'; count.style.opacity = '0';
       timers.push(window.deckLater(() => {
         if (ctx?.isCurrent?.() && !slide.classList.contains('on')) {
           ctx.present(slide, '', 'dt-rewind');
+          parkSurface(ctx);
         }
       }, 700, ctx));
     },
   };
 
+  if (window.__deckDebug) Object.defineProperty(window.__deckDebug, 'flowers', { get: () => ({
+    generation: entryCtx?.generation ?? null, current: !!entryCtx?.isCurrent?.(), running, scheduled: !!raf,
+    time: ta, offset: off, coreHeld, handed, retained, surfaceParked, surfaceLost,
+    surfaceGeneration: surfaceOwner?.generation ?? null, canvasPixels: canvas.width * canvas.height,
+    canvasOpacity: canvas.style.opacity, apps: apps.length, people: dots.length,
+  }) });
 })();

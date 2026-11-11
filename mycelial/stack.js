@@ -87,7 +87,7 @@
   const FRAMES = [['start', 0], ['mountains', 6.5], ['descent', 10], ['town', 13]];
   const media = '../assets/astrid/lantern-valley';
   const CONTENT = {
-    preview: `<div class="st-screen"><div class="st-pic"><img class="st-poster" data-src="${media}/final-poster.webp" alt=""><video data-src="${media}/final.mp4" data-type='video/mp4; codecs="avc1.64001e"' data-fallback="${media}/final-vp9.webm" data-poster="${media}/final-poster.webp" muted loop playsinline preload="none"></video><span></span></div></div>
+    preview: `<div class="st-screen"><div class="st-pic"><img class="st-poster" data-src="${media}/final-poster.webp" alt=""><video data-stack-preview data-src="${media}/final.mp4" data-type='video/mp4; codecs="avc1.64001e"' data-fallback="${media}/final-vp9.webm" data-poster="${media}/final-poster.webp" muted loop playsinline preload="none"></video><span></span></div></div>
       <div class="st-transport"><b class="st-btn">${I.back}</b><b class="st-btn is-play">${I.pause}</b><span class="st-time">0:00 / 0:14</span><span class="st-pill">1280×720 · 30 fps</span></div>`,
     timeline: `<div class="st-th"></div><div class="st-ruler">${[0, 2, 4, 6, 8, 10, 12, 14].map((t) => `<span style="left:${(t / SPAN) * 100}%">0:${String(t).padStart(2, '0')}</span>`).join('')}</div>
       <div class="st-th">${I.film}<span>V3</span><em>Video</em></div><div class="st-lane"><span class="st-clip" style="${span(0, SPAN)}" data-bg="${media}/final-poster.webp"><img data-src="${media}/final-poster.webp" alt=""><b>MiniMax H3</b><i>14 s</i></span><i class="st-head"></i></div>
@@ -863,7 +863,7 @@
   };
   new ResizeObserver((es) => { for (const e of es) { laneW = e.contentRect.width; placeHead(); } }).observe(lane);
   const stepHead = () => {
-    const tt = video.currentTime || 0;
+    const tt = window.deckStackPosterOnly?.() ? 0 : video.currentTime || 0;
     headF = +((tt / SPAN) * 100).toFixed(3);
     placeHead();
     const sec = Math.floor(tt);
@@ -889,7 +889,7 @@
   };
   const wake = () => { const ctx = activeCtx; if (current(ctx) && running && !paused && !raf) raf = requestAnimationFrame(() => tick(ctx)); };
   let playRequest = null, frameRecoveredFor = null;
-  const mayPlay = () => current(activeCtx) && slide.classList.contains('on') && running && !paused && !motionBlocked() && !build?.back;
+  const mayPlay = () => !window.deckStackPosterOnly?.() && current(activeCtx) && slide.classList.contains('on') && running && !paused && !motionBlocked() && !build?.back;
   const play = () => {
     if (!mayPlay() || playRequest || !video.paused || !video.getAttribute('src')) return;
     const request = { ctx: activeCtx }; playRequest = request;
@@ -947,6 +947,7 @@
     if (stackFlight?.ctx !== ctx) stackFlight?.release();
     if (!stackFlight) resetStackFlight();
     entryFinished = false;
+    syncPreviewPolicy();
     if (document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingCtx = ctx; return promise; }
     launch(ctx);
     return promise;
@@ -972,7 +973,7 @@
     // The product moves at once; the slide must not fade in under it.
     slide.classList.add('st-arrive');
     window.deckLater(() => { if (current(ctx)) slide.classList.remove('st-arrive'); }, 900, ctx);
-    try { video.currentTime = 2; } catch { /* not loaded */ }
+    if (!window.deckStackPosterOnly?.()) try { video.currentTime = 2; } catch { /* not loaded */ }
     begin(true, true); play(); wake();
   };
   const stop = (ctx = activeCtx, preserveScene = false) => {
@@ -1021,7 +1022,7 @@
     if (!b.src) { // slide 5 has drawn its settled editor by now: copy its panels as they stand
       b.src = snapFrom5(b.ctx);
       if (!b.src) { endFold(); return false; }
-      if (cy.on && video.readyState >= 2) { // folding back, the plane's own frame rides back (its film holds as it folds)
+      if (cy.on && !window.deckStackPosterOnly?.() && video.readyState >= 2) { // folding back, the plane's own frame rides back (its film holds as it folds)
         carryG?.clearRect(0, 0, carryCv.width, carryCv.height);
         carryG?.drawImage(video, 0, 0, carryCv.width, carryCv.height);
         cy.back = true; carry.classList.add('is-back');
@@ -1253,6 +1254,7 @@
     if (slide.classList.contains('on') && activeCtx === ctx) {
       const box = root.getBoundingClientRect();
       if (!box.width || !box.height) return false;
+      syncPreviewPolicy();
       layout(); softenNet(ctx, true); settleAll(); stepHead();
       if (openI >= 0 && geo && !view.mobile) cards[openI].style.top = `${geo.place[openI].top.toFixed(1)}px`;
       arrangeFlags(0);
@@ -1287,8 +1289,23 @@
   // Loading resets the film to paused, so one that arrives after the slide has started (a cold load) plays then.
   const preview = video.closest('.st-pic');
   const mediaReady = () => {
+    if (window.deckStackPosterOnly?.()) { syncPreviewPolicy(); return; }
     if (video.readyState >= 2 && !video.error) preview.classList.add('is-video-ready');
     if (motionOff()) stepHead(); else play();
+  };
+  const syncPreviewPolicy = () => {
+    const posterOnly = !!window.deckStackPosterOnly?.();
+    preview.classList.toggle('is-poster-only', posterOnly);
+    if (posterOnly) {
+      playRequest = null; video.pause(); preview.classList.remove('is-video-ready');
+      // Release an existing desktop decoder on resize; the still remains.
+      if (video.hasAttribute('src')) {
+        video.removeAttribute('src'); video.dataset.src = `${media}/final.mp4`;
+        video.dataset.warmed = ''; video.preload = 'none'; video.load();
+      }
+    } else if (current(activeCtx) && slide.classList.contains('on')) {
+      window.warmDeckMedia?.(slide); play();
+    }
   };
   video.addEventListener('loadeddata', mediaReady);
   video.addEventListener('canplay', mediaReady);
@@ -1296,6 +1313,7 @@
   video.addEventListener('error', () => { playRequest = null; preview.classList.remove('is-video-ready'); });
   if (window.__deckDebug) Object.defineProperty(window.__deckDebug, 'stack', { get: () => ({
     generation: activeCtx?.generation ?? null, running, paused, scheduled: !!raf,
+    posterOnly: !!window.deckStackPosterOnly?.(), previewPlaying: !video.paused,
     building: !!build, reverse: !!build?.back, entryFinished, open: openI, drawFaults,
     metrics: { ...metrics }, scale: view.k, threadBox: { ...threadBox },
     canvasPixels: cv.width * cv.height + baseCv.width * baseCv.height,
@@ -1304,6 +1322,7 @@
       rect: [f.getBoundingClientRect().x, f.getBoundingClientRect().y] })),
   }) });
 
+  syncPreviewPolicy();
   layout();
   hideAll();
 })();

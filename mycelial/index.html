@@ -867,6 +867,7 @@
   .st-pic .st-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .st-pic video { position: relative; opacity: 0; }
   .st-pic.is-video-ready video { opacity: 1; }
+  .st-pic.is-poster-only video { display: none; }
   .st-pic span, .st-carry span { position: absolute; left: 0; right: 0; bottom: 13%; text-align: center; font: italic 500 30px/1 "Cormorant Garamond", Georgia, serif; color: #fffaf0; text-shadow: 0 1px 3px rgb(70 45 20 / .6), 0 0 18px rgb(60 35 15 / .5); }
   .st-transport { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--as-muted); }
   .st-btn { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--as-ink); }
@@ -2739,17 +2740,22 @@
     });
   };
   window.deckLoadPictures = loadPictures;
+  // The miniature stack preview is a still on small/touch screens. Keep the
+  // same policy at loading and playback boundaries (including late fetches).
+  const stackPosterOnly = matchMedia('(max-width: 760px), (hover: none) and (pointer: coarse)');
+  window.deckStackPosterOnly = () => stackPosterOnly.matches;
   // One fetch and one object URL serve every video element that reuses a file.
   const warmedMedia = new Map();
   const warmMedia = (slide) => {
     if (!slide) return Promise.resolve();
     // Keep the editor's media warm whenever the stack is requested, including a direct visit.
-    const dependencies = slide.matches('.st-host') ? [warmMedia(document.querySelector('.as-host'))] : [];
+    const dependencies = slide.matches('.st-host') && !stackPosterOnly.matches ? [warmMedia(document.querySelector('.as-host'))] : [];
     slide.dataset.pictures = 'on';
     loadPictures(slide);
     slide.dispatchEvent(new Event('deck-pictures')); // pictures a script keeps outside the slide (the flywheel's cards)
     const pending = dependencies;
     slide.querySelectorAll('video[data-src], video[src]').forEach((video) => {
+      if (video.hasAttribute('data-stack-preview') && stackPosterOnly.matches) return;
       const source = video.dataset.fallback && video.dataset.type && !video.canPlayType(video.dataset.type)
         ? video.dataset.fallback : video.dataset.src || video.getAttribute('src');
       if (!source) return;
@@ -2770,6 +2776,7 @@
       }
       pending.push(warmedMedia.get(url).then((objectUrl) => {
         if (!video.isConnected) return;
+        if (video.hasAttribute('data-stack-preview') && stackPosterOnly.matches) { video.dataset.warmed = ''; return; }
         // Preserve pre-load intent; load() resets paused and pending play promises.
         // A readiness handler must not resume a departed visit or override motion-off.
         const owner = window.deckNav, resume = !video.paused;
@@ -2794,7 +2801,10 @@
     // The small onboarding media is likely to be needed before a user reaches slide 5.
     if (!demoWarmScheduled) {
       demoWarmScheduled = true;
-      const warmDemo = () => warmMedia(document.querySelector('.as-host'));
+      const warmDemo = () => {
+        if (stackPosterOnly.matches && slides[i]?.matches('.st-host')) return;
+        warmMedia(document.querySelector('.as-host'));
+      };
       if (window.requestIdleCallback) requestIdleCallback(warmDemo, { timeout: 1000 });
       else setTimeout(warmDemo, 100);
     }
