@@ -1003,3 +1003,123 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
   .j-manifesto-line.shown .j-manifesto-word.is-name { color: rgba(246, 226, 184, 0.96); }
   .j-manifesto.title-shown .j-manifesto-glyph { color: #f2e4c3; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.62); }
 }
+
+/* THE WORDS ARRIVE AS LAYERS (2026-11 — the blur-in and gold flush of
+   journey/site.css "WRITTEN IN LIGHT", kept, but off the paint path).
+   Animating filter/colour/text-shadow repainted every inking word every
+   frame. A word instead settles through stacked copies of itself, each
+   painted ONCE and then only faded (opacity is compositor-only):
+     .j-manifesto-base   the real content: the sharp, resting glyphs,
+     fx::before          the blur-in: a pre-blurred gold copy (a blurred
+                         text-shadow of transparent text, so the blur is
+                         baked into the raster, not a filter),
+     fx::after           the gold flush: the glow-lit, nearly sharp copy.
+   The layers carry the original's softness for most of a word's reveal
+   (crisp about a quarter of the way in) and each has its own short life, so
+   a word that has finished drops them while its neighbours still arrive.
+   branch.js marks a word .is-arriving just before its beat and .is-done at
+   its end, and .is-settled on the sentence (a backstop), after which
+   everything is plain text. The layers' text is pseudo-content with empty
+   alt text: copy and screen readers get each word once. */
+.j-manifesto-fx { display: none; }
+/* each layer's keyframes span its OWN short duration (--fx-d times k) */
+@keyframes j-manifesto-fx-sharp { 0%, 25% { opacity: 0; } 47% { opacity: .5; } 100% { opacity: 1; } }
+@keyframes j-manifesto-fx-blur  { 0% { opacity: 0; } 10% { opacity: 1; } 50% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes j-manifesto-fx-gold  { 0%, 32% { opacity: 0; } 60% { opacity: .75; } 85% { opacity: .25; } 100% { opacity: 0; } }
+@keyframes j-manifesto-fx-both  { 0% { opacity: 0; } 6% { opacity: 1; } 32% { opacity: 1; } 55% { opacity: .5; } 80% { opacity: .25; } 100% { opacity: 0; } }
+@keyframes j-manifesto-fx-sharp-name { 0%, 25% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes j-manifesto-fx-blur-name  { 0% { opacity: 0; } 25% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes j-manifesto-fx-gold-name  { 0%, 10% { opacity: 0; } 16% { opacity: .9; } 64% { opacity: .45; } 100% { opacity: 0; } }
+@keyframes j-manifesto-condense-move {
+  0% { transform: translateX(calc((var(--w) - 4.5) * 0.12em)) scale(1.06); }
+  100% { transform: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* a layered word is always present; its layers do the arriving */
+  .j-manifesto-line.shown .j-manifesto-word[data-w] {
+    animation: none;
+    opacity: 1;
+    --fx-d: var(--word-reveal-duration, 3s);
+    --fx-sharp: j-manifesto-fx-sharp; --fx-blur: j-manifesto-fx-blur; --fx-gold: j-manifesto-fx-gold;
+    --k-sharp: .32; --k-blur: .28; --k-gold: .5;
+    --ink-gold: rgb(255, 226, 168);
+    --ink-halo: rgb(255, 214, 140);
+    --ink-glow: 0 0 16px rgba(255, 186, 84, 0.5);
+    --ink-blur: 5px;
+    --fx-delay: calc(var(--w) * var(--stagger) - var(--reveal-lateness, 0s) - var(--act, 0s));
+  }
+  .j-manifesto-line.shown .j-manifesto-word.is-name[data-w] {
+    --fx-d: 4.2s;
+    --fx-sharp: j-manifesto-fx-sharp-name; --fx-blur: j-manifesto-fx-blur-name; --fx-gold: j-manifesto-fx-gold-name;
+    --k-sharp: .2; --k-blur: .14; --k-gold: .9;
+    --ink-gold: rgb(251, 217, 143);
+    --ink-glow: 0 0 18px rgba(255, 186, 84, 0.7);
+  }
+  .j-manifesto.title-shown .j-manifesto-glyph[data-w] {
+    opacity: 1;
+    animation-name: j-manifesto-condense-move;
+    --fx-d: 2.6s;
+    --fx-sharp: j-manifesto-fx-sharp; --fx-blur: j-manifesto-fx-blur; --fx-gold: j-manifesto-fx-gold;
+    --k-sharp: .32; --k-blur: .28; --k-gold: .5;
+    --ink-gold: #ffe6b0;
+    --ink-halo: #ffd98a;
+    --ink-glow: 0 0 28px rgba(255, 186, 84, 0.7);
+    --ink-blur: 12px;
+    --fx-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+    --fx-delay: calc(var(--w) * var(--glyph-stagger));
+  }
+
+  /* before its beat a word is invisible, with no layer at all */
+  .j-manifesto-line.shown:not(.is-settled) .j-manifesto-word[data-w]:not(.is-arriving, .is-done) > .j-manifesto-base { opacity: 0; }
+  /* while arriving: sharp layer + the two copies */
+  .j-manifesto-line.shown:not(.is-settled) .j-manifesto-word[data-w].is-arriving:not(.is-done) > .j-manifesto-base,
+  .j-manifesto.title-shown:not(.is-settled) .j-manifesto-glyph[data-w] > .j-manifesto-base {
+    animation: var(--fx-sharp) calc(var(--fx-d) * var(--k-sharp)) linear var(--fx-delay) backwards;
+  }
+  .j-manifesto-line.shown:not(.is-settled) .j-manifesto-word[data-w].is-arriving:not(.is-done) > .j-manifesto-fx,
+  .j-manifesto.title-shown:not(.is-settled) .j-manifesto-glyph[data-w] > .j-manifesto-fx {
+    display: inline;         /* stays inline-level, so its static position is on the text's own line */
+    position: absolute;      /* no offsets: it sits at its static position, where the first letter is */
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    user-select: none;
+  }
+  .j-manifesto-fx::before,
+  .j-manifesto-fx::after {
+    content: attr(data-w);
+    content: attr(data-w) / "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    white-space: pre;
+    line-height: inherit;    /* the line's own, so the glyphs land on the real baseline */
+    pointer-events: none;
+    opacity: 0;
+    color: transparent;
+    animation-timing-function: linear;
+    animation-delay: var(--fx-delay);
+    animation-fill-mode: none;
+  }
+  .j-manifesto-fx::before {
+    text-shadow: 0 0 var(--ink-blur) var(--ink-halo);
+    animation-name: var(--fx-blur);
+    animation-duration: calc(var(--fx-d) * var(--k-blur));
+  }
+  .j-manifesto-fx::after {
+    text-shadow: 0 0 1.5px var(--ink-gold), var(--ink-glow);
+    animation-name: var(--fx-gold);
+    animation-duration: calc(var(--fx-d) * var(--k-gold));
+  }
+}
+/* On phones the blur-in and the gold flush share ONE layer (a mid blur with
+   the glow): a word costs two composited layers, not three. The same
+   breakpoint as the manifesto's other phone rules. */
+@media (prefers-reduced-motion: no-preference) and (max-width: 720px) {
+  .j-manifesto-fx::after { display: none; }
+  .j-manifesto-fx::before {
+    text-shadow: 0 0 5px var(--ink-halo), var(--ink-glow);
+    animation-name: j-manifesto-fx-both;
+    animation-duration: calc(var(--fx-d) * var(--k-gold));
+  }
+}
