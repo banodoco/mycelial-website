@@ -1493,6 +1493,10 @@ export function createRail({ onNav, ready = true } = {}) {
     scrim.hidden = false;
     menu.hidden = false;
     menu.inert = false;
+    // Every open starts at the top. Reset here, while the panel is still at
+    // opacity 0, so the jump cannot be seen (finishMenuClose resets it too,
+    // but a reopen mid-fade skips that).
+    menu.scrollTop = 0;
     menuBtn.setAttribute('aria-expanded', 'true');
     // One synchronous style flush so the opacity/transform transition has a
     // rendered start state to run FROM — a panel arriving out of `hidden`
@@ -1550,6 +1554,7 @@ export function createRail({ onNav, ready = true } = {}) {
     if (menuIsOpen) return;                 // reopened mid-fade
     menu.hidden = true;
     scrim.hidden = true;
+    menu.scrollTop = 0;
   }
 
   /* The menu opens on POINTERDOWN, not on click — the way an OS menu bar
