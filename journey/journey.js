@@ -2172,7 +2172,10 @@ export function boot(opts = {}) {
     warmStarted = true;
     const props = r.properties && typeof r.properties.get === 'function' ? r.properties : null;
     const uploaded = new WeakMap();   // fallback when the renderer hides its texture state
-    const order = (id) => CHAPTER_IDS.indexOf(id);
+    // Rail order, not route order: Owned is a branch under Purpose, so from
+    // Connect the next stop a visitor can take is Purpose ('final').
+    const RAIL_ORDER = ['mission', 'inspire', 'equip', 'connect', 'final', 'owned'];
+    const order = (id) => { const i = RAIL_ORDER.indexOf(id); return i < 0 ? CHAPTER_IDS.indexOf(id) : i; };
     const jobs = new Map();           // chapter id -> [unit, ...]
     for (const id of Object.keys(chapters)) {
       const group = chapters[id] && chapters[id].group;
@@ -2337,8 +2340,8 @@ export function boot(opts = {}) {
         }
       }
       if (now - restSince < WARM_REST_MS) { later(WARM_REST_MS - (now - restSince)); return; }
-      const here = Math.max(0, order(chapterAt(journey.progress).id));
-      const hereId = CHAPTER_IDS[here];
+      const hereId = chapterAt(journey.progress).id;
+      const here = Math.max(0, order(hereId));
       let pending = null;
       let ran = 0;
       const starved = deadline.didTimeout || now - lastUnitAt >= WARM_STARVE_MS;
