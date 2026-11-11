@@ -2154,6 +2154,13 @@ export function boot(opts = {}) {
     if (typeof fn === 'function') restWarmTasks.push({ fn, chapter });
     return state;
   }
+  /* The Manifesto press, prepared while Purpose rests: flight plan, colony
+     GPU buffers, desktop text fit. branch.prewarm answers true when DONE;
+     the queue reads true as "call me again" — hence the negation. */
+  registerRestWarmTask(
+    () => !!manifestoBranch && !manifestoBranch.prewarm({ budgetMs: 8 }),
+    { chapter: 'final' },
+  );
   /** THE ONE "AT REST" PREDICATE: no camera blend or rail/camera
    *  disagreement, the hero growth finished, no Manifesto ascent or descent
    *  under way. The warm queue below and the resolution governor
