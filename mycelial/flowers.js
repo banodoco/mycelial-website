@@ -446,6 +446,8 @@
   // ---- Time ----------------------------------------------------------------------------------------------------
   const END = 2.2;
   const PAYS_HANDOFF_STRETCH = (END + 0.9 + 0.25) / (END + 0.9);
+  const CROSSED = 1.15; // the core has landed (1.1 s) and the last machine has all but folded into it
+  let crossing = null; // the text hold while slide 7's picture crosses into this one
   let ta = 0, off = 0, running = false, raf = 0, last = 0, timers = [], from = null, handed = false, counted = '';
   let retained = false, retainedSnapshot = null;
   let coreOwner = null;
@@ -646,6 +648,7 @@
       if (back7) { if (!step7(dt)) return; } else {
         const stretch = ctx.from === 6 && ctx.to === 7 && !ctx.direct && !ctx.rest && from && ta - off < END ? PAYS_HANDOFF_STRETCH : 1;
         advance(dt / stretch, ctx);
+        if (crossing && ta >= CROSSED) { const release = crossing; crossing = null; release(); }
       }
       draw(); labels();
     } catch (error) { recoverFrame(ctx, error); return; }
@@ -723,6 +726,9 @@
     });
     window.AstridPays.hide(ctx);
     ta = 0;
+    // The words wait for the core and its machines to finish crossing from slide 7's place (CROSSED on this clock).
+    crossing = ctx.holdText(() => { crossing = null; }, CROSSED * PAYS_HANDOFF_STRETCH * 1000 + 300);
+    ctx.defer(() => { crossing?.(); crossing = null; });
     html.classList.add('fl-quiet');
     timers.push(window.deckLater(() => { if (ctx?.isCurrent?.()) root.classList.add('is-labelled'); }, 1400 * PAYS_HANDOFF_STRETCH, ctx));
     draw(); // the core, in this frame, where slide 7 has just let go of it

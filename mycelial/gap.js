@@ -135,12 +135,15 @@
   const idleSoon = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 100));
   const MORPH = 0.5; // seconds from landing to the settled logo
 
-  const reset = () => {
+  // keepRuns: tools running off to slide 4 finish their runs.
+  const reset = (keepRuns = false) => {
     retireForward(Boolean(backs.length || backRaf || departRaf));
     timers.forEach(window.deckCancelLater);
     timers = [];
     root.classList.remove('is-drawn', 'is-labelled');
     tools.forEach((el) => { el.classList.remove('is-in', 'is-open'); el.style.removeProperty('--m'); });
+    if (!keepRuns) settle();
+    else if (!pack) root.classList.remove('is-away');
     empty.classList.remove('is-open');
     focus(null);
   };
@@ -295,6 +298,174 @@
     else { g?.clearRect(0, 0, innerWidth, innerHeight); flying = false; if (!backs.length) show(false); entryFinish?.(ctx, 'completed'); }
   };
 
+  // ---- Leaving for slide 4, and coming back ---------------------------------
+  // On to slide 4 the tools scatter like startled mice, rippling out from the empty ring: each freezes for a beat,
+  // then dashes off towards the bottom left, away from the ring, gathering speed and veering once or twice as it
+  // goes, and towards the end of its run shrinks and is gone. The chart's axes and labels fade with the slide, and
+  // the ring is left to lift off alone and become the core's bright eye (core.js); the tools are still running as it
+  // lands, and the last are gone as the core's lens begins to draw. They never cross slide 4's words once those may
+  // be showing: a tool whose way lies across them veers further left, or fades out before it reaches them. Back from
+  // slide 4 it is the same runs played backwards, unhurried: the tools creep in from the bottom left while slide 4's
+  // picture comes apart, weaving gently, slowing as they come, and settle in their places as the ring lands home.
+  // While they run they are copies on a layer of their own over both slides (the chart's own discs wait hidden), so
+  // the run outlasts slide 3's fade and slide 4's arrival; the layer goes when the last run ends or the visit does.
+  const RUN = 1.7; // seconds from the first tool freezing to the last gone: the ring's 1.1 s flight, then the 0.6 s
+  // until core.js's lens begins to draw (its T.core)
+  const WORDS = 0.85; // seconds into the run after which slide 4's words may be showing
+  const HOME_LEAD = 0.15; // deck seconds into a step back before the first tool sets off home
+  const FREEZE = 0.08, RAMP = 0.4; // of each run: the stillness, then the speeding up to a steady dash
+  let runs = [], pack = null, packBack = false, awaiting = null, expected = null;
+  const settle = () => {
+    runs.forEach((a) => a.cancel());
+    runs = [];
+    pack?.remove();
+    pack = null;
+    awaiting = null;
+    root.classList.remove('is-away');
+  };
+  // Let a run that is cut short go quickly rather than vanish (the chart's own discs stay hidden until it is put away).
+  const scatter = () => {
+    if (!pack) return;
+    const gone = pack;
+    runs = [];
+    pack = null;
+    awaiting = null;
+    gone.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, fill: 'forwards' }).finished.then(() => gone.remove(), () => gone.remove());
+  };
+  const dash = (q) => (q < RAMP ? (q * q) / (2 * RAMP) : RAMP / 2 + (q - RAMP)) / (1 - RAMP / 2); // how far out
+  // Where slide 4's words sit, line by line, with room for a disc.
+  const wordBoxes = (pad) => {
+    const s4 = document.querySelector('[data-astrid-core]')?.closest('.slide');
+    const boxes = [];
+    for (const el of s4 ? s4.querySelectorAll('.num, h1') : []) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      for (const r of range.getClientRects()) if (r.width && r.height) boxes.push([r.left - pad, r.top - pad, r.right + pad, r.bottom + pad]);
+    }
+    return boxes;
+  };
+  // Each tool's run, in its own time t (0 → 1): a moment's stillness, then off towards the bottom left (leaning away
+  // from the ring), speeding up to a steady dash, weaving gently once or twice about its heading; it stays whole for
+  // most of the run and shrinks and fades over its last stretch. Laid out in the leaving's own time (RUN); coming
+  // back plays the same frames backwards over `span` seconds.
+  const scurry = (back = false, span = RUN) => {
+    settle();
+    const h = empty.querySelector('i').getBoundingClientRect(), box = root.getBoundingClientRect();
+    const hx = h.left + h.width / 2, hy = h.top + h.height / 2;
+    const reach = Math.max(110, Math.min(box.width, box.height) * 0.62);
+    const disc = parseFloat(getComputedStyle(tools[0]).height) || 24;
+    const words = wordBoxes(disc / 2 + 6);
+    const hits = (x, y) => words.some(([l, t, r, b]) => x > l && x < r && y > t && y < b);
+    const mice = tools.map((el) => {
+      const r = el.querySelector('i').getBoundingClientRect();
+      if (!r.width || (!back && !el.classList.contains('is-in'))) return null;
+      const x = r.left + r.width / 2, y = r.top + r.height / 2, d = Math.hypot(x - hx, y - hy) || 1;
+      const base = getComputedStyle(el).transform;
+      return { el, x, y, d, ax: (x - hx) / d, ay: (y - hy) / d, base: base === 'none' ? '' : base };
+    }).filter(Boolean);
+    if (!mice.length) return;
+    const near = Math.min(...mice.map((m) => m.d)), far = Math.max(near + 1, ...mice.map((m) => m.d));
+    mice.forEach((m) => {
+      m.delay = 0.5 * ((m.d - near) / (far - near)) + 0.03 * rnd(); // rippling out from the ring
+      if (hits(m.x, m.y)) m.delay = Math.min(m.delay, 0.15); // one sitting where the words will be leaves early
+      m.dur = 1 + 0.12 * rnd();
+    });
+    const end = Math.max(...mice.map((m) => m.delay + m.dur)), slow = RUN / end;
+    pack = document.createElement('div');
+    pack.className = 'gp-run';
+    pack.setAttribute('aria-hidden', 'true');
+    pack.style.setProperty('--d', getComputedStyle(root).getPropertyValue('--d'));
+    packBack = back;
+    const plans = mice.map((m) => {
+      const t0 = m.delay * slow, t1 = m.dur * slow; // seconds, in the leaving's time
+      // A weave of one bend or a gentle S (1 to 1.6 half-waves), to one side or the other.
+      const dist0 = reach * (0.88 + 0.24 * rnd()), sway = 0.08 + 0.03 * rnd(), side = rnd() < 0.5 ? -1 : 1, bends = 1 + 0.6 * rnd();
+      const path = (hx_, hy_, dist) => Array.from({ length: 41 }, (_, i) => {
+        const t = i / 40, q = clamp((t - FREEZE) / (1 - FREEZE)), a = dash(q);
+        const w = side * sway * dist * Math.sin(Math.PI * bends * q) * smooth(clamp(q * 2.5));
+        return { t, x: hx_ * dist * a - hy_ * w, y: hy_ * dist * a + hx_ * w, o: 1 - smooth(clamp((t - 0.62) / 0.38)) };
+      });
+      // The first heading that keeps clear of the words, turning from bottom left towards plain left.
+      let bx = -0.55 + 0.45 * m.ax, by = 0.55 + 0.45 * m.ay, best = null;
+      for (const k of [0, 0.25, 0.5, 0.75, 1]) {
+        let ux = bx * (1 - k) - k, uy = by * (1 - k) - 0.1 * k;
+        const n = Math.hypot(ux, uy) || 1; ux /= n; uy /= n;
+        for (const dist of [dist0, dist0 * 0.75]) {
+          const pts = path(ux, uy, dist);
+          const clash = pts.findIndex((p) => t0 + p.t * t1 > WORDS && p.o > 0.05 && hits(m.x + p.x, m.y + p.y));
+          if (clash < 0) { best = { pts }; break; }
+          if (!best || clash > best.clash) best = { pts, clash };
+        }
+        if (best && best.clash === undefined) break;
+      }
+      // Still in their way: gone before it reaches them.
+      if (best.clash !== undefined) {
+        const tc = Math.max(0.12, best.pts[best.clash].t), fade = Math.min(0.25, tc);
+        best.pts.forEach((p) => { p.o = Math.min(p.o, 1 - smooth(clamp((p.t - (tc - fade)) / fade))); });
+      }
+      return { m, t0, t1, pts: best.pts };
+    });
+    const scale = span / RUN;
+    plans.forEach(({ m, t0, t1, pts }) => {
+      const c = m.el.cloneNode(true);
+      c.removeAttribute('type');
+      c.setAttribute('tabindex', '-1');
+      c.classList.add('is-in');
+      c.classList.remove('is-open');
+      c.style.left = `${m.x.toFixed(1)}px`;
+      c.style.top = `${m.y.toFixed(1)}px`;
+      ['--nx', '--ny', '--m'].forEach((v) => c.style.removeProperty(v));
+      pack.appendChild(c);
+      const frames = pts.map((p) => ({
+        transform: `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) ${m.base} scale(${(1 - 0.5 * smooth(clamp((p.t - 0.58) / 0.42))).toFixed(3)})`,
+        opacity: p.o.toFixed(3),
+      }));
+      if (back) frames.reverse();
+      // Coming home the ripple is half as wide and each tool takes the rest of the time, walking rather than dashing.
+      const delay = back ? (RUN - t0 - t1) * scale * 0.5 : t0, dur = back ? span - (RUN - t1) * scale * 0.5 : t1;
+      runs.push(c.animate(frames, { duration: dur * 1000, delay: delay * 1000, fill: 'both' }));
+    });
+    document.body.appendChild(pack);
+    root.classList.add('is-away');
+  };
+  // On to slide 4: the run belongs to slide 4's visit, and its layer goes when the last tool has gone.
+  const run = (ctx) => {
+    scurry();
+    const mine = pack;
+    if (!mine) return;
+    Promise.all(runs.map((a) => a.finished)).then(() => { if (pack === mine) settle(); }, () => {});
+    ctx.defer(() => { if (pack === mine) scatter(); });
+  };
+  // Back from slide 4: the tools set off home as soon as slide 4 starts to come apart, timed to settle as the ring
+  // lands (core.js gives the time to its landing, and the moment its flight begins, to keep them to it).
+  const await_ = (ctx, land) => {
+    visitCtx = ctx;
+    reset();
+    root.classList.add('is-drawn', 'is-labelled');
+    tools.forEach((el) => el.classList.add('is-in'));
+    scurry(true, Math.max(0.5, land - HOME_LEAD));
+    runs.forEach((a) => a.effect.updateTiming({ delay: a.effect.getTiming().delay + HOME_LEAD * 1000 }));
+    awaiting = ctx;
+    const mine = pack;
+    if (!mine) { entryFinish?.(ctx, 'completed'); return; }
+    Promise.all(runs.map((a) => a.finished)).then(() => {
+      if (pack !== mine) return;
+      settle();
+      entryFinish?.(ctx, 'completed');
+    }, () => {});
+  };
+  window.GapScurry = {
+    // A step back to slide 3 is starting; the ring lands home in `land` deck seconds.
+    expect: (ctx, land) => { expected = { ctx, land }; },
+    // The ring has begun its flight home, lasting `flight` seconds: keep the runs to it.
+    home: (ctx, flight) => {
+      if (awaiting !== ctx || !ctx.isCurrent() || !runs.length) return;
+      const last = Math.max(...runs.map((a) => { const t = a.effect.getTiming(); return t.delay + t.duration; }));
+      const now = Math.max(0, last - flight * 1000);
+      runs.forEach((a) => { a.currentTime = now; });
+    },
+  };
+
   // ---- Going back ----------------------------------------------------------
   // A step back to slide 2: the arrival from the field, played backwards. Each logo melts back into its orb, which
   // flies back along a curve to one of the field's dots, shrinking and taking on its colour as it goes; the dust
@@ -389,10 +560,13 @@
     return promise;
   };
   const sceneEnter = (ctx) => {
-    const promise = completion(ctx, (fn) => { entryFinish = fn; }, () => { retireForward(); if (waiting) { waiting.disconnect(); waiting = null; } });
+    const promise = completion(ctx, (fn) => { entryFinish = fn; }, () => { retireForward(); if (awaiting === ctx) settle(); if (waiting) { waiting.disconnect(); waiting = null; } });
     visitCtx = ctx;
+    const ringBack = expected?.ctx === ctx ? expected : null; // core.js is about to fly the ring home
+    expected = null;
     if (backs.length || backRaf || departRaf) endDepart();
-    if (ctx.rest || ctx.direct) enter(0, ctx);
+    if (ringBack && ctx.back && !motionOff()) await_(ctx, ringBack.land); // a step back lands at rest, but with its tools running home
+    else if (ctx.rest || ctx.direct) enter(0, ctx);
     else if (ctx.from === 1) arrive(ctx);
     else begin(ctx);
     return promise;
@@ -400,6 +574,8 @@
   const sceneExit = (ctx) => {
     clearInterval(asking);
     focus(null);
+    const homing = !!(pack && packBack); // cut short on their way home: they scatter where they are
+    if (homing) { if (ctx.to === 3) scatter(); else settle(); }
     // The neighbouring scene can measure before the network starts its turn.
     if ((ctx.to === 3 && !ctx.direct && !ctx.rest && !motionOff()) || (ctx.to === 1 && ctx.back)) ctx.present(slide, 'dt-leaving');
     if (ctx.to === 1 && field?.snapshot && ctx.back && !motionOff() && tools.every((el) => el.classList.contains('is-in'))) {
@@ -409,9 +585,11 @@
       return promise;
     }
     retireForward();
+    // On to slide 4: the tools run off as the ring lifts off.
+    if (ctx.to === 3 && !ctx.direct && !ctx.rest && !motionOff() && !homing) run(ctx);
     // A direct navigation can settle before this departure tail has elapsed.
     // Keep the cleanup visit-owned, just like the motion it retires.
-    timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) reset(); }, 700, ctx));
+    timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) reset(true); }, 700, ctx));
   };
   // On a first load the Mycelial mark plays first (dot-transitions.js): the tools bloom once it has landed.
   const html = document.documentElement;
@@ -437,6 +615,7 @@
     retireForward(Boolean(backs.length || backRaf || departRaf));
     timers.forEach(window.deckCancelLater); timers = [];
     if (ctx.to !== 2) { reset(); return true; }
+    settle();
     // Flight endpoints were measured in the old viewport. Finish at the new
     // chart instead of leaving old pixel coordinates suspended over it.
     show(false);

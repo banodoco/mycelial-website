@@ -107,10 +107,10 @@
       full: { name: 'ArtCompute', line: 'ArtCompute gives micro-grants to those pushing open AI models, approved by AI. It is practical compute for people whose ambition has outrun their hardware.',
         door: 'Visit ArtCompute →', href: 'https://artcompute.org/',
         stage: `<span class="fw-ac fw-ac-full"><span class="fw-ac-stats"><span><b class="g">473</b>GPU hours</span></span><span class="fw-ac-l">latest grants</span>${[['loreweavr', 'Loreweavr — Dual-LoRA Composition · 50h'], ['ashmotv', 'AshmoTV — Multi-angle IC-LoRA, LTX 2.3 · 50h'], ['persoon', 'Persoon — Obscura Remova IC-LoRA · 40h']].map(([a, t]) => `<span class="fw-ac-row">${AV(a)}<span>${t}</span><i>PAID</i></span>`).join('')}</span>` } },
-    // 2RP: no link, as on the homepage (content.js): the publication is coming soon.
-    { short: 'Art and tech social network', name: '2RP', line: '2RP is an art and tech social network that aims to highlight the best of the ecosystem.', soon: 'Coming soon', crop: [0.5, 0.45, 1],
+    // 2RP: no link, as on the homepage (content.js): the app is coming soon.
+    { short: 'Art and tech social media app', name: '2RP', line: '2RP is a social media app that gives the art and knowledge coming out of the ecosystem a home.', soon: 'Coming soon', crop: [0.5, 0.45, 1],
       media: '<img data-src="../assets/cards/tworp/cover.jpg" alt="">',
-      full: { name: '2RP', line: '2RP is an art and tech social network that aims to highlight the best of the ecosystem. Open work, open models, and the people making both.',
+      full: { name: '2RP', line: '2RP is a social media app focused on giving the art and knowledge that come from the ecosystem a home. It aims to inspire, motivate and educate people, all at once.',
         soon: 'Coming soon', stage: '<span class="fw-rp"><img data-src="../assets/cards/tworp/cover.jpg" alt=""><b>2RP</b></span>' } },
   ];
   const chips = CARDS.map((c) => {
@@ -1149,9 +1149,9 @@
     raf = 0;
     if (!running || ctx !== entryCtx || !ctx?.isCurrent?.()) return;
     const clock = window.deckNow?.() ?? now;
-    // The stat stays on its real node throughout the native radial reveal.
+    // The stat stays on its real node; its count starts once its ink begins to spread.
     const statPaint = countPending && hosts[0].querySelector('.fw-stat');
-    const revealingStat = statPaint && (statPaint.style.maskImage || statPaint.style.webkitMaskImage).startsWith('radial-gradient(');
+    const revealingStat = statPaint && statPaint.classList.contains('fw-spreading') && parseFloat(statPaint.style.getPropertyValue('--fw-outer')) > 0.05;
     if (countPending && activeStage === 0 && (countStarted !== null || revealingStat || hosts[0].hasAttribute('data-settled'))) {
       if (countStarted === null) countStarted = clock;
       const progress = clamp((clock - countStarted) / 2000);

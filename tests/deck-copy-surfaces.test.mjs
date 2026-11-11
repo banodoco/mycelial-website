@@ -62,38 +62,41 @@ function fixture(debug=false){
   return {...api,context,slides,timers,overlays,masks,recoveries,navigate};
 }
 const origin={x:120,y:120};
-const clean=root=>!root.classList.contains('dt-copy-hidden')&&!root.style.maskImage&&!root.style.webkitMaskImage;
+// Wheel copy is revealed by ink on its real nodes: no mask, clone or visibility class ever touches them.
+const unmasked=root=>!root.classList.contains('dt-copy-hidden')&&!root.style.maskImage&&!root.style.webkitMaskImage;
+const ink=root=>root.classList.contains('fw-spreading')?root.style.getPropertyValue('--fw-outer'):'';
+const clean=root=>unmasked(root)&&!root.classList.contains('fw-spreading')&&!ink(root);
+const inkless=root=>unmasked(root)&&ink(root)==='0.0px';
 for(const [i,n] of [9,10,11].entries()){
-  test(`slide ${n}: claims and paints its original nodes, never clones`,()=>{
+  test(`slide ${n}: claims and inks its original nodes, never masks or clones`,()=>{
     const f=fixture(),ctx=f.navigate(i),s=f.slides[i],state=f.copy.hide(s,ctx,origin);
-    for(const root of s.roots){assert.equal(f.overlays.get(root),root);assert.equal(f.copy.paint(root,origin,180,null,state),true);}
+    for(const root of s.roots){assert.ok(inkless(root));assert.equal(f.copy.paint(root,origin,180,null,state),true);assert.equal(ink(root),'180.0px');assert.ok(unmasked(root));assert.equal(f.overlays.size,0);}
     assert.equal(f.copy.liveCloneCount,0);assert.equal(f.copy.show(s,ctx,state),true);
     s.roots.forEach(r=>{assert.ok(clean(r));assert.equal(r.removed,false);});assert.equal(f.overlays.size,0);
   });
   test(`slide ${n}: leaving hidden text does not show it`,()=>{
     const f=fixture(),ctx=f.navigate(i),s=f.slides[i],state=f.copy.hide(s,ctx,origin);
-    const before=s.roots.map(r=>r.style.maskImage);ctx.close();
-    assert.equal(state.phase,'interrupted');assert.deepEqual(s.roots.map(r=>r.style.maskImage),before);
-    s.roots.forEach(r=>assert.match(r.style.maskImage,/transparent/));
+    ctx.close();
+    assert.equal(state.phase,'interrupted');assert.ok(s.roots.every(inkless));
   });
   test(`slide ${n}: interruption preserves partial reveal for its successor`,()=>{
     const f=fixture(),ctx=f.navigate(i),s=f.slides[i],state=f.copy.hide(s,ctx,origin);
-    s.roots.forEach(r=>f.copy.paint(r,origin,180,null,state));const before=s.roots.map(r=>r.style.maskImage);
-    ctx.close();assert.deepEqual(s.roots.map(r=>r.style.maskImage),before);
+    s.roots.forEach(r=>f.copy.paint(r,origin,180,null,state));const before=s.roots.map(ink);
+    ctx.close();assert.deepEqual(s.roots.map(ink),before);assert.ok(before.every(v=>v==='180.0px'));
     const next=f.navigate((i+1)%3,i),out=f.copy.gather(s,next);
     for(const root of s.roots){const saved=f.masks.get(root);assert.equal(saved.r,180);assert.equal(f.copy.paint(root,saved.at,saved.r,null,out),true);}
-    assert.deepEqual(s.roots.map(r=>r.style.maskImage),before);
+    assert.deepEqual(s.roots.map(ink),before);
     assert.equal(f.copy.reconcile(next),true);assert.ok(f.slides[next.to].roots.every(clean));
-    assert.ok(s.roots.every(r=>r.classList.contains('dt-copy-hidden')));assert.equal(f.overlays.size,0);
+    assert.ok(s.roots.every(inkless));assert.equal(f.overlays.size,0);
   });
 }
 test('obsolete navigation cannot hide, paint, show, retire, or reconcile current text',()=>{
   const f=fixture(),old=f.navigate(0),s=f.slides[0],first=f.copy.hide(s,old,origin);
   old.close();const next=f.navigate(0,1),fresh=f.copy.hide(s,next,origin);
-  f.copy.paint(s.roots[0],origin,240,null,fresh);const mask=s.roots[0].style.maskImage;
+  f.copy.paint(s.roots[0],origin,240,null,fresh);const mask=ink(s.roots[0]);assert.equal(mask,'240.0px');
   assert.equal(f.copy.hide(s,old,origin),null);assert.equal(f.copy.paint(s.roots[0],origin,0,null,first),false);
   assert.equal(f.copy.show(s,old,first),false);assert.equal(f.copy.retire(s,old),false);assert.equal(f.copy.reconcile(old),false);
-  assert.equal(s.roots[0].style.maskImage,mask);assert.equal(f.copyStates.get(s),fresh);
+  assert.equal(ink(s.roots[0]),mask);assert.equal(f.copyStates.get(s),fresh);
 });
 test('a superseded state token cannot paint even within the same navigation',()=>{
   const f=fixture(),ctx=f.navigate(1,0),s=f.slides[0];const first=f.copy.gather(s,ctx),second=f.copy.gather(s,ctx);
@@ -115,6 +118,18 @@ test('deadline delegates failure recovery to the terminal transaction',()=>{
   const callback=[...f.timers.values()][0].fn;callback();
   assert.deepEqual(f.recoveries,['recover']);assert.equal(ctx.terminal,true);assert.ok(s.roots.every(clean));assert.equal(f.timers.size,0);
 });
+test('a reveal already running gets real frames to land before its deadline replaces it',()=>{
+  const f=fixture(),ctx=f.navigate(2),s=f.slides[2],state=f.copy.hide(s,ctx,origin,900);
+  state.phase='revealing';s.roots.forEach(r=>f.copy.paint(r,origin,300,null,state));
+  const [handle,first]=[...f.timers.entries()][0];f.timers.delete(handle);first.fn();
+  assert.deepEqual(f.recoveries,[]);assert.equal(f.timers.size,1);assert.equal(ink(s.roots[0]),'300.0px');
+  // The reveal lands by itself inside the grace: the pending recovery is cancelled, never run.
+  assert.equal(f.copy.show(s,ctx,state),true);assert.equal(f.timers.size,0);assert.ok(s.roots.every(clean));
+  // One that never lands is still recovered, once.
+  const g=fixture(),c2=g.navigate(2),s2=g.slides[2],st2=g.copy.hide(s2,c2,origin,900);st2.phase='revealing';
+  const [h2,t2]=[...g.timers.entries()][0];g.timers.delete(h2);t2.fn();[...g.timers.values()][0].fn();
+  assert.deepEqual(g.recoveries,['recover']);assert.ok(s2.roots.every(clean));
+});
 test('stale deadlines and disposers cannot alter a newer visit',()=>{
   const f=fixture(),ctx=f.navigate(0),s=f.slides[0];f.copy.hide(s,ctx,origin,900);const late=[...f.timers.values()][0].fn;
   const next=f.navigate(0,1),state=f.copy.hide(s,next,origin);f.copy.paint(s.roots[0],origin,111,null,state);
@@ -125,7 +140,7 @@ test('terminal reconciliation clears abandoned third-slide and orphaned surfaces
   const orphan=new Element(),surface=new Element();f.overlays.set(orphan,surface);
   const ctx=f.context.window.deckNav;assert.equal(f.copy.reconcile(ctx),true);
   assert.equal(f.overlays.size,0);assert.equal(surface.removed,true);assert.equal(orphan.removed,false);
-  f.slides.forEach((s,i)=>s.roots.forEach(r=>assert.equal(clean(r),i===2)));
+  f.slides.forEach((s,i)=>s.roots.forEach(r=>assert.ok(i===2?clean(r):inkless(r))));
 });
 test('repeated visits preserve node identity, questions, and clean endpoints',()=>{
   const f=fixture();let previous=null;
@@ -147,12 +162,14 @@ test('no registry-driven endpoint or CSS force-visible escape hatch remains',()=
   assert.doesNotMatch(finish,/copy\.show|copy\.retire|overlays\.keys/);
   assert.doesNotMatch(html,/\.slide\.on\[data-settled\] > \.fw-stat \{ mask-image/);
   assert.match(html,/\.fw-raise\.on:has\(\.fw-ask\.is-open\) > \.split > :first-child \{ opacity: \.2;/);
-  assert.match(html,/\.slide\.fw-raise\.on \.fw-asks \{ opacity: 1; visibility: visible; transition: none;/);
+  assert.match(html,/\.slide\.fw-raise\.on \.fw-asks \{ opacity: var\(--fw-reveal-alpha, 1\); visibility: visible; transition: none;/);
+  // The wheel's real copy is never masked: only a disposable clone can be.
+  assert.doesNotMatch(source,/liveCopy|overlays\.set\(el, surface\)/);assert.match(html,/\.fw-host \.fw-spreading h1 em,/);
 });
 test('renderer, coordinates, final grouping and reveal duration remain the restored version',()=>{
   const hash=s=>createHash('sha256').update(s).digest('hex');
   assert.equal(hash(section('  const textOf =','  const place = (p)')),'09188a673d65a59b6fb7c657a56f9ce2a61619b5be9a18746a749649811dcba0');
-  assert.equal(hash(section('  const copyExtra =','  const textTweens =')),'3c7effaf0a5d40f096a2cf4ae6e3505846c6e842a0b90f9c5bb71528ada1d18e');
+  assert.equal(hash(section('  const copyExtra =','  const textTweens =')),'285a9f03dda6cda0ebf9ec0870dcc931ff6f6f5faec6551d9d9f9e7f99d1189b');
   assert.match(source,/const GATHER = 400;/);assert.match(source,/const SOFT = 150;/);
   assert.match(source,/const x = at\.x - b\.left, y = at\.y - b\.top;/);
 });

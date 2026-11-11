@@ -23,6 +23,8 @@ Each logo is the product's own icon, used nominatively to identify the tool in a
 | krea.png | Krea | https://www.krea.ai/favicon/favicon-192.png | site favicon, 192 px |
 | higgsfield.png | Higgsfield | https://higgsfield.ai/apple-touch-icon.png | site apple-touch-icon, 180 px |
 | capcut.png | CapCut | https://sf16-web-tos-buz.capcutcdn-us.com/obj/capcut-web-buz-tx/pwa/512.png | icon from the site's manifest (https://www.capcut.com/manifest.json), 512 px |
+| veo.png | Veo | https://www.gstatic.com/aitestkitchen/website/flow/favicon/flow_icon_512.png | Google has no separate Veo mark; this is the icon of Flow, its Veo film tool (flow.google.com), 512 px downscaled |
+| dreamina.png | Dreamina | https://p16-seeyou-useast5.capcutcdn-us.com/tos-useast5-i-2zwwjm3azk-tx/40fed40e0bd1411292155e446a0f3a30~tplv-2zwwjm3azk-compress:q90.image | dreamina.capcut.com shortcut icon, 900 px downscaled; shown for ByteDance’s Seedance model, which has no mark of its own |
 
 ## No official logo found (monogram kept)
 

@@ -143,6 +143,7 @@
   let featured = null, held = 0, live = 0, clock = 0, running = false, last = 0, frameRaf = 0, holdFor = 0, busy = -9, back = false, entryCtx = null, fontHandler = null;
   const FEATURE_HOLD = 2.6, LABEL_FADE = 0.75, READ_WINDOW = FEATURE_HOLD + LABEL_FADE;
   let skipOpeningFeature = false, mutedFeature = false;
+  const OPENING_LEAD = 1.5; // seconds cut from a wide screen's silent first beat, so the first name shown arrives that much sooner
   const tags = labels.map((el) => ({ el, item: null, box: null, until: 0 }));
   const clearHighlights = () => {
     pointer = hot = front = shown = featured = null;
@@ -438,7 +439,7 @@
     // an even, unhurried beat.
     const quiet = highlightsAllowed && !hot && !front && clock - busy > 0.5 && (!motes.length || since >= 1.1);
     if (featured && quiet) held += elapsed;
-    const tired = held > FEATURE_HOLD;
+    const tired = held > (mutedFeature ? FEATURE_HOLD - OPENING_LEAD : FEATURE_HOLD);
     let best = null, bestScore = 0;
     // The camera still glides from slide 1 when the first name appears. Choose
     // names around the usable text area's stable centre, not that moving origin.

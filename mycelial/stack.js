@@ -174,6 +174,7 @@
 
   // ---- Plane state and the projection ----------------------------------------------------------
   const settledOf = (p) => ({ x: p.cx, y: p.cy, w: p.w, h: p.h, rx: TILT, rz: TURN, o: 1, c: 1, g: 0 });
+  // A plane's state; its pile (scene px, down the scene) is how far it has gathered toward the agent's plane.
   const st = PL.map(settledOf);
   const shown = PL.map(() => ({}));
   const box = (el, s) => {
@@ -189,19 +190,19 @@
     el.style.transform = `scale(${(w / nw).toFixed(5)}, ${(h / nh).toFixed(5)})`;
   };
   const applyPlanes = () => st.forEach((s, i) => {
-    const el = planes[i], was = shown[i], p = PL[i], gh = ghosts[i];
-    const moved = was.x !== s.x || was.y !== s.y || was.w !== s.w || was.h !== s.h;
+    const el = planes[i], was = shown[i], p = PL[i], gh = ghosts[i], pile = s.pile || 0;
+    const moved = was.x !== s.x || was.y !== s.y || was.w !== s.w || was.h !== s.h || (was.pile || 0) !== pile;
     const resized = was.w !== s.w || was.h !== s.h;
     const turned = was.rx !== s.rx || was.rz !== s.rz;
     // At rest the six-pixel tour lift is a translation, not five re-layouts.
     const ambient = !!amb && !build?.back && !gh?.firstChild;
     if (ambient) {
       if (!was.ambient || resized || was.x !== s.x) box(el, { ...s, y: p.cy });
-      const lift = `0 ${(s.y - p.cy).toFixed(3)}px`;
+      const lift = `0 ${(s.y + pile - p.cy).toFixed(3)}px`;
       if (el.style.translate !== lift) el.style.translate = lift;
     } else if (moved || was.ambient) {
       el.style.translate = '';
-      box(el, s);
+      box(el, pile ? { ...s, y: s.y + pile } : s);
     }
     const stretchChat = i === 3 && !!gh?.firstChild;
     if (resized || was.stretchChat !== stretchChat) {
@@ -233,7 +234,7 @@
     box(carry, s); carry.style.transform = planes[0].style.transform; carry.style.opacity = cy.a.toFixed(3);
     carryPic.style.transform = `translate(${lerp(A.x, B.x, q).toFixed(2)}px, ${lerp(A.y, B.y, q).toFixed(2)}px) scale(${(lerp(A.w, B.w, q) / cy.P.w).toFixed(5)})`;
   };
-  const view = { k: 1, ox: 0, oy: 0, mobile: false, right: true, low: false };
+  const view = { k: 1, ox: 0, oy: 0, mobile: false, right: true, low: false, snug: false };
   // A point (u, v) from a plane's centre, in its own px, into the scene: exactly what CSS does with
   // rotateX(rx) rotateZ(rz) about the centre under the scene's perspective. project() goes on to the screen.
   const projW = (s, u, v) => {
@@ -256,7 +257,16 @@
 
   // ---- Layout ------------------------------------------------------------------------------------
   let dpr = 1, geo = null;
-  const CARDW = 300, CARDW_L = 240, FLAG_PITCH = 40;
+  // Cards: beside the flags on a desktop (CARDW), a tablet on its side (CARDW_S) and a phone on its side (CARDW_L); under the
+  // stack when it stands under the text, as wide as the screen allows up to CARDW_SLOT.
+  const CARDW = 300, CARDW_S = 264, CARDW_L = 240, CARDW_SLOT = 620, FLAG_PITCH = 40;
+  // Which arrangement the screen gets, in the same words as the stylesheet's media queries (index.html, deck-overlay.js):
+  // stacked: a phone, or any upright screen up to 1100 px wide, the stack under the text with its flags down its left;
+  // snug: a tablet on its side, or any window on its side under 1280 px, the text column narrower and the card smaller
+  // so the stack beside them keeps its size. Every other screen on its side over 500 px tall is the desktop; at 500 px
+  // or less, a phone on its side (low).
+  const STACKED = matchMedia('(max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px), (max-width: 1100px) and (orientation: portrait)');
+  const SNUG = matchMedia('(min-width: 761px) and (max-width: 1279px) and (orientation: landscape) and (min-height: 501px), (min-width: 761px) and (orientation: landscape) and (min-height: 501px) and (hover: none) and (pointer: coarse)');
   let flagY = [];
   // A polyline with its running lengths, and a point a fraction q of the way along it.
   const polyline = (pts) => { const len = [0]; for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); return { pts, len, total: len.at(-1) }; };
@@ -266,28 +276,32 @@
     const a = w.pts[i - 1], b = w.pts[i], f = (d - w.len[i - 1]) / ((w.len[i] - w.len[i - 1]) || 1);
     return [lerp(a[0], b[0], f), lerp(a[1], b[1], f)];
   };
+  // A plane's corners just inside its rim and the middles of its two sides, in scene px; and those on the screen.
+  const edgesOf = (s) => ({
+    nl: projW(s, -s.w / 2 + 3, s.h / 2 - 3), nr: projW(s, s.w / 2 - 3, s.h / 2 - 3), fr: projW(s, s.w / 2 - 3, -s.h / 2 + 3), fl: projW(s, -s.w / 2 + 3, -s.h / 2 + 3),
+    lm: projW(s, -s.w / 2, 0), rm: projW(s, s.w / 2, 0),
+  });
+  const onScreen = (c) => Object.fromEntries(Object.entries(c).map(([key, p]) => [key, toS(p)]));
   const rng = (seed) => () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const layout = () => {
     const W = innerWidth, H = innerHeight;
-    view.mobile = (W <= 760 && (H >= W || H > 500)) || (W <= 1100 && (H > W || H >= 650)); // phones, portrait tablets and compact landscape windows with room for the stack
+    view.mobile = STACKED.matches;
     // Which side the flags hang on: the right of the stack beside the text, or its left under the text on a phone.
     const right = view.right = !view.mobile, out = right ? 1 : -1;
     PO.x = right ? 1900 : 210; TURN = right ? 4.5 : -4.5;
     world.style.perspectiveOrigin = `${PO.x}px ${PO.y}px`;
     stackUp();
     // The whole picture's extent in scene px: labels, planes and roots.
-    const S = PL.map(settledOf);
-    const cw = S.map((s) => ({
-      nl: projW(s, -s.w / 2 + 3, s.h / 2 - 3), nr: projW(s, s.w / 2 - 3, s.h / 2 - 3), fr: projW(s, s.w / 2 - 3, -s.h / 2 + 3), fl: projW(s, -s.w / 2 + 3, -s.h / 2 + 3),
-      lm: projW(s, -s.w / 2, 0), rm: projW(s, s.w / 2, 0),
-    }));
+    const cw = PL.map((p) => edgesOf(settledOf(p)));
     const callXw = right ? Math.max(...cw.map((c) => c.rm.x)) + 40 : Math.min(...cw.map((c) => c.lm.x)) - 40; // the flags' column
     const h1 = slide.querySelector('h1').getBoundingClientRect();
-    // On a desktop the cards open in a column beside the flags, right of the stack (the text top left); on a
-    // phone, in a slot below the stack and above the footer. On a phone on its side the column is narrower and a card
-    // opens over the flags, which keep their places.
+    // On a desktop the cards open in a column beside the flags, right of the stack (the text top left); snug, the
+    // same, with the narrower card and a narrower margin to its right. Stacked, in a slot below the stack and above the
+    // footer. On a phone on its side the column is narrower and a card opens over the flags, which keep their places.
     const low = view.low = !view.mobile && H <= 500;
-    const cw0 = view.mobile ? W - 32 : low ? CARDW_L : CARDW;
+    const snug = view.snug = !view.mobile && !low && SNUG.matches;
+    const cw0 = view.mobile ? Math.min(W - 32, CARDW_SLOT) : low ? CARDW_L : snug ? CARDW_S : CARDW;
+    const slotL = (W - cw0) / 2; // under the stack, the card's slot is centred
     cards.forEach((c) => { c.style.width = `${cw0}px`; });
     const ch = cards.map((c) => c.offsetHeight);
     const slotH = view.mobile ? Math.max(...ch) : 0;
@@ -300,8 +314,11 @@
     root.style.height = compact ? `${Math.ceil(slotT + slotH + 80)}px` : '';
     root.style.setProperty('--st-card-top', `${slotT.toFixed(1)}px`);
     root.style.setProperty('--st-card-height', `${slotH.toFixed(1)}px`);
+    root.style.setProperty('--st-card-left', `${slotL.toFixed(1)}px`);
+    root.style.setProperty('--st-card-width', `${cw0}px`);
     const Rg = view.mobile ? { l: 16, r: W - 16, t: h1.bottom + 12, b: slotT - 12 }
-      : low ? { l: h1.right + 20, r: W - 12 - CARDW_L + 6, t: 14, b: H - 76 } : { l: h1.right + 28, r: W - 48 - CARDW + 6, t: 22, b: H - 66 };
+      : low ? { l: h1.right + 20, r: W - 12 - CARDW_L + 6, t: 14, b: H - 76 }
+      : snug ? { l: h1.right + 24, r: W - 24 - CARDW_S + 6, t: 22, b: H - 66 } : { l: h1.right + 28, r: W - 48 - CARDW + 6, t: 22, b: H - 66 };
     const box = { l: right ? Math.min(...cw.map((c) => Math.min(c.fl.x, c.nl.x))) - 12 : callXw, r: right ? callXw : Math.max(...cw.map((c) => Math.max(c.fr.x, c.nr.x))) + 12,
       t: Math.min(...cw.map((c) => Math.min(c.fl.y, c.fr.y))) - HEADROOM, b: Math.max(cw[4].nl.y, cw[4].nr.y) + ROOTS };
     // The flags stay readable in screen pixels: include their measured width once in the mobile fit,
@@ -318,11 +335,11 @@
     } else world.style.transform = `translate(${view.ox.toFixed(1)}px, ${view.oy.toFixed(1)}px) scale(${k.toFixed(4)})`;
     dpr = Math.min(2, Math.round(devicePixelRatio || 1) || 1);
     // Settled geometry, in screen px: the corners the threads tie together, the flags' places, the roots.
-    const corners = cw.map((c) => Object.fromEntries(Object.entries(c).map(([key, p]) => [key, toS(p)])));
+    const corners = cw.map(onScreen);
     const callX = toS({ x: callXw, y: 0 }).x;
     flags.forEach((el) => { el.style.left = `${callX.toFixed(1)}px`; });
     cards.forEach((c) => {
-      if (view.mobile) { c.style.left = '16px'; c.style.top = `${slotT.toFixed(1)}px`; return; }
+      if (view.mobile) { c.style.left = `${slotL.toFixed(1)}px`; c.style.top = `${slotT.toFixed(1)}px`; return; }
       c.style.left = `${(right ? Math.min(W - 8 - cw0, callX - 4) : Math.max(8, callX + 4 - cw0)).toFixed(1)}px`;
     });
     // The guide's ways between the flags: back along a leader, down the plane's outer edge, across to the
@@ -353,7 +370,7 @@
       const q = (j + 0.5) / 15, x = lerp(base.nl.x, base.nr.x, q) + (R() - 0.5) * 20 * k, y = lerp(base.nl.y, base.nr.y, q) - 4 * k;
       grow(x, y, Math.PI / 2 + (q - 0.5) * 1.5 + (R() - 0.5) * 0.5, (40 + R() * 62) * k, 0, R() * 0.35);
     }
-    geo = { corners, callX, roots, ways, anchors: A, base: corners.map((c) => c[E.m].y), ch, H, E, out };
+    geo = { corners, rest: corners, rootDy: 0, callX, roots, ways, anchors: A, base: corners.map((c) => c[E.m].y), ch, H, E, out };
     const pts = corners.flatMap((c) => [c.nl, c.nr, c.fl, c.fr]), flagW = Math.max(...flags.map((f) => f.offsetWidth));
     const hx0 = right ? Math.min(...pts.map((p) => p.x)) - 12 : callX - flagW - 10, hx1 = right ? callX + flagW + 10 : Math.max(...pts.map((p) => p.x)) + 12;
     const hy0 = Math.min(...pts.map((p) => p.y)) - 12, hy1 = Math.max(...pts.map((p) => p.y)) + ROOTS * k;
@@ -392,8 +409,8 @@
 
   // ---- Drawing the threads -----------------------------------------------------------------------
   // sh: how far the registration threads have drawn (top down); lb: the labels' leaders, per plane;
-  // rt: the roots' growth.
-  const vis = { sh: 1, lb: PL.map(() => 1), rt: 1 };
+  // rt: the roots' growth; gd: the guide's presence.
+  const vis = { sh: 1, lb: PL.map(() => 1), rt: 1, gd: 1 };
   // Flags are DOM controls: their reveal must not depend on a canvas draw succeeding.
   const syncFlagVisibility = () => vis.lb.forEach((q, i) => {
     const value = (q * q).toFixed(3);
@@ -428,8 +445,9 @@
   const drawBaseThreads = (g) => {
     metrics.baseDraws++;
     const { corners: C, roots } = geo;
-    // Roots under the foundation, and the long threads out to the right.
+    // Roots under the foundation, and the long threads out to the right; as the stack gathers they ride up with it.
     if (vis.rt > 0) {
+      g.save(); g.translate(0, geo.rootDy || 0);
       for (const r of roots) {
         const q = clamp((vis.rt - r.delay) / (1 - r.delay * 0.6));
         if (q <= 0) continue;
@@ -438,6 +456,7 @@
         const tip = clamp((q - 0.85) / 0.15);
         if (tip > 0) { const [x, y] = r.pts.at(-1); dot(g, x, y, 1, 0.75 * tip); r.dots.forEach(([dx, dy]) => dot(g, dx, dy, 0.8, 0.5 * tip)); }
       }
+      g.restore();
     }
     // Registration threads, corner to corner down the stack, drawn from the top: down both near corners and the far
     // one on the flags' side; the other far corner only takes a faint bead.
@@ -499,14 +518,16 @@
       dot(g, x0, m.y, 1.5, q * (0.7 + 0.3 * l));
     });
     // The guide: a bead of light with a short tail along its way, breathing while it waits at a flag.
-    if (guide.a > 0.01 && guide.pos) {
+    // (It lets go as the stack gathers up: vis.gd.)
+    const ga = guide.a * (vis.gd ?? 1);
+    if (ga > 0.01 && guide.pos) {
       const [x, y] = guide.pos;
       if (guide.tail) {
         const [tx, ty] = guide.tail, tl = g.createLinearGradient(tx, ty, x, y);
-        tl.addColorStop(0, GOLD(0)); tl.addColorStop(1, GOLD(0.8 * guide.a));
+        tl.addColorStop(0, GOLD(0)); tl.addColorStop(1, GOLD(0.8 * ga));
         g.lineWidth = 1.3; g.strokeStyle = tl; g.beginPath(); g.moveTo(tx, ty); g.lineTo(x, y); g.stroke();
       }
-      dot(g, x, y, 2.3 + 0.5 * guide.breath, guide.a);
+      dot(g, x, y, 2.3 + 0.5 * guide.breath, ga);
     }
   };
   const draw = () => {
@@ -1105,10 +1126,91 @@
   const sceneEnter = (ctx) => start(ctx);
   // Capture the agent avatar's projected corners once at handoff, then animate only transforms.
   let stackFlight = null, collapseSource = null;
+  // Going to slide 7 the stack gathers up behind her: the planes close their gaps into a tight pile on the agent's
+  // plane, the threads between their corners drawing them in, while the pile shrinks and slides under her, small
+  // enough to hide behind her before it goes. Flags, cards and the guide let go first; the roots draw back up into
+  // the foundation as it rises. Meanwhile she stands up off her plane and grows where she is, toward her size in
+  // slide 7's lens, so the pile going under her and her growing meet in the middle; then she flies. Coming back,
+  // the same picture runs the other way. q: 0 the stack at rest, 1 gone; s: its length (deck s), both ways.
+  // stand: where she is upright; meet: how far toward her size in the lens she grows; close: where the gaps have closed; fade: where the labels have gone; roots: where the roots have drawn in;
+  // shrink: the stretch over which the pile shrinks to its tucked size (its end is the small frame a late frame
+  // must still show); tuck: the tucked pile's width, in her widths (and never taller than she is).
+  // up: in the last stretch the pile turns on end as it shrinks, each card spinning on in its own plane, the way it
+  // is already turned, until its long side runs straight up (turn), and lifting toward upright (to tilt rx), so it
+  // stands behind her: over q in at.
+  const GATHER = { s: 1.6, stand: 0.25, meet: 0.5, pitch: 12, close: 0.55, fade: 0.35, roots: 0.5, shrink: [0.12, 0.92], tuck: 1.2,
+    up: { at: [0.5, 0.92], rx: 24, turn: 90 } };
+  // A gathered plane: pulled q of the way into the pile, turned u of the way on end.
+  const pileOf = (p, i, c, u) => {
+    const s = settledOf(p);
+    return { ...s, y: p.cy + (PL[3].cy + (i - 3) * GATHER.pitch - p.cy) * c,
+      rx: lerp(s.rx, GATHER.up.rx, u), rz: lerp(s.rz, Math.sign(s.rz || 1) * GATHER.up.turn, u) };
+  };
+  let piled = null; // what the gathering changed, to give back
+  const pileAt = (q) => {
+    if (!geo) return;
+    if (!piled) piled = { vis: { lb: vis.lb.slice(), rt: vis.rt, gd: vis.gd }, turn: st.map((s) => [s.rx, s.rz]) };
+    const c = seep(clamp(q / GATHER.close)), a = 1 - seep(clamp(q / GATHER.fade));
+    const [u0, u1] = GATHER.up.at, u = seep(clamp((q - u0) / (u1 - u0)));
+    const gathered = PL.map((p, i) => pileOf(p, i, c, u));
+    st.forEach((s, i) => { s.pile = gathered[i].y - PL[i].cy; s.rx = gathered[i].rx; s.rz = gathered[i].rz; });
+    apply();
+    geo.corners = gathered.map((g) => onScreen(edgesOf(g)));
+    geo.rootDy = geo.corners[4].nl.y - geo.rest[4].nl.y;
+    baseReady = false; // the cached roots and threads are the settled ones
+    const was = piled.vis;
+    vis.lb = was.lb.map((l) => l * a); vis.rt = was.rt * (1 - seep(clamp(q / GATHER.roots))); vis.gd = was.gd * a;
+    flags.forEach((f) => { f.style.transition = 'none'; });
+    syncFlagVisibility();
+    cards.forEach((card, i) => {
+      card.style.transition = i === openI ? 'none' : '';
+      card.style.opacity = i === openI ? a.toFixed(3) : '';
+    });
+    root.classList.add('is-gathering'); root.style.setProperty('--st-gather', a.toFixed(3));
+    draw();
+  };
+  const unpile = () => {
+    if (!piled) return;
+    const was = piled;
+    piled = null;
+    st.forEach((s, i) => { s.pile = 0; [s.rx, s.rz] = was.turn[i]; });
+    if (geo) { geo.corners = geo.rest; geo.rootDy = 0; }
+    baseReady = false;
+    Object.assign(vis, was.vis);
+    flags.forEach((f) => { f.style.transition = ''; });
+    cards.forEach((card) => { card.style.transition = ''; card.style.opacity = ''; });
+    root.classList.remove('is-gathering'); root.style.removeProperty('--st-gather');
+    apply(); syncFlagVisibility(); draw();
+  };
+  // The pile's extent on screen, on end, for its tucked size and where it slides to.
+  const pileBox = () => {
+    const pts = PL.flatMap((p, i) => {
+      const c = onScreen(edgesOf(pileOf(p, i, 1, 1)));
+      return [c.nl, c.nr, c.fl, c.fr];
+    });
+    const l = Math.min(...pts.map((p) => p.x)), r = Math.max(...pts.map((p) => p.x));
+    const t = Math.min(...pts.map((p) => p.y)), b = Math.max(...pts.map((p) => p.y));
+    return { x: (l + r) / 2, y: (t + b) / 2, w: r - l, h: b - t };
+  };
+  // Its size and its slide under her: at its tucked size (the end of shrink) its middle is under her middle.
+  const gatherAt = (q, tuck) => {
+    const [s0, s1] = GATHER.shrink, w = seep(clamp((q - s0) / (s1 - s0))), end = seep(clamp((q - s1) / (1 - s1)));
+    return { k: lerp(1, tuck, w) * (1 - 0.6 * end), w, a: 1 - end };
+  };
   const resetStackFlight = () => {
     root.style.transform = ''; root.style.transformOrigin = ''; root.style.opacity = '';
+    unpile();
   };
   const avatar = planes[3].querySelector('.st-avatar img');
+  // Where she has grown to by the end of the gathering: her upright place, grown about its middle toward her size in
+  // slide 7's lens (its cell). It carries her place at rest (small), which the gathering grows her from.
+  const meet = (small) => {
+    if (!small?.width) return small;
+    const cell = window.AstridPays?.core?.()?.cell || 4 * small.c;
+    const f = lerp(small.c, Math.max(small.c, cell), GATHER.meet) / small.c, cx = small.left + small.width / 2, cy = small.top + small.height / 2;
+    const width = small.width * f, height = small.height * f;
+    return { quad: small.quad, left: cx - width / 2, top: cy - height / 2, width, height, c: small.c * f, small };
+  };
   const flightGeometry = () => {
     let x = 0, y = 0, el = avatar;
     while (el && el !== planes[3]) { x += el.offsetLeft; y += el.offsetTop; el = el.offsetParent; }
@@ -1147,23 +1249,37 @@
     const copy = avatar.cloneNode();
     Object.assign(copy.style, { position: 'fixed', left: '0', top: '0', width: '23px', height: '20px', transformOrigin: '0 0', imageRendering: 'pixelated', pointerEvents: 'none', zIndex: '3' });
     document.body.appendChild(copy); avatar.style.visibility = 'hidden';
-    const pose = (q) => {
-      const u = clamp(q);
-      const upright = [{ x: rect.left, y: rect.top }, { x: rect.left + rect.width, y: rect.top },
-        { x: rect.left + rect.width, y: rect.top + rect.height }, { x: rect.left, y: rect.top + rect.height }];
+    // u: from lying on her plane to upright; g: from her size at rest to grown.
+    const small = rect.small || rect;
+    const pose = (u, g = 0) => {
+      u = clamp(u);
+      const at = (key) => lerp(small[key], rect[key], g), l = at('left'), t = at('top'), w = at('width'), h = at('height');
+      const upright = [{ x: l, y: t }, { x: l + w, y: t }, { x: l + w, y: t + h }, { x: l, y: t + h }];
       copy.style.transform = quadTransform(rect.quad.map((p, i) => ({ x: lerp(p.x, upright[i].x, u), y: lerp(p.y, upright[i].y, u) })));
       copy.style.clipPath = u >= 1 ? '' : `ellipse(${lerp(23 * 14 / 30, 30, u)}px ${lerp(20 * 14 / 26, 30, u)}px at ${23 * 14 / 30}px ${20 * 10 / 26}px)`;
     };
+    // The pile gathers about her: it shrinks toward her middle (O) and its own middle (C) slides under it.
+    const sx = root.offsetWidth / box.width, sy = root.offsetHeight / box.height, P = pileBox();
+    const O = { x: (rect.left + rect.width / 2 - box.left) * sx, y: (rect.top + rect.height / 2 - box.top) * sy };
+    const C = { x: (P.x - box.left) * sx, y: (P.y - box.top) * sy };
+    const tuck = clamp(Math.min(GATHER.tuck * rect.width / (P.w || 1), rect.height / (P.h || 1)), 0.002, 1);
+    let shownQ = null;
     const flight = { ctx, copy, hideCopy() { flight.draw(1); }, stand(q) { copy.style.visibility = 'visible'; pose(q); }, draw(q) {
       if (stackFlight !== flight || !ctx.isCurrent() || ctx.terminal) return;
       copy.style.visibility = q < 1 ? 'visible' : 'hidden';
       q = clamp(q);
-      root.style.transform = `scale(${Math.max(0.001, 1 - q ** 3)})`;
-      root.style.opacity = String(q < 0.98 ? 1 : (1 - q) / 0.02);
-      pose(clamp(q * 0.5 / 0.18));
+      const { k, w, a } = gatherAt(q, tuck), m = k * w;
+      pose(seep(clamp(q / GATHER.stand)), w);
+      // While she holds the stack the tour waits at its first flag, so it begins with the stack at rest.
+      if (guide.on && guide.mode === 'dwell') guide.t0 = Math.max(guide.t0, now());
+      if (q === shownQ) return;
+      shownQ = q;
+      pileAt(q);
+      root.style.transform = `translate(${((O.x - C.x) * m).toFixed(2)}px, ${((O.y - C.y) * m).toFixed(2)}px) scale(${Math.max(0.001, k).toFixed(5)})`;
+      root.style.opacity = a.toFixed(3);
     } };
     stackFlight = flight;
-    root.style.transformOrigin = `${(rect.left + rect.width / 2 - box.left) * root.offsetWidth / box.width}px ${(rect.top + rect.height / 2 - box.top) * root.offsetHeight / box.height}px`;
+    root.style.transformOrigin = `${O.x}px ${O.y}px`;
     flight.release = ctx.transitionDefer(() => {
       if (stackFlight !== flight) return;
       stackFlight = null; copy.remove(); avatar.style.visibility = ''; resetStackFlight();
@@ -1171,7 +1287,8 @@
     return flight;
   };
   window.deckStackFlight = { hold: holdStackFlight,
-    source: (ctx) => collapseSource?.ctx === ctx ? collapseSource.rect : flightGeometry(),
+    gather: GATHER.s, // the gathering's length (deck s), either way
+    source: (ctx) => collapseSource?.ctx === ctx ? collapseSource.rect : meet(flightGeometry()),
     collapsed: (ctx) => collapseSource?.ctx === ctx ? collapseSource.completed : Promise.resolve('completed'),
     ready: (ctx) => { if (collapseSource?.ctx === ctx) collapseSource.copy.remove(); },
   };
@@ -1189,7 +1306,7 @@
       activeCtx = ctx;
       stop(ctx, true);
       ctx.present(slide, 'dt-rewind dt-over');
-      const rect = flightGeometry(), flight = holdStackFlight(ctx, rect);
+      const rect = meet(flightGeometry()), flight = holdStackFlight(ctx, rect);
       if (!flight) return undefined;
       const copy = flight.copy;
       flight.stand(0);
@@ -1202,13 +1319,13 @@
         if (!current(ctx)) return;
         if (started === null) started = now();
         const elapsed = now() - started;
-        if (elapsed < 180) { flight.stand(easeIO(clamp(elapsed / 180))); frame = requestAnimationFrame(stepCollapse); return; }
-        let q = clamp((elapsed - 180) / 500);
-        // A delayed frame must still show the stack small before it disappears.
-        if (q === 1 && !smallFrame) q = Math.cbrt(0.8);
-        flight.draw(q); flight.stand(1);
+        let q = clamp(elapsed / (GATHER.s * 1000));
+        // A delayed frame must still show the stack small, gathered under her, before it disappears.
+        if (q === 1 && !smallFrame) q = GATHER.shrink[1];
+        flight.draw(q); copy.style.visibility = 'visible'; // she stays until slide 7 has painted her
+
         if (q < 1) {
-          if (1 - q ** 3 <= 0.2 + 1e-9) smallFrame = true;
+          if (q >= GATHER.shrink[1] - 1e-9) smallFrame = true;
           frame = requestAnimationFrame(stepCollapse);
         } else settle('completed');
       };
@@ -1314,6 +1431,7 @@
   if (window.__deckDebug) Object.defineProperty(window.__deckDebug, 'stack', { get: () => ({
     generation: activeCtx?.generation ?? null, running, paused, scheduled: !!raf,
     posterOnly: !!window.deckStackPosterOnly?.(), previewPlaying: !video.paused,
+    layout: view.mobile ? 'stacked' : view.low ? 'low' : view.snug ? 'snug' : 'desktop',
     building: !!build, reverse: !!build?.back, entryFinished, open: openI, drawFaults,
     metrics: { ...metrics }, scale: view.k, threadBox: { ...threadBox },
     canvasPixels: cv.width * cv.height + baseCv.width * baseCv.height,

@@ -4,7 +4,7 @@
   const stories = [
     { selector: '.ac-host', html: 'We’re building that place: <em>an agent-powered creative workspace</em> where anyone can unlock their creative potential with <span class="ac-nw">open-source AI.</span>' },
     { selector: '.as-host', html: '<span class="story-intro"><span class="story-title">Meet <em class="story-astrid">Astrid</em></span><span class="story-links"><a class="as-link" href="https://astrid.haus/" target="_blank" rel="noopener noreferrer">App</a><span class="story-divider" aria-hidden="true">|</span><a href="https://astrid.haus/vision" target="_blank" rel="noopener noreferrer">Vision</a></span></span> <span class="story-roadmap-grid"><span class="story-roadmap-lines"><span><strong class="story-era">Today,</strong> an extendible agent-powered video editor.</span><span><strong class="story-era">Soon,</strong> a fully-adaptable multimodal creative suite.</span></span><svg class="story-brace" viewBox="0 0 20 76" fill="none" aria-hidden="true"><path d="M3 2C12 2 12 9 12 17V28C12 35 15 38 19 38C15 38 12 41 12 48V59C12 67 12 74 3 74" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg><svg class="story-bridge" viewBox="0 0 240 32" fill="none" aria-hidden="true"><path d="M12 3V10Q12 16 18 16H104Q120 16 120 29M228 3V10Q228 16 222 16H136Q120 16 120 29" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="story-powered">All powered by <span>Open Models</span></span></span>' },
-    { selector: '.st-host', html: '<span class="story-title">Astrid is <em>everyone’s to shape.</em></span> <span class="story-lead">As you create, you and your agent <em>extend every layer</em> — from your workspace to its tools and models.</span> <span class="story-note">What you share becomes part of a community-built creative platform<span class="story-detail">, ready for others to use and build on</span>.</span>' },
+    { selector: '.st-host', html: '<span class="story-title">Astrid is <em>everyone’s</em> <span class="story-title-line">to shape and refine.</span></span> <span class="story-lead">As you create, you and your agent <em>extend every layer</em> — from your workspace to its tools and models.</span> <span class="story-note">What you share becomes part of a community-built creative platform<span class="story-detail">, ready for others to use and build on</span>.</span>' },
     { selector: '.pa-host', html: '<span class="story-lead">Nerds run Astrid locally and extend it. Everyone else pays to create with <em>that same growing platform</em> through an accessible hosted version.</span><span class="story-note">Builders grow the ecosystem; creators sustain it.</span>' },
   ];
   const hosts = stories.map(story => ({ ...story, host: document.querySelector(story.selector) }));
@@ -62,7 +62,7 @@
       html[data-ver="f"] .st-host.story-refined .story-title {
         font-size: clamp(2.3rem, 3.8vw, 3.8rem); line-height: 1.06; letter-spacing: -.015em; text-wrap: balance;
       }
-      html[data-ver="f"] .st-host.story-refined .story-title em { display: block; }
+      html[data-ver="f"] .st-host.story-refined .story-title .story-title-line { display: block; }
       html[data-ver="f"] .st-host.story-refined .story-lead {
         margin-top: clamp(18px, 2.7vh, 28px); font-size: clamp(1.3rem, 2vw, 1.8rem); line-height: 1.25; letter-spacing: 0; text-wrap: pretty;
       }
@@ -140,12 +140,20 @@
         .as-note-pin span { width: 19px; height: 19px; font-size: 10px; }
       }
       @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px),
-             (max-width: 1100px) and (orientation: portrait), (max-width: 1100px) and (min-height: 650px) {
+             (max-width: 1100px) and (orientation: portrait) {
         html[data-ver="f"] .st-host.story-refined > .split { grid-template-columns: minmax(0, 1fr); }
         html[data-ver="f"] .st-host.story-refined h1 { max-width: 34rem; }
         html[data-ver="f"] .st-host.story-refined .story-title { max-width: 24ch; font-size: clamp(1.85rem, 7.4vw, 2.5rem); }
         html[data-ver="f"] .st-host.story-refined .story-lead { margin-top: 14px; font-size: clamp(1.15rem, 4.8vw, 1.4rem); line-height: 1.2; }
         html[data-ver="f"] .st-host.story-refined .story-note { margin-top: 12px; font-size: 1rem; line-height: 1.3; }
+      }
+      /* 6 snug, a tablet on its side (stack.js): a narrower column in smaller type, so the stack beside it keeps its size. */
+      @media (min-width: 761px) and (max-width: 1279px) and (orientation: landscape) and (min-height: 501px),
+             (min-width: 761px) and (orientation: landscape) and (min-height: 501px) and (hover: none) and (pointer: coarse) {
+        html[data-ver="f"] .st-host.story-refined > .split { grid-template-columns: minmax(0, 29vw); }
+        html[data-ver="f"] .st-host.story-refined .story-title { font-size: clamp(1.9rem, 3.2vw, 2.6rem); }
+        html[data-ver="f"] .st-host.story-refined .story-lead { margin-top: clamp(14px, 2.2vh, 22px); font-size: clamp(1.1rem, 1.7vw, 1.4rem); }
+        html[data-ver="f"] .st-host.story-refined .story-note { margin-top: clamp(10px, 1.8vh, 18px); font-size: clamp(.92rem, 1.2vw, 1.05rem); line-height: 1.4; }
       }
       @media (max-width: 760px) and (orientation: portrait) and (max-height: 740px) {
         html[data-ver="f"] .as-host.story-refined h1 { gap: 10px; }
@@ -175,13 +183,13 @@
       }
       /* Slide 5 now shares the network's soft radial ink reveal/gather with slide 4.
          The canonical text stays put for the editor's Safari/WebKit paint path. */
-      .as-mobile-links { display: none; opacity: var(--as-reveal-alpha, 1); }
+      .as-mobile-links, .as-mobile-roadmap { display: none; opacity: var(--as-reveal-alpha, 1); }
       .as-copy .num { color: rgb(224 171 94 / var(--as-copy-alpha, 1)); }
       .as-copy .num .act { color: rgb(184 169 143 / var(--as-copy-alpha, 1)); }
       .as-copy.as-spreading .num,
       .as-copy.as-spreading .num .act,
       .as-copy.as-spreading .story-title,
-      .as-copy.as-spreading .story-title .story-astrid,
+      html[data-ver="f"] .as-host.story-refined .as-copy.as-spreading .story-title .story-astrid,
       .as-copy.as-spreading .story-links,
       .as-copy.as-spreading .story-links a,
       .as-copy.as-spreading .story-links .story-divider,
@@ -228,6 +236,25 @@
         html[data-ver="f"] .as-host.story-refined .as { margin-top: 12px; }
         html[data-ver="f"] .as-host.story-refined .as-mobile-links { margin-top: 6px; }
       }
+      /* Portrait phones only (not the 600-760 px tablets, which keep the roadmap in the heading). */
+      @media (max-width: 600px) and (orientation: portrait), (max-width: 600px) and (min-height: 501px) {
+        /* The roadmap sits below the demo on phones: the copy inside the heading is hidden and this
+           copy follows the reveal alpha instead of the ink sweep, like the links below it. */
+        .as-host.story-refined h1 .story-roadmap-grid { display: none; }
+        html[data-ver="f"] .as-host.story-refined .as-mobile-roadmap {
+          display: grid; flex: none; position: relative; z-index: 2; margin: 12px auto 0;
+          color: rgb(239 230 214); opacity: var(--as-reveal-alpha, 1);
+        }
+        .as-mobile-roadmap .story-roadmap-lines { font-size: clamp(.95rem, 4vw, 1.2rem); line-height: 1.12; }
+        .as-mobile-roadmap .story-bridge { height: 24px; margin-top: 3px; }
+        .as-mobile-roadmap .story-powered { font-size: clamp(.9rem, 3.5vw, 1rem); }
+      }
+      @media (max-width: 600px) and (orientation: portrait) and (max-height: 740px) {
+        html[data-ver="f"] .as-host.story-refined .as-mobile-roadmap { margin-top: 8px; }
+        .as-mobile-roadmap .story-roadmap-lines { font-size: clamp(.88rem, 3.8vw, 1.02rem); }
+        .as-mobile-roadmap .story-bridge { height: 18px; margin-top: 2px; }
+        .as-mobile-roadmap .story-powered { font-size: .85rem; }
+      }
       @media (prefers-reduced-motion: reduce) {
         .as-host[data-settled] .story-astrid { animation: none; }
       }
@@ -249,6 +276,14 @@
   // introduction and the demo. Keep the existing heading links on desktop.
   const demoSlide = document.querySelector('.as-host');
   const headingLinks = demoSlide?.querySelector('.story-intro > .story-links');
+  const headingRoadmap = demoSlide?.querySelector('h1 .story-roadmap-grid');
+  if (headingRoadmap && !demoSlide.querySelector('.as-mobile-roadmap') && demoSlide.querySelector('.as')) {
+    // Phones also show Today / Soon / Open Models after the demo, before the links.
+    // Like the links, the copy is display:none outside phones, so it is never read twice.
+    const mobileRoadmap = headingRoadmap.cloneNode(true);
+    mobileRoadmap.classList.add('as-mobile-roadmap');
+    demoSlide.appendChild(mobileRoadmap);
+  }
   if (headingLinks && !demoSlide.querySelector('.as-mobile-links') && demoSlide.querySelector('.as')) {
     const mobileLinks = headingLinks.cloneNode(true);
     mobileLinks.classList.add('as-mobile-links');
@@ -332,6 +367,7 @@ window.createAstridDemoNotes = function createAstridDemoNotes(root, targets) {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const quiet = () => reduced.matches || window.deckStill?.();
   const CHAT_MARKER_DELAY = 500, EDITOR_MARKER_DELAY = 850;
+  const EDGE_INSET = 21; // a timeline marker's centre sits this far inside its clip's end, so its ring clears the clip's edge
   const definitions = [
     { title: 'Build with extensions', text: 'Your agent uses extensions such as Three.js to turn your request into a scene on the timeline.', x: 0, y: .5 },
     { title: 'Put open models to work', text: 'Your agent works out how to use open models on your machine. Here, Qwen turns the scene into reference images.', x: .5, y: .5 },
@@ -411,7 +447,7 @@ window.createAstridDemoNotes = function createAstridDemoNotes(root, targets) {
       const editorVisible = visible && group.started && group.due && ready;
       if (editorVisible) {
         const box = (index === 1 ? target.parentElement : target).getBoundingClientRect(), point = definitions[index];
-        positionPin(group.editor, box.left + (point.x === .5 ? box.width / 2 : point.x ? box.width - 12 : 12), box.top + (point.y === .5 ? box.height / 2 : point.y ? box.height - 12 : 12), host);
+        positionPin(group.editor, box.left + (point.x === .5 ? box.width / 2 : point.x ? box.width - EDGE_INSET : EDGE_INSET), box.top + (point.y === .5 ? box.height / 2 : point.y ? box.height - 12 : 12), host);
       }
       reveal(group.editor, editorVisible);
     });

@@ -117,7 +117,7 @@ test('canonical headings preserve copy, external links and brace', () => {
   assert.doesNotMatch(intro, /<a[^>]*>[^<]*Astrid/);
   assert.match(intro, /story-brace/); assert.match(intro, /story-bridge/); assert.match(intro, /All powered by/); assert.match(intro, /Open Models/);
   assert.match(deckHtml, /<div class="num">05<span class="act">Introducing<\/span><\/div>/);
-  assert.match(f.hosts.get('.st-host').heading.innerHTML, /^<span class="story-title">Astrid is <em>everyone’s to shape\.<\/em><\/span>/);
+  assert.match(f.hosts.get('.st-host').heading.innerHTML, /^<span class="story-title">Astrid is <em>everyone’s<\/em> <span class="story-title-line">to shape and refine\.<\/span><\/span>/);
   assert.match(f.hosts.get('.pa-host').heading.innerHTML, /Builders grow the ecosystem; creators sustain it\./);
   for (const host of f.hosts.values()) { assert.equal(host.querySelector('h1'), host.heading); assert.equal(host.body.hidden, true); }
 });
@@ -246,6 +246,14 @@ test('slide 5 mobile footer links are placed after the demo, not in the header',
   assert.match(css, /padding-top: clamp\(28px, 4\.4vh, 38px\)/);
   assert.match(css, /padding-bottom: max\(59px/);
 });
+test('slide 5 portrait phones show the roadmap after the demo, before the links', () => {
+  const css = fixture().styles.get('deck-intro-story').textContent;
+  assert.match(source, /const mobileRoadmap = headingRoadmap\.cloneNode\(true\)/);
+  assert.match(source, /mobileRoadmap\.classList\.add\('as-mobile-roadmap'\)/);
+  assert.ok(source.indexOf('demoSlide.appendChild(mobileRoadmap)') < source.indexOf('demoSlide.appendChild(mobileLinks)'));
+  assert.match(css, /@media \(max-width: 600px\) and \(orientation: portrait\)[^{]*\{[^@]*\.as-host\.story-refined h1 \.story-roadmap-grid \{ display: none; \}/);
+  assert.match(css, /\.as-host\.story-refined \.as-mobile-roadmap\s*\{[^}]*display: grid[^}]*opacity: var\(--as-reveal-alpha, 1\)/);
+});
 test('mobile chat keeps its entire message history and permits touch scrolling', () => {
   assert.match(deckHtml, /touch-action: pan-y/);
   assert.match(deckHtml, /-webkit-overflow-scrolling: touch/);
@@ -259,10 +267,11 @@ test('slide 5 now uses the deck-native soft radial reveal and gather', () => {
   assert.match(css, /\.as-copy\.as-spreading \.story-powered/);
   assert.match(css, /background-attachment: fixed/);
   assert.match(css, /radial-gradient\(circle at var\(--as-x/);
-  assert.match(networkSource, /content\.classList\.toggle\('as-spreading', spreading\)/);
+  assert.match(networkSource, /column\.matches\('\.as-copy'\) \? 'as'/);
+  assert.match(networkSource, /content\.classList\.toggle\(`\$\{kind\}-spreading`, spreading\)/);
   assert.match(networkSource, /const ink = at \? '1' : alpha;/);
-  assert.match(networkSource, /--as-inner/);
-  assert.match(networkSource, /--as-outer/);
+  assert.match(networkSource, /`--\$\{kind\}-inner`/);
+  assert.match(networkSource, /`--\$\{kind\}-outer`/);
   assert.match(networkSource, /svg\.style\.maskImage = svg\.style\.webkitMaskImage = value/);
   assert.doesNotMatch(css, /@keyframes as-story-sweep|as-copy-sweeping/);
   assert.doesNotMatch(networkSource, /as-copy-sweeping/);
@@ -271,8 +280,8 @@ test('reverse visits fade the label and mobile links alongside the canonical cop
   const css = fixture().styles.get('deck-intro-story').textContent;
   assert.match(css, /\.as-copy \.num \{ color: rgb\(224 171 94 \/ var\(--as-copy-alpha, 1\)\)/);
   assert.match(css, /\.as-copy\.as-spreading \.num/);
-  assert.match(css, /\.as-mobile-links \{ display: none; opacity: var\(--as-reveal-alpha, 1\); \}/);
-  assert.match(networkSource, /slide\.style\.setProperty\('--as-reveal-alpha', alpha\)/);
+  assert.match(css, /\.as-mobile-links, \.as-mobile-roadmap \{ display: none; opacity: var\(--as-reveal-alpha, 1\); \}/);
+  assert.match(networkSource, /closest\('\.slide'\)\?\.style\.setProperty\(`--\$\{kind\}-reveal-alpha`, alpha\)/);
   assert.doesNotMatch(css, /as-host\[data-settled\] \.as-mobile-links \{ opacity: 1 !important/);
   assert.doesNotMatch(css, /as-mobile-links-appear/);
 });

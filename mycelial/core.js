@@ -862,6 +862,7 @@
     sides.forEach((sd) => sd.slots.forEach((x) => { if (x.state !== 'none') { x.shown = 0; if (x.state === 'full') x.filledAt = 0; } x.flash = 0; }));
     pace = 0.7; // the pace of a second visit
     ta = Math.min(ta, T.orbit + 0.85); // the last of the orbit is in by here
+    window.GapScurry?.expect(ctx, ta * pace + FLIGHT); // slide 3's tools set off home now, to settle as the ring lands
     ctx.present(slide, 'dt-rewind');
     ctx.present(gapSlide, 'dt-return dt-await');
     unbuilding = { last: window.deckNow?.() ?? performance.now(), raf: 0, seeded: false, shown: false, at: 0 };
@@ -882,6 +883,7 @@
       html.classList.remove('ac-quiet');
       reverseCtx.present(slide, 'dt-rewound', 'dt-rewind');
       launch(true);
+      window.GapScurry?.home(reverseCtx, FLIGHT); // slide 3's tools keep time with its flight
     }
     if (u.seeded) {
       u.at += dt;

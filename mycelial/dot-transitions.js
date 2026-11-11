@@ -466,11 +466,12 @@
   // Decoration must never hold up copy or transition completion.
   const safeZone = (elements, key) => { try { return zone(elements(), key); } catch { return null; } };
   // The text block of a slide: its column, the label included.
-  const stableCopy = (column) => column.matches('.gap-copy, .as-copy');
-  // The wheel revisits and reverses one shared scene. Mask its real copy rather
-  // than exchanging a frozen clone for it at the end of every transition.
-  const liveCopy = (column) => !!column.closest('.fw-host');
-  const stationaryCopy = (column) => stableCopy(column) || liveCopy(column);
+  // Canonical copy is revealed by its ink: the real nodes stay opaque, unmasked
+  // and in place, and only their glyph colour spreads. Slides 3–5 and the wheel
+  // (9–11) share this one path; each kind names its own CSS class and variables.
+  const stableCopy = (column) => !!inkOf(column);
+  const inkOf = (column) => column.matches('.gap-copy') ? 'gap' : column.matches('.as-copy') ? 'as'
+    : column.closest('.fw-host') ? 'fw' : null;
   const copyContent = (column) => column.matches('.gap-copy')
     ? column.querySelector(':scope > .gap-copy-content') : column;
   const lines = (s) => textOf(s).flatMap((col) => [...copyContent(col).children]);
@@ -774,8 +775,7 @@
   // circle reveals it from the node outward, shrinking it draws it back in.
   const SOFT = 150;
   const masks = new WeakMap();
-  // Own every masked surface, not just clones. A canonical wheel root maps
-  // to itself so finishNetwork() and resize() can retire its mask as well.
+  // Every disposable masked clone, by the canonical node it stands in for.
   const overlays = new Map();
   const copyTrace = window.__deckDebug ? [] : null;
   const traceCopy = (operation, slide, context = window.deckNav) => {
@@ -794,13 +794,9 @@
   };
   const removeOverlay = (el) => {
     const overlay = overlays.get(el);
-    if (overlay && overlay !== el) overlay.remove();
+    if (overlay) overlay.remove();
     overlays.delete(el);
     masks.delete(el);
-    if (overlay === el || liveCopy(el)) {
-      el.style.removeProperty('mask-image');
-      el.style.removeProperty('-webkit-mask-image');
-    }
   };
   const clearOverlays = (slide) => textOf(slide).forEach(removeOverlay);
   const cancelOverlay = (slide, state) => {
@@ -864,46 +860,32 @@
     if (stableCopy(el)) {
       // Animate glyph/gradient ink on a stable, opaque semantic tree. No
       // opacity layer, clone, mask or visibility swap participates.
-      const content = copyContent(el);
+      const content = copyContent(el), kind = inkOf(el);
       if (at) masks.set(el, { at: { ...at }, r });
       else masks.delete(el);
       const alpha = at ? String(clamp(r / reach(el, at, bounds))) : hidden ? '0' : '1';
-      if (el.matches('.gap-copy')) {
-        const spreading = Boolean(at);
-        content.classList.toggle('gap-spreading', spreading);
-        if (spreading) {
-          // Use the same viewport origin, radius and soft edge as the regular
-          // copy mask. A fixed background shares one circle across wrapped
-          // inline fragments while the canonical text stays visible in place.
-          content.style.setProperty('--gap-x', `${at.x.toFixed(1)}px`);
-          content.style.setProperty('--gap-y', `${at.y.toFixed(1)}px`);
-          content.style.setProperty('--gap-inner', `${Math.max(0, r - SOFT).toFixed(1)}px`);
-          content.style.setProperty('--gap-outer', `${Math.max(0.01, r).toFixed(1)}px`);
-        } else {
-          for (const property of ['--gap-x', '--gap-y', '--gap-inner', '--gap-outer']) content.style.removeProperty(property);
-        }
+      // The same viewport origin, radius and soft edge as the clone mask. A
+      // fixed background shares one circle across every wrapped fragment. The
+      // wheel has no per-colour alpha rules: its hidden endpoint is a spread of
+      // radius zero, so one mechanism covers hidden, partial and gathered.
+      const spreading = Boolean(at) || (hidden && kind === 'fw');
+      content.classList.toggle(`${kind}-spreading`, spreading);
+      if (spreading) {
+        content.style.setProperty(`--${kind}-x`, `${(at ? at.x : 0).toFixed(1)}px`);
+        content.style.setProperty(`--${kind}-y`, `${(at ? at.y : 0).toFixed(1)}px`);
+        content.style.setProperty(`--${kind}-inner`, `${Math.max(0, r - SOFT).toFixed(1)}px`);
+        content.style.setProperty(`--${kind}-outer`, `${Math.max(0.01, r).toFixed(1)}px`);
+      } else {
+        for (const name of ['x', 'y', 'inner', 'outer']) content.style.removeProperty(`--${kind}-${name}`);
       }
-      if (el.matches('.as-copy')) {
-        // Unlike the temporary CSS wipe, this uses exactly the same growing
-        // radial soft edge as the deck's other copy (including reverse gather).
-        // The heading stays canonical so the editor's WebKit paint path is stable.
-        const spreading = Boolean(at);
-        content.classList.toggle('as-spreading', spreading);
-        const props = ['--as-x', '--as-y', '--as-inner', '--as-outer'];
-        if (spreading) {
-          content.style.setProperty('--as-x', `${at.x.toFixed(1)}px`);
-          content.style.setProperty('--as-y', `${at.y.toFixed(1)}px`);
-          content.style.setProperty('--as-inner', `${Math.max(0, r - SOFT).toFixed(1)}px`);
-          content.style.setProperty('--as-outer', `${Math.max(0.01, r).toFixed(1)}px`);
-        } else props.forEach((property) => content.style.removeProperty(property));
-        // The mobile App | Vision links sit below the player, outside the
-        // text column. Feed them the same outgoing and incoming copy progress.
-        const slide = el.closest('.as-host');
-        if (slide) slide.style.setProperty('--as-reveal-alpha', alpha);
+      // Boxes that are not glyphs (slide 5's mobile links, slide 11's question
+      // pill) sit outside the ink: they follow the same visit's progress.
+      if (kind !== 'gap') el.closest('.slide')?.style.setProperty(`--${kind}-reveal-alpha`, alpha);
+      if (kind === 'as') {
         // SVG braces cannot clip text like glyphs: reveal them using the same
         // node-centred radial mask, in their own coordinate system.
         content.querySelectorAll('.story-brace, .story-bridge').forEach((svg) => {
-          if (!spreading) {
+          if (!at) {
             svg.style.maskImage = svg.style.webkitMaskImage = '';
             return;
           }
@@ -914,7 +896,7 @@
           svg.style.maskImage = svg.style.webkitMaskImage = value;
         });
       }
-      const property = el.matches('.gap-copy') ? '--gap-copy-alpha' : '--as-copy-alpha';
+      const property = `--${kind}-copy-alpha`;
       const ink = at ? '1' : alpha;
       if (content.style.getPropertyValue(property) !== ink) content.style.setProperty(property, ink);
       return;
@@ -925,18 +907,17 @@
       const x = at.x - b.left, y = at.y - b.top;
       const value = r <= 0 ? 'linear-gradient(transparent, transparent)'
         : `radial-gradient(circle at ${x.toFixed(1)}px ${y.toFixed(1)}px, #000 ${Math.max(0, r - SOFT).toFixed(1)}px, transparent ${r.toFixed(1)}px)`;
-      // Identical radius, soft edge and timing; only the paint target differs.
-      const canonical = liveCopy(el);
-      const surface = canonical ? copyContent(el) : overlayFor(el);
-      if (canonical) overlays.set(el, surface);
+      // Only a disposable clone is ever masked; the real copy waits hidden beneath it.
+      const surface = overlayFor(el);
       surface.style.webkitMaskImage = surface.style.maskImage = value;
-      copyContent(el).classList.toggle('dt-copy-hidden', !canonical);
+      copyContent(el).classList.add('dt-copy-hidden');
     } else {
       removeOverlay(el);
       copyContent(el).classList.toggle('dt-copy-hidden', hidden);
     }
   };
   const copyStates = new WeakMap();
+  const REVEAL_GRACE = 700; // wall ms a live reveal may overrun its deadline before recovery takes over
   const ownsCopy = (slide, state, transient = false) => !!state &&
     copyStates.get(slide) === state && state.context?.isCurrent() &&
     (!transient || (state.context.isTransitionCurrent() &&
@@ -970,7 +951,7 @@
     let complete = true;
     textOf(slide).forEach(el => {
       try {
-        if (!stationaryCopy(el)) el.style.transform = '';
+        if (!stableCopy(el)) el.style.transform = '';
         paintCopy(el, null, 0, hidden);
       } catch (error) { complete = false; console.error('Deck copy restoration failed', error); }
     });
@@ -989,12 +970,19 @@
       if (state.timer) window.deckCancelLater(state.timer);
       state.timer = null;
       if (!reuse) clearOverlays(slide);
-      if (deadline) state.timer = window.deckLater(() => {
-        if (!ownsCopy(slide, state, true)) return;
+      if (deadline) {
         // Failure recovery belongs to the existing terminal transaction. It
         // stops writers, reconciles scenes and copy, then declares settlement.
-        window.deckTransaction('recover', context);
-      }, deadline, context);
+        const expire = () => { if (ownsCopy(slide, state, true)) window.deckTransaction('recover', context); };
+        state.timer = window.deckLater(() => {
+          if (!ownsCopy(slide, state, true)) return;
+          // A reveal lands on a painted frame; this timer needs none, and the deck
+          // clock shrinks its margin as the pace rises. A reveal that is already
+          // running gets real frames to land by itself before it is replaced.
+          if (state.phase === 'revealing') state.timer = window.deckLater(expire, REVEAL_GRACE * (window.deckPace?.() || 1), context);
+          else expire();
+        }, deadline, context);
+      }
       textOf(slide).forEach(el => paintCopy(el, at, 0, !at, context.geometry?.box(el)));
       traceCopy('hide', slide, context);
       return state;
@@ -1022,9 +1010,7 @@
       return true;
     },
     get liveCloneCount() {
-      let count = 0;
-      for (const [el, surface] of overlays) if (surface !== el) count++;
-      return count;
+      return overlays.size;
     },
   };
   const reach = (el, at, bounds) => {
@@ -1035,10 +1021,49 @@
   // These forward arrivals keep their picture pace and let only the copy breathe.
   const copyExtra = (context) => {
     if (!(context?.dir > 0) || context.direct || context.rest) return 0;
-    if (context.from === 0 && context.to === 1) return 1000;
+    if (context.from === 0 && context.to === 1) return 1500;
+    // Slide 4's words start when they did and take a second longer to arrive.
+    if (context.from === 2 && context.to === 3) return 1000;
+    // Slide 8 too: a second more on screen, on its 1.3× arrival clock.
+    if (context.from === 6 && context.to === 7) return 1300;
+    // Slide 7 arrives on a quickened clock (deckStoryPacing, 1.45×). Its words
+    // keep slide 2's unhurried spread: about two seconds on screen.
+    if (context.from === 5 && context.to === 6) return 2000;
     return (context.from === 3 && context.to === 4) || (context.from === 4 && context.to === 5) ? 500 : 0;
   };
-  const revealDuration = (slide, at, context) => Math.max(0, ...textOf(slide).map((el) => clamp(reach(el, at, context?.geometry?.box(el)) / 0.62, 1100, 1600) + copyExtra(context)));
+  // A step back unwinds: the words return by the gather played backwards, not
+  // by a second forward entrance. It runs at a third of the gather's speed
+  // (1.2 s on screen, whatever pace the step back runs at), so the words come
+  // back alongside the picture's own reverse instead of snapping in ahead of it.
+  const unwinding = (context) => context?.dir < 0 && !context.direct;
+  const UNWIND = 3; // how many times longer than the gather its reverse takes
+  const unwindMs = () => GATHER * UNWIND * (window.deckPace?.() || 1);
+  // On a step back the words land with the picture. Each reverse picture's length on
+  // the deck clock (ms from the turn's start to its landing), by the slide stepped back
+  // from: measured, and the same within a few percent on phone and desktop screens.
+  const REVERSE_PICTURE = [0, 2240, 1965, 3320, 2250, 3860, 4720, 2725, 2700, 1640, 1620];
+  const UNWIND_FLOOR = 700; // wall ms: the shortest the unwind may be squeezed to when the words had to wait
+  // Step-backs set by eye where landing together is not what reads best, by the slide stepped
+  // back from, in ms on screen: when the unwind starts, how long it takes, and (free) whether it
+  // may start while the picture is still passing over the words' place.
+  const UNWIND_TUNE = {
+    10: { start: 0, length: 670, free: true }, // 11→10: from the start of the wheel's return, as long as before
+    9: { start: 0, length: 1200, free: true }, // 10→9: with the wheel's return, not after it
+    8: { start: 1470, length: 700 },           // 9→8: as the picture above arrives
+    7: { start: 370, length: 785, free: true }, // 8→7: half a second sooner, as long as before
+    4: { start: 680, length: 660, free: true }, // 5→4: half a second sooner, as long as before
+  };
+  const landings = new WeakMap(); // navigation → { at: deck time its reverse picture lands, length: a tuned unwind (deck ms) }
+  const pictureLands = (context) => unwinding(context) && context.to === context.from - 1 ? REVERSE_PICTURE[context.from] || 0 : 0;
+  // As long as the full unwind when there is room for it before the landing; shorter,
+  // down to the floor, when the picture kept the words waiting past that point.
+  const unwindFor = (context) => {
+    const full = unwindMs(), landing = landings.get(context);
+    if (!landing) return full;
+    return landing.length || clamp(landing.at - context.now(), UNWIND_FLOOR * (window.deckPace?.() || 1), full);
+  };
+  const revealDuration = (slide, at, context) => unwinding(context) ? unwindMs()
+    : Math.max(0, ...textOf(slide).map((el) => clamp(reach(el, at, context?.geometry?.box(el)) / 0.62, 1100, 1600) + copyExtra(context)));
   // Points spread through a text block, for threads to run to or from.
   const spots = (el, n, bounds) => {
     const b = bounds || el.getBoundingClientRect();
@@ -1049,6 +1074,7 @@
   };
   const seep = (k) => 0.5 - 0.5 * Math.cos(Math.PI * k); // gentle in, gentle out
   const easeIn = (k) => k * k * (3 - 2 * k) * k;
+  const easeUnwind = (k) => 1 - easeIn(1 - k); // the gather's own curve, run backwards
   const textTweens = new Set(), textTweensByContext = new Map();
   const tween = (duration, ease, step, delay = 0, context = window.deckNav) => {
     let raf = 0, stopped = false, resolve;
@@ -1138,16 +1164,19 @@
         : at;
       copy.paint(el, origin, 0, bounds, state);
       const far = reach(el, origin, bounds);
-      const duration = clamp(far / 0.62, 1100, 1600) + copyExtra(context);
+      const back = unwinding(context) && !timing;
+      const duration = back ? unwindFor(context) : clamp(far / 0.62, 1100, 1600) + copyExtra(context);
       if (!still) {
-        for (const p of spots(el, 7, bounds)) {
+        for (const p of spots(el, back ? 6 : 7, bounds)) {
           const pts = wander(at, p);
           const d = lengths(pts).at(-1);
-          hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 1.1, rest: 0, smooth: true, owner: context, delay: delay / 1000, duration: ((duration + (timing ? 1000 : 0)) / 1000) * clamp(d / (far - SOFT), 0.3, 1) });
+          // The gather's threads, running out from the node instead of into it.
+          if (back) hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: duration / 1000 * 0.95, owner: context, delay: delay / 1000 });
+          else hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 1.1, rest: 0, smooth: true, owner: context, delay: delay / 1000, duration: ((duration + (timing ? 1000 : 0)) / 1000) * clamp(d / (far - SOFT), 0.3, 1) });
         }
       }
       const motion = timing?.(duration);
-      const run = tween(motion?.duration || duration, motion?.ease || seep, (k) => {
+      const run = tween(motion?.duration || duration, motion?.ease || (back ? easeUnwind : seep), (k) => {
         if (!s.classList.contains('on')) return;
         if (copyStates.get(s) !== state) return;
         copy.paint(el, origin, k * far, context.geometry?.box(el), state);
@@ -1255,7 +1284,7 @@
     if (!(Math.abs(trail.x - put.x) < e && Math.abs(trail.y - put.y) < e)) {
       put.x = trail.x; put.y = trail.y;
       textOf(current).forEach((el) => {
-        if (!stationaryCopy(el)) el.style.transform = `translate(${trail.x.toFixed(2)}px, ${trail.y.toFixed(2)}px)`;
+        if (!stableCopy(el)) el.style.transform = `translate(${trail.x.toFixed(2)}px, ${trail.y.toFixed(2)}px)`;
       });
     }
   };
@@ -1559,7 +1588,12 @@
     // Upright cards cross the copy later. Bound their head start as well, so
     // the slow reveal begins about a second before its former visible onset.
     const finalLead = gentleFinal && innerWidth <= 760 && innerHeight > innerWidth ? 1100 : 0;
-    const early = Math.max(overlap(prev, from, to, context), pictureLead, finalLead);
+    // A step back: start the unwind so that it ends as the reverse picture lands.
+    const lands = pictureLands(context), tune = lands ? UNWIND_TUNE[context.from] : null;
+    const onScreen = window.deckPace?.() || 1; // deck ms per ms on screen, for this turn
+    if (lands) landings.set(context, { at: started + lands, length: tune ? tune.length * onScreen : 0 });
+    let early = tune ? tune.start * onScreen
+      : Math.max(overlap(prev, from, to, context), pictureLead, finalLead, lands ? lands - unwindMs() : 0);
     // The original hold also bounds recovery for the longer final reveal.
     const revealAt = Math.max(started + early, context.textDeadline);
     const copyVisit = copy.hide(next, context, to, Math.max(0, revealAt - context.now()) + revealDuration(next, to, context) + 400);
@@ -1625,7 +1659,7 @@
       elapsed = context.now() - started;
       if (textDue && elapsed >= early) {
         textDue = false;
-        if (gentleFinal) grow();
+        if (gentleFinal || tune?.free) grow();
         else context.textReady.then((result) => { if (result === 'completed' && context.isCurrent() && !context.terminal) grow(); });
       }
       if (travelDue || textDue) {
@@ -1634,6 +1668,18 @@
       }
     };
     timers.push(window.deckLater(advanceTurn, Math.max(0, Math.min(early, 340) - (context.now() - started)), context));
+    // The expected landing is only a forecast. A picture that finishes sooner (or had no
+    // reverse to play) never leaves the words waiting on it.
+    if (lands) {
+      const landed = (event) => {
+        if (event.detail?.generation !== context.generation || event.detail.phase !== 'entry') return;
+        // Its landing is now known, not forecast: words still to come follow at once, in the short unwind.
+        landings.get(context).at = context.now();
+        if (textDue && !tune) { early = 0; advanceTurn(); }
+      };
+      window.addEventListener('deck-phase', landed);
+      context.transitionDefer(() => window.removeEventListener('deck-phase', landed));
+    }
   };
 
   // Selection is output from the controller; it is no longer observed here.
@@ -1793,6 +1839,7 @@
       roots: textOf(slide).map((el) => {
         const style = getComputedStyle(el);
         return { hidden: el.classList.contains('dt-copy-hidden'), registered: overlays.has(el),
+          spreading: el.classList.contains('fw-spreading'), outer: el.style.getPropertyValue('--fw-outer'),
           mask: style.maskImage || style.webkitMaskImage, visibility: style.visibility,
           opacity: style.opacity, transform: style.transform };
       }),
