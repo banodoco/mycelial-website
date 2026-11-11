@@ -241,6 +241,10 @@
         /* The roadmap sits below the demo on phones: the copy inside the heading is hidden and this
            copy follows the reveal alpha instead of the ink sweep, like the links below it. */
         .as-host.story-refined h1 .story-roadmap-grid { display: none; }
+        /* App | Vision stays in the heading under "Meet Astrid" (inside .as-copy, so the ink reveal
+           covers it); the below-demo clone is only for 600-760 px portrait. */
+        .as-host.story-refined .story-intro > .story-links { display: flex; }
+        html[data-ver="f"] .as-host.story-refined .as-mobile-links { display: none; }
         html[data-ver="f"] .as-host.story-refined .as-mobile-roadmap {
           display: grid; flex: none; position: relative; z-index: 2; margin: 12px auto 0;
           color: rgb(239 230 214); opacity: var(--as-reveal-alpha, 1);
