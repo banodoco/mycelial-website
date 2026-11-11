@@ -34,3 +34,24 @@ through the ordinary `finish` transaction (no `recover`), with no mask, clone or
 `dt-copy-hidden` on the wheel's nodes; a height change mid-turn produced `finish` then
 `resize`. This is not an iPhone test: the original report has not been reproduced or
 confirmed fixed on a physical device.
+
+## Follow-up: the wheel's words keep their own layer (iPhone finding)
+
+On an iPhone (Chrome iOS, build `1ff6141`) the words on slides 10 and 11 could still be
+missing after a normally finished turn. The `?debug` log showed them laid out, opaque,
+visible, unmasked and in colour; repaint, hiding canvases, removing the wheel's layers
+and removing the inactive slides did not bring them back. The `lift` switch, which gives
+the text root a compositing layer of its own, did, both times it was tried.
+
+Every other slide's copy is already transformed (idle drift) or positioned above its
+picture. The wheel's was plain in-flow content between fixed layers below the deck and
+the cards' fixed layer above it. It now has `position: relative; z-index: 1;
+will-change: opacity` for as long as its slide is on or presented, so it is never
+promoted or demoted mid-turn.
+
+`will-change: opacity`, not `transform`: a transform hint makes the ink's
+`background-attachment: fixed` gradient resolve against the layer instead of the
+viewport (seen in Chromium: the reveal spread from the wrong place). The phone test
+used `transform`; `opacity` is the same promotion without that side effect, but it has
+not itself been confirmed on the phone. If text is ever missing again, `lift` in the
+debug panel still applies the transform version for comparison.

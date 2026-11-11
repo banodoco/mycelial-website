@@ -1012,6 +1012,15 @@
   .fw-host .fw-spreading h1 { --fw-ink: 239 230 214; }
   .fw-host .fw-spreading h1 em, .fw-host .fw-stat.fw-spreading a { --fw-ink: 240 198 126; }
   .fw-host .fw-stat.fw-spreading b { --fw-ink: 236 197 126; }
+  /* The wheel's words keep a compositing layer of their own for as long as their slide is shown. Everywhere else the
+     copy is already transformed (the idle drift) or positioned above its picture; here it was plain in-flow content
+     between the wheel's fixed layers below the deck and the cards' fixed layer above it, and iOS WebKit could leave
+     it out of the composited page though it was laid out, styled and painted (an app-switch snapshot showed it).
+     On an iPhone, giving it this layer was the one change that brought missing text back; removing the wheel's
+     layers or the other slides did not. The layer lasts the whole visit, so nothing is promoted or demoted mid-turn. */
+  html[data-ver="f"] .fw-host:is(.on, [data-deck-present]):not(.fw-raise) > .split > :first-child,
+  html[data-ver="f"] .fw-raise:is(.on, [data-deck-present]) > .split { position: relative; z-index: 1; will-change: opacity; }
+  html[data-ver="f"] .fw-host:is(.on, [data-deck-present]) > .fw-stat { z-index: 1; will-change: opacity; }
   html[data-ver="f"] .fw-raise { justify-content: center; padding-bottom: 4vh; }
   html[data-ver="f"] .fw-raise h1 { max-width: 13em; font-size: clamp(2.1rem, 3.7vw, 3.9rem); }
   .fw-sub { max-width: 30em; margin: 1.1rem auto 0; font-size: clamp(1.02rem, 1.3vw, 1.25rem); line-height: 1.5; color: var(--soft); text-wrap: balance; }
