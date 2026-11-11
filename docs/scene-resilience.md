@@ -62,3 +62,44 @@ compares static plane/flag geometry and images with the baseline and records
 stroke calls per animation frame. These are bounded work measurements, not
 physical-device GPU-memory or battery claims. WebKit emulation does not prove
 that every intermittent physical-iPhone symptom is fixed.
+
+## Slide 6 on a phone: layer size, the step back from 7, and an entry that trusts nothing
+
+Baseline: `63db774` (round 6). Measured in Chromium with phone emulation (390×669 at 3×, touch, 4× CPU
+throttle); nothing here was run in WebKit, and what is said about an iPhone is inference from these figures.
+
+- **Layer size.** The world used to be laid out in scene px and scaled down as a whole (`scale(k)`; in Chrome,
+  CSS zoom instead). A box under the perspective is a compositing layer, and a layer is painted at its laid-out
+  size. On the phone k ≈ 0.146: the five planes at rest were 1,092,000 css px² of layers for 23,300 px² on
+  screen, and at the start of the unfold from slide 5 the planes, the three copies of slide 5's panels and the
+  carried picture together reached 8.4–9.6 million css px² (about 76–86 million device pixels at 3×, ~300–350 MB
+  if an engine backs them all). Each plane is now a slab (the layer, at its size on screen, under a perspective
+  k times the scene's) holding the plane at its scene size, scaled by k in the flat. The peak is about 0.2
+  million css px². The picture is the same: with the deck's clock stepped frame by frame, every plane, copy,
+  carried picture and the mink are within 0.1 px of the former layout in all four turns around the slide, on a
+  phone, a tablet on its side and a desktop. `?stack=scaled` (or the debug panel's `st big`) lays the world out
+  the former way.
+- **The playhead** on the timeline plane has a layer of its own only where the film plays (`.st.is-live`): a
+  layer inside a plane makes WebKit composite the plane's content at scene size again.
+- **The guide's bead** has a small canvas of its own that follows it. The threads' canvas is drawn only when what
+  it shows changes; at rest it used to be cleared, re-stamped and re-uploaded in every frame.
+- **The step back from slide 7.** While the mink holds the stack its root's opacity and scale are written per
+  frame. Slide 6 then carries `dt-return`, whose rule gives the slide's pictures a 0.6 s opacity transition, so
+  each of those writes began a new transition on the root (measured: 0.42 s for a fade written in 0.08 s). The
+  root now takes no transition while it is held. The pile therefore reaches full opacity at about 10 % of its size
+  (behind her) and no longer at about 45 %; nothing else in the turn changes, and its length is unchanged.
+- **Entry is idempotent.** `start()` clears every residue an exit can leave (root transform/opacity/transition,
+  `is-gathering`, the pile, hand-off copies, a stray avatar copy, inline display/visibility/opacity on planes,
+  flags, cards and canvas, `st-arrive`, the slide's scroll) and forgets what was last written, so every box is
+  written again. `landAtRest()` is the one settled picture, used by rest/direct entry, restore and recovery;
+  its steps are tried one by one.
+- **The loop cannot end the picture.** Every frame fault lands the rest picture. The loop restarts twice per
+  visit, then stands still with cards opening without a clock. The gathering's frames (stack and slide 7) have
+  their own boundaries and give the stack back whole. About once a second, and at every `deck-transaction` on the
+  slide, the settled DOM is checked against what it must be (`restFaults()`, inline styles only); a mismatch is
+  reported as a `stack/state` scene fault and repaired.
+- **Diagnostics.** `__deckDebug.stack` adds `wrong` (the state check), per-plane rect/opacity/styles, root and
+  slide classes, canvases, flags and running animations; `stackControl` backs the panel's `st restore`,
+  `st layer` (the compositing hint, a proposal only), `st flat` and `st big`. The panel's quarter-second tick no
+  longer runs its whole-document hit test unless the panel is open or a log is copied: it cost about two thirds of
+  the main thread at 4× throttle.
