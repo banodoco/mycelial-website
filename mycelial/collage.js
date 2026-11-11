@@ -547,7 +547,7 @@
   // Its hold begins once landed; the front film's preview starts on the
   // approach so motion is already visible on arrival.
   const ARRIVE = 2600, SWEEP = 0.55 * 2 * Math.PI;
-  let arrival = null, parked = 0;
+  let arrival = null, parked = 0, ease = null; // ease: the ring easing into a new layout (relayout, below)
   const arrive = () => {
     if (still || !box || !active()) return;
     const to = nearest(goal());
@@ -700,6 +700,7 @@
       wake();
     } else {
       cancelRest();
+      ease?.cancel(); // the slide's own recede owns the ring's transform now
       clearTimeout(wheelEnd); wheelEnd = 0;
       press = null; pressing = false;
       manualUntil = 0;
@@ -731,8 +732,10 @@
     if (ctx.to === 1 && !ctx.direct && !ctx.rest && !still) ctx.present(slide, 'dt-leaving');
     syncMotion();
   };
-  const sceneRestore = (ctx) => {
-    if (ctx.to === 0) { clearTimeout(parked); land(); }
+  const sceneRestore = (ctx, claim) => {
+    // A viewport or font layout re-lays the ring (relayout, above) and leaves its arrival to finish; only an
+    // interruption (recovery) lands it.
+    if (ctx.to === 0) { clearTimeout(parked); if (!(arrival && ['resize', 'fonts'].includes(claim?.reason))) land(); }
     return true;
   };
   window.deckRegisterScene?.([0], { enter: sceneEnter, exit: sceneExit, restore: sceneRestore, resize: () => { syncMotion(); return true; } });
@@ -954,12 +957,28 @@
   // answers a change the layout made itself.
   let stale = false, laid = '';
   const sizes = () => [vis.clientWidth, vis.clientHeight, text.offsetWidth, text.offsetHeight].map(Math.round);
+  // A ring that is still arriving (or easing into an earlier layout) does not jump when its layout changes under it
+  // (a phone's toolbar, a late font): the new layout is laid in place, the ring is drawn where it stood, and eases over.
+  // Both layouts put a ring point w (card heights) at box + k·w, so one scale and one shift about the box's corner map
+  // the one onto the other. The corner is the transform origin, so the matrix's shift is the box's own.
   const relayout = () => {
     if (!slide.classList.contains('on') && laid) { stale = true; return true; }
+    const shown = (arrival || ease) && box ? (() => {
+      const m = new DOMMatrix(getComputedStyle(root).transform.replace('none', ''));
+      return { k: m.a * G.k, x: box.left + m.e, y: box.top + m.f };
+    })() : null;
     if (!layout()) { stale = true; return false; }
     stale = false;
     pose();
     laid = sizes();
+    if (shown) {
+      ease?.cancel();
+      const s = shown.k / G.k, pad = box.left - parseFloat(root.style.left);
+      root.style.transformOrigin = `${pad}px ${pad}px`;
+      const mine = ease = root.animate([{ transform: `translate(${shown.x - box.left}px, ${shown.y - box.top}px) scale(${s})` }, { transform: 'none' }],
+        { duration: 700, easing: 'cubic-bezier(.3, 0, .2, 1)' });
+      mine.onfinish = mine.oncancel = () => { if (ease === mine) { ease = null; root.style.transformOrigin = ''; } };
+    }
     return true;
   };
   window.deckOnResize((ctx, reason, claim) => {
