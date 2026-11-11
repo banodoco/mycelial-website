@@ -1038,6 +1038,19 @@
   const unwinding = (context) => context?.dir < 0 && !context.direct;
   const UNWIND = 3; // how many times longer than the gather its reverse takes
   const unwindMs = () => GATHER * UNWIND * (window.deckPace?.() || 1);
+  // On a step back the words land with the picture. Each reverse picture's length on
+  // the deck clock (ms from the turn's start to its landing), by the slide stepped back
+  // from: measured, and the same within a few percent on phone and desktop screens.
+  const REVERSE_PICTURE = [0, 2240, 1965, 3320, 2250, 3860, 3660, 2725, 2700, 1640, 1620];
+  const UNWIND_FLOOR = 700; // wall ms: the shortest the unwind may be squeezed to when the words had to wait
+  const landings = new WeakMap(); // navigation → deck time at which its reverse picture lands
+  const pictureLands = (context) => unwinding(context) && context.to === context.from - 1 ? REVERSE_PICTURE[context.from] || 0 : 0;
+  // As long as the full unwind when there is room for it before the landing; shorter,
+  // down to the floor, when the picture kept the words waiting past that point.
+  const unwindFor = (context) => {
+    const full = unwindMs(), at = landings.get(context);
+    return at === undefined ? full : clamp(at - context.now(), UNWIND_FLOOR * (window.deckPace?.() || 1), full);
+  };
   const revealDuration = (slide, at, context) => unwinding(context) ? unwindMs()
     : Math.max(0, ...textOf(slide).map((el) => clamp(reach(el, at, context?.geometry?.box(el)) / 0.62, 1100, 1600) + copyExtra(context)));
   // Points spread through a text block, for threads to run to or from.
@@ -1141,13 +1154,13 @@
       copy.paint(el, origin, 0, bounds, state);
       const far = reach(el, origin, bounds);
       const back = unwinding(context) && !timing;
-      const duration = back ? unwindMs() : clamp(far / 0.62, 1100, 1600) + copyExtra(context);
+      const duration = back ? unwindFor(context) : clamp(far / 0.62, 1100, 1600) + copyExtra(context);
       if (!still) {
         for (const p of spots(el, back ? 6 : 7, bounds)) {
           const pts = wander(at, p);
           const d = lengths(pts).at(-1);
           // The gather's threads, running out from the node instead of into it.
-          if (back) hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: 0.38 * UNWIND, owner: context, delay: delay / 1000 });
+          if (back) hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 0.7, rest: 0, duration: duration / 1000 * 0.95, owner: context, delay: delay / 1000 });
           else hypha(pts, { width: 0.6, alpha: 0.3, depth: 1, fade: 1.1, rest: 0, smooth: true, owner: context, delay: delay / 1000, duration: ((duration + (timing ? 1000 : 0)) / 1000) * clamp(d / (far - SOFT), 0.3, 1) });
         }
       }
@@ -1564,7 +1577,10 @@
     // Upright cards cross the copy later. Bound their head start as well, so
     // the slow reveal begins about a second before its former visible onset.
     const finalLead = gentleFinal && innerWidth <= 760 && innerHeight > innerWidth ? 1100 : 0;
-    const early = Math.max(overlap(prev, from, to, context), pictureLead, finalLead);
+    // A step back: start the unwind so that it ends as the reverse picture lands.
+    const lands = pictureLands(context);
+    if (lands) landings.set(context, started + lands);
+    let early = Math.max(overlap(prev, from, to, context), pictureLead, finalLead, lands ? lands - unwindMs() : 0);
     // The original hold also bounds recovery for the longer final reveal.
     const revealAt = Math.max(started + early, context.textDeadline);
     const copyVisit = copy.hide(next, context, to, Math.max(0, revealAt - context.now()) + revealDuration(next, to, context) + 400);
@@ -1639,6 +1655,18 @@
       }
     };
     timers.push(window.deckLater(advanceTurn, Math.max(0, Math.min(early, 340) - (context.now() - started)), context));
+    // The expected landing is only a forecast. A picture that finishes sooner (or had no
+    // reverse to play) never leaves the words waiting on it.
+    if (lands) {
+      const landed = (event) => {
+        if (event.detail?.generation !== context.generation || event.detail.phase !== 'entry') return;
+        // Its landing is now known, not forecast: words still to come follow at once, in the short unwind.
+        landings.set(context, context.now());
+        if (textDue) { early = 0; advanceTurn(); }
+      };
+      window.addEventListener('deck-phase', landed);
+      context.transitionDefer(() => window.removeEventListener('deck-phase', landed));
+    }
   };
 
   // Selection is output from the controller; it is no longer observed here.
