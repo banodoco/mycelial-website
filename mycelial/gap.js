@@ -298,13 +298,14 @@
   };
 
   // ---- Leaving for slide 4, and coming back ---------------------------------
-  // On to slide 4 the tools scatter like startled mice: each bolts off towards the bottom left, away from the empty
-  // ring, veering a little as it runs, shrinking and fading as it goes; the nearest start first. The axes and labels
-  // fade, and the ring is left to lift off alone and become the core's bright eye (core.js). Back from slide 4 the
-  // ring flies home to its corner while the tools creep back in from the bottom left, taking their time, growing and
-  // fading in until they are settled in their places as it lands; the axes and labels fade in round them.
+  // On to slide 4 the tools scatter like startled mice, rippling out from the empty ring: each flinches, then darts
+  // off a short way towards the bottom left, away from the ring, zigzagging and gathering speed as it goes, and only
+  // at the end of its run shrinks and is gone. The axes and labels fade, and the ring is left to lift off alone and
+  // become the core's bright eye (core.js). Back from slide 4 it is the same run played backwards, at a slower pace:
+  // the ring flies home to its corner while the tools zigzag back in from the bottom left, slowing as they come, and
+  // settle in their places with a last small start as it lands; the axes and labels fade in round them.
   const vis = root.parentElement;
-  const RUN = 0.45; // seconds from the first tool bolting to the last gone
+  const RUN = 0.6; // seconds from the first tool flinching to the last gone (the chart is put away at 0.7 s)
   const HOME = 0.72; // seconds, coming back, from the first setting off home to the last settled
   let runs = [], awaiting = null, expected = null;
   const settle = (keepBare = false) => {
@@ -314,14 +315,17 @@
     vis?.classList.remove('gp-held');
     if (!keepBare) { root.classList.remove('is-bare'); empty.style.visibility = ''; }
   };
-  // Each tool's run: off towards the bottom left (leaning away from the ring), with a zigzag that grows in as it
-  // gets going. Leaving, it bolts and fades; coming back the same path is walked in towards home, slowing to a stop.
+  // Each tool's run, in its own time t (0 → 1): a flinch back towards the ring with a small swell, then off towards
+  // the bottom left (leaning away from the ring), accelerating, darting from side to side about its heading; it stays
+  // whole for most of the run and shrinks and fades over its last stretch. Coming back plays the same frames backwards.
+  const tri = (x) => (2 / Math.PI) * Math.asin(Math.sin(2 * Math.PI * x)); // a zigzag between -1 and 1, one cycle per unit
+  const FLINCH = 0.16; // of each run
   const scurry = (back = false) => {
     runs.forEach((a) => a.cancel());
     runs = [];
     const h = empty.querySelector('i').getBoundingClientRect(), box = root.getBoundingClientRect();
     const hx = h.left + h.width / 2, hy = h.top + h.height / 2;
-    const reach = Math.max(80, Math.min(box.width, box.height) * 0.42);
+    const reach = Math.max(36, Math.min(box.width, box.height) * 0.16);
     const mice = tools.map((el) => {
       const r = el.querySelector('i').getBoundingClientRect();
       if (!r.width || (!back && !el.classList.contains('is-in'))) return null;
@@ -332,8 +336,8 @@
     const far = Math.max(1, ...mice.map((m) => (m ? m.d : 0)));
     mice.forEach((m) => {
       if (!m) return;
-      m.delay = 0.1 * (m.d / far) + 0.03 * rnd(); // the nearest are startled first
-      m.dur = 0.24 + 0.08 * rnd();
+      m.delay = 0.18 * (m.d / far) + 0.04 * rnd(); // rippling out from the ring
+      m.dur = 0.34 + 0.08 * rnd();
     });
     const end = Math.max(0.01, ...mice.map((m) => (m ? m.delay + m.dur : 0)));
     const slow = (back ? HOME : RUN) / end;
@@ -341,16 +345,18 @@
       if (!m) return;
       let dx = -0.62 + 0.38 * m.ax, dy = 0.62 + 0.38 * m.ay;
       const n = Math.hypot(dx, dy) || 1; dx /= n; dy /= n;
-      const dist = reach * (0.75 + 0.45 * rnd()), amp = reach * (0.03 + 0.04 * rnd()), turns = 1.4 + rnd(), ph = rnd() * Math.PI * 2;
+      const dist = reach * (0.8 + 0.4 * rnd()), amp = Math.max(6, dist * (0.16 + 0.06 * rnd())), turns = 1.1 + 0.4 * rnd(), ph = rnd();
       const frames = [];
-      for (let i = 0; i <= 8; i++) {
-        const t = i / 8; // the time along this tool's run
-        const a = back ? 1 - t * (2 - t) : 1 - Math.pow(1 - t, 1.7); // how far out: bolting off; coming back, easing in to a stop
-        const w = amp * Math.sin(turns * Math.PI * a + ph) * Math.min(1, a * 4);
+      for (let i = 0; i <= 24; i++) {
+        const t = i / 24;
+        const f = clamp(t / FLINCH), q = clamp((t - FLINCH) / (1 - FLINCH)); // the flinch, then the run
+        const a = t < FLINCH ? -0.06 * Math.sin(Math.PI * f) : Math.pow(q, 1.7); // how far out
+        const w = amp * (tri(turns * q + ph) - tri(ph)) * Math.min(1, q * 4); // the darts, from its own phase
         const px = dx * dist * a - dy * w, py = dy * dist * a + dx * w;
-        const o = back ? smooth(clamp(t / 0.45)) : 1 - smooth(clamp((t - 0.2) / 0.8));
-        frames.push({ transform: `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px) ${m.base} scale(${(1 - 0.6 * a).toFixed(3)})`, opacity: o.toFixed(3) });
+        const sc = (1 + 0.07 * Math.sin(Math.PI * f)) * (1 - 0.5 * smooth(clamp((t - 0.7) / 0.3)));
+        frames.push({ transform: `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px) ${m.base} scale(${sc.toFixed(3)})`, opacity: (1 - smooth(clamp((t - 0.78) / 0.22))).toFixed(3) });
       }
+      if (back) frames.reverse();
       const delay = (back ? end - m.delay - m.dur : m.delay) * slow;
       runs.push(m.el.animate(frames, { duration: m.dur * slow * 1000, delay: delay * 1000, fill: 'both' }));
     });
