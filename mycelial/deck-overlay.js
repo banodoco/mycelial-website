@@ -183,7 +183,7 @@
       }
       /* Slide 5 now shares the network's soft radial ink reveal/gather with slide 4.
          The canonical text stays put for the editor's Safari/WebKit paint path. */
-      .as-mobile-links { display: none; opacity: var(--as-reveal-alpha, 1); }
+      .as-mobile-links, .as-mobile-roadmap { display: none; opacity: var(--as-reveal-alpha, 1); }
       .as-copy .num { color: rgb(224 171 94 / var(--as-copy-alpha, 1)); }
       .as-copy .num .act { color: rgb(184 169 143 / var(--as-copy-alpha, 1)); }
       .as-copy.as-spreading .num,
@@ -236,6 +236,25 @@
         html[data-ver="f"] .as-host.story-refined .as { margin-top: 12px; }
         html[data-ver="f"] .as-host.story-refined .as-mobile-links { margin-top: 6px; }
       }
+      /* Portrait phones only (not the 600-760 px tablets, which keep the roadmap in the heading). */
+      @media (max-width: 600px) and (orientation: portrait), (max-width: 600px) and (min-height: 501px) {
+        /* The roadmap sits below the demo on phones: the copy inside the heading is hidden and this
+           copy follows the reveal alpha instead of the ink sweep, like the links below it. */
+        .as-host.story-refined h1 .story-roadmap-grid { display: none; }
+        html[data-ver="f"] .as-host.story-refined .as-mobile-roadmap {
+          display: grid; flex: none; position: relative; z-index: 2; margin: 12px auto 0;
+          color: rgb(239 230 214); opacity: var(--as-reveal-alpha, 1);
+        }
+        .as-mobile-roadmap .story-roadmap-lines { font-size: clamp(.95rem, 4vw, 1.2rem); line-height: 1.12; }
+        .as-mobile-roadmap .story-bridge { height: 24px; margin-top: 3px; }
+        .as-mobile-roadmap .story-powered { font-size: clamp(.9rem, 3.5vw, 1rem); }
+      }
+      @media (max-width: 600px) and (orientation: portrait) and (max-height: 740px) {
+        html[data-ver="f"] .as-host.story-refined .as-mobile-roadmap { margin-top: 8px; }
+        .as-mobile-roadmap .story-roadmap-lines { font-size: clamp(.88rem, 3.8vw, 1.02rem); }
+        .as-mobile-roadmap .story-bridge { height: 18px; margin-top: 2px; }
+        .as-mobile-roadmap .story-powered { font-size: .85rem; }
+      }
       @media (prefers-reduced-motion: reduce) {
         .as-host[data-settled] .story-astrid { animation: none; }
       }
@@ -257,6 +276,14 @@
   // introduction and the demo. Keep the existing heading links on desktop.
   const demoSlide = document.querySelector('.as-host');
   const headingLinks = demoSlide?.querySelector('.story-intro > .story-links');
+  const headingRoadmap = demoSlide?.querySelector('h1 .story-roadmap-grid');
+  if (headingRoadmap && !demoSlide.querySelector('.as-mobile-roadmap') && demoSlide.querySelector('.as')) {
+    // Phones also show Today / Soon / Open Models after the demo, before the links.
+    // Like the links, the copy is display:none outside phones, so it is never read twice.
+    const mobileRoadmap = headingRoadmap.cloneNode(true);
+    mobileRoadmap.classList.add('as-mobile-roadmap');
+    demoSlide.appendChild(mobileRoadmap);
+  }
   if (headingLinks && !demoSlide.querySelector('.as-mobile-links') && demoSlide.querySelector('.as')) {
     const mobileLinks = headingLinks.cloneNode(true);
     mobileLinks.classList.add('as-mobile-links');

@@ -246,6 +246,14 @@ test('slide 5 mobile footer links are placed after the demo, not in the header',
   assert.match(css, /padding-top: clamp\(28px, 4\.4vh, 38px\)/);
   assert.match(css, /padding-bottom: max\(59px/);
 });
+test('slide 5 portrait phones show the roadmap after the demo, before the links', () => {
+  const css = fixture().styles.get('deck-intro-story').textContent;
+  assert.match(source, /const mobileRoadmap = headingRoadmap\.cloneNode\(true\)/);
+  assert.match(source, /mobileRoadmap\.classList\.add\('as-mobile-roadmap'\)/);
+  assert.ok(source.indexOf('demoSlide.appendChild(mobileRoadmap)') < source.indexOf('demoSlide.appendChild(mobileLinks)'));
+  assert.match(css, /@media \(max-width: 600px\) and \(orientation: portrait\)[^{]*\{[^@]*\.as-host\.story-refined h1 \.story-roadmap-grid \{ display: none; \}/);
+  assert.match(css, /\.as-host\.story-refined \.as-mobile-roadmap\s*\{[^}]*display: grid[^}]*opacity: var\(--as-reveal-alpha, 1\)/);
+});
 test('mobile chat keeps its entire message history and permits touch scrolling', () => {
   assert.match(deckHtml, /touch-action: pan-y/);
   assert.match(deckHtml, /-webkit-overflow-scrolling: touch/);
@@ -272,7 +280,7 @@ test('reverse visits fade the label and mobile links alongside the canonical cop
   const css = fixture().styles.get('deck-intro-story').textContent;
   assert.match(css, /\.as-copy \.num \{ color: rgb\(224 171 94 \/ var\(--as-copy-alpha, 1\)\)/);
   assert.match(css, /\.as-copy\.as-spreading \.num/);
-  assert.match(css, /\.as-mobile-links \{ display: none; opacity: var\(--as-reveal-alpha, 1\); \}/);
+  assert.match(css, /\.as-mobile-links, \.as-mobile-roadmap \{ display: none; opacity: var\(--as-reveal-alpha, 1\); \}/);
   assert.match(networkSource, /closest\('\.slide'\)\?\.style\.setProperty\(`--\$\{kind\}-reveal-alpha`, alpha\)/);
   assert.doesNotMatch(css, /as-host\[data-settled\] \.as-mobile-links \{ opacity: 1 !important/);
   assert.doesNotMatch(css, /as-mobile-links-appear/);
