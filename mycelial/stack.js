@@ -234,7 +234,7 @@
     box(carry, s); carry.style.transform = planes[0].style.transform; carry.style.opacity = cy.a.toFixed(3);
     carryPic.style.transform = `translate(${lerp(A.x, B.x, q).toFixed(2)}px, ${lerp(A.y, B.y, q).toFixed(2)}px) scale(${(lerp(A.w, B.w, q) / cy.P.w).toFixed(5)})`;
   };
-  const view = { k: 1, ox: 0, oy: 0, mobile: false, right: true, low: false };
+  const view = { k: 1, ox: 0, oy: 0, mobile: false, right: true, low: false, snug: false };
   // A point (u, v) from a plane's centre, in its own px, into the scene: exactly what CSS does with
   // rotateX(rx) rotateZ(rz) about the centre under the scene's perspective. project() goes on to the screen.
   const projW = (s, u, v) => {
@@ -257,7 +257,16 @@
 
   // ---- Layout ------------------------------------------------------------------------------------
   let dpr = 1, geo = null;
-  const CARDW = 300, CARDW_L = 240, FLAG_PITCH = 40;
+  // Cards: beside the flags on a desktop (CARDW), a tablet on its side (CARDW_S) and a phone on its side (CARDW_L); under the
+  // stack when it stands under the text, as wide as the screen allows up to CARDW_SLOT.
+  const CARDW = 300, CARDW_S = 264, CARDW_L = 240, CARDW_SLOT = 620, FLAG_PITCH = 40;
+  // Which arrangement the screen gets, in the same words as the stylesheet's media queries (index.html, deck-overlay.js):
+  // stacked: a phone, or any upright screen up to 1100 px wide, the stack under the text with its flags down its left;
+  // snug: a tablet on its side, or any window on its side under 1280 px, the text column narrower and the card smaller
+  // so the stack beside them keeps its size. Every other screen on its side over 500 px tall is the desktop; at 500 px
+  // or less, a phone on its side (low).
+  const STACKED = matchMedia('(max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px), (max-width: 1100px) and (orientation: portrait)');
+  const SNUG = matchMedia('(min-width: 761px) and (max-width: 1279px) and (orientation: landscape) and (min-height: 501px), (min-width: 761px) and (orientation: landscape) and (min-height: 501px) and (hover: none) and (pointer: coarse)');
   let flagY = [];
   // A polyline with its running lengths, and a point a fraction q of the way along it.
   const polyline = (pts) => { const len = [0]; for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); return { pts, len, total: len.at(-1) }; };
@@ -276,7 +285,7 @@
   const rng = (seed) => () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const layout = () => {
     const W = innerWidth, H = innerHeight;
-    view.mobile = (W <= 760 && (H >= W || H > 500)) || (W <= 1100 && (H > W || H >= 650)); // phones, portrait tablets and compact landscape windows with room for the stack
+    view.mobile = STACKED.matches;
     // Which side the flags hang on: the right of the stack beside the text, or its left under the text on a phone.
     const right = view.right = !view.mobile, out = right ? 1 : -1;
     PO.x = right ? 1900 : 210; TURN = right ? 4.5 : -4.5;
@@ -286,11 +295,13 @@
     const cw = PL.map((p) => edgesOf(settledOf(p)));
     const callXw = right ? Math.max(...cw.map((c) => c.rm.x)) + 40 : Math.min(...cw.map((c) => c.lm.x)) - 40; // the flags' column
     const h1 = slide.querySelector('h1').getBoundingClientRect();
-    // On a desktop the cards open in a column beside the flags, right of the stack (the text top left); on a
-    // phone, in a slot below the stack and above the footer. On a phone on its side the column is narrower and a card
-    // opens over the flags, which keep their places.
+    // On a desktop the cards open in a column beside the flags, right of the stack (the text top left); snug, the
+    // same, with the narrower card and a narrower margin to its right. Stacked, in a slot below the stack and above the
+    // footer. On a phone on its side the column is narrower and a card opens over the flags, which keep their places.
     const low = view.low = !view.mobile && H <= 500;
-    const cw0 = view.mobile ? W - 32 : low ? CARDW_L : CARDW;
+    const snug = view.snug = !view.mobile && !low && SNUG.matches;
+    const cw0 = view.mobile ? Math.min(W - 32, CARDW_SLOT) : low ? CARDW_L : snug ? CARDW_S : CARDW;
+    const slotL = (W - cw0) / 2; // under the stack, the card's slot is centred
     cards.forEach((c) => { c.style.width = `${cw0}px`; });
     const ch = cards.map((c) => c.offsetHeight);
     const slotH = view.mobile ? Math.max(...ch) : 0;
@@ -303,8 +314,11 @@
     root.style.height = compact ? `${Math.ceil(slotT + slotH + 80)}px` : '';
     root.style.setProperty('--st-card-top', `${slotT.toFixed(1)}px`);
     root.style.setProperty('--st-card-height', `${slotH.toFixed(1)}px`);
+    root.style.setProperty('--st-card-left', `${slotL.toFixed(1)}px`);
+    root.style.setProperty('--st-card-width', `${cw0}px`);
     const Rg = view.mobile ? { l: 16, r: W - 16, t: h1.bottom + 12, b: slotT - 12 }
-      : low ? { l: h1.right + 20, r: W - 12 - CARDW_L + 6, t: 14, b: H - 76 } : { l: h1.right + 28, r: W - 48 - CARDW + 6, t: 22, b: H - 66 };
+      : low ? { l: h1.right + 20, r: W - 12 - CARDW_L + 6, t: 14, b: H - 76 }
+      : snug ? { l: h1.right + 24, r: W - 24 - CARDW_S + 6, t: 22, b: H - 66 } : { l: h1.right + 28, r: W - 48 - CARDW + 6, t: 22, b: H - 66 };
     const box = { l: right ? Math.min(...cw.map((c) => Math.min(c.fl.x, c.nl.x))) - 12 : callXw, r: right ? callXw : Math.max(...cw.map((c) => Math.max(c.fr.x, c.nr.x))) + 12,
       t: Math.min(...cw.map((c) => Math.min(c.fl.y, c.fr.y))) - HEADROOM, b: Math.max(cw[4].nl.y, cw[4].nr.y) + ROOTS };
     // The flags stay readable in screen pixels: include their measured width once in the mobile fit,
@@ -325,7 +339,7 @@
     const callX = toS({ x: callXw, y: 0 }).x;
     flags.forEach((el) => { el.style.left = `${callX.toFixed(1)}px`; });
     cards.forEach((c) => {
-      if (view.mobile) { c.style.left = '16px'; c.style.top = `${slotT.toFixed(1)}px`; return; }
+      if (view.mobile) { c.style.left = `${slotL.toFixed(1)}px`; c.style.top = `${slotT.toFixed(1)}px`; return; }
       c.style.left = `${(right ? Math.min(W - 8 - cw0, callX - 4) : Math.max(8, callX + 4 - cw0)).toFixed(1)}px`;
     });
     // The guide's ways between the flags: back along a leader, down the plane's outer edge, across to the
@@ -1404,6 +1418,7 @@
   if (window.__deckDebug) Object.defineProperty(window.__deckDebug, 'stack', { get: () => ({
     generation: activeCtx?.generation ?? null, running, paused, scheduled: !!raf,
     posterOnly: !!window.deckStackPosterOnly?.(), previewPlaying: !video.paused,
+    layout: view.mobile ? 'stacked' : view.low ? 'low' : view.snug ? 'snug' : 'desktop',
     building: !!build, reverse: !!build?.back, entryFinished, open: openI, drawFaults,
     metrics: { ...metrics }, scale: view.k, threadBox: { ...threadBox },
     canvasPixels: cv.width * cv.height + baseCv.width * baseCv.height,

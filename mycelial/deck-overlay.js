@@ -140,12 +140,20 @@
         .as-note-pin span { width: 19px; height: 19px; font-size: 10px; }
       }
       @media (max-width: 760px) and (orientation: portrait), (max-width: 760px) and (min-height: 501px),
-             (max-width: 1100px) and (orientation: portrait), (max-width: 1100px) and (min-height: 650px) {
+             (max-width: 1100px) and (orientation: portrait) {
         html[data-ver="f"] .st-host.story-refined > .split { grid-template-columns: minmax(0, 1fr); }
         html[data-ver="f"] .st-host.story-refined h1 { max-width: 34rem; }
         html[data-ver="f"] .st-host.story-refined .story-title { max-width: 24ch; font-size: clamp(1.85rem, 7.4vw, 2.5rem); }
         html[data-ver="f"] .st-host.story-refined .story-lead { margin-top: 14px; font-size: clamp(1.15rem, 4.8vw, 1.4rem); line-height: 1.2; }
         html[data-ver="f"] .st-host.story-refined .story-note { margin-top: 12px; font-size: 1rem; line-height: 1.3; }
+      }
+      /* 6 snug, a tablet on its side (stack.js): a narrower column in smaller type, so the stack beside it keeps its size. */
+      @media (min-width: 761px) and (max-width: 1279px) and (orientation: landscape) and (min-height: 501px),
+             (min-width: 761px) and (orientation: landscape) and (min-height: 501px) and (hover: none) and (pointer: coarse) {
+        html[data-ver="f"] .st-host.story-refined > .split { grid-template-columns: minmax(0, 29vw); }
+        html[data-ver="f"] .st-host.story-refined .story-title { font-size: clamp(1.9rem, 3.2vw, 2.6rem); }
+        html[data-ver="f"] .st-host.story-refined .story-lead { margin-top: clamp(14px, 2.2vh, 22px); font-size: clamp(1.1rem, 1.7vw, 1.4rem); }
+        html[data-ver="f"] .st-host.story-refined .story-note { margin-top: clamp(10px, 1.8vh, 18px); font-size: clamp(.92rem, 1.2vw, 1.05rem); line-height: 1.4; }
       }
       @media (max-width: 760px) and (orientation: portrait) and (max-height: 740px) {
         html[data-ver="f"] .as-host.story-refined h1 { gap: 10px; }
