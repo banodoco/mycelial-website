@@ -135,14 +135,14 @@
   const idleSoon = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 100));
   const MORPH = 0.5; // seconds from landing to the settled logo
 
-  // keepGathered: a chart left gathered into its empty ring stays dark until it is next shown.
-  const reset = (keepGathered = false) => {
+  // keepBare: a chart its tools have run from stays bare until it is next shown.
+  const reset = (keepBare = false) => {
     retireForward(Boolean(backs.length || backRaf || departRaf));
     timers.forEach(window.deckCancelLater);
     timers = [];
     root.classList.remove('is-drawn', 'is-labelled');
     tools.forEach((el) => { el.classList.remove('is-in', 'is-open'); el.style.removeProperty('--m'); });
-    ungather(keepGathered);
+    settle(keepBare);
     empty.classList.remove('is-open');
     focus(null);
   };
@@ -297,83 +297,97 @@
     else { g?.clearRect(0, 0, innerWidth, innerHeight); flying = false; if (!backs.length) show(false); entryFinish?.(ctx, 'completed'); }
   };
 
-  // ---- Into the empty corner, and out of it ----------------------------------
-  // On to slide 4: every tool rushes in under the empty ring, shrinking and fading as it slips beneath it, while
-  // the axes and labels fade; then the ring lifts off alone and becomes the core's bright eye (core.js). Back from
-  // slide 4 it is the same picture played backwards, the tools coming out at half the speed they went in: the eye
-  // flies back down as the ring, and as it lands the tools spill out from under it to their places, the axes and
-  // labels fading in round them.
+  // ---- Leaving for slide 4, and coming back ---------------------------------
+  // On to slide 4 the tools scatter like startled mice: each bolts off towards the bottom left, away from the empty
+  // ring, veering a little as it runs, shrinking and fading as it goes; the nearest start first. The axes and labels
+  // fade, and the ring is left to lift off alone and become the core's bright eye (core.js). Back from slide 4 the
+  // ring flies home to its corner while the tools creep back in from the bottom left, taking their time, growing and
+  // fading in until they are settled in their places as it lands; the axes and labels fade in round them.
   const vis = root.parentElement;
-  const GATHER = 0.36; // seconds at the start of the ring's flight that the tools take to go in
-  const EMERGE = 0.72; // seconds at the end of its flight back that they take to come out
-  const LANDED = 0.55; // of those, how long the ring is already down (the first, faint moments overlap its landing)
-  const SPREAD = 1 / 6; // of either: how much sooner the farthest set off going in (later coming out), so they move as one
-  let gathered = [], awaiting = null;
-  const ungather = (keepGathered = false) => {
-    gathered.forEach((a) => a.cancel());
-    gathered = [];
+  const RUN = 0.45; // seconds from the first tool bolting to the last gone
+  const HOME = 0.72; // seconds, coming back, from the first setting off home to the last settled
+  let runs = [], awaiting = null, expected = null;
+  const settle = (keepBare = false) => {
+    runs.forEach((a) => a.cancel());
+    runs = [];
     awaiting = null;
-    vis?.classList.remove('gp-gathering');
-    if (!keepGathered) { root.classList.remove('is-gathered'); empty.style.visibility = ''; }
+    vis?.classList.remove('gp-held');
+    if (!keepBare) { root.classList.remove('is-bare'); empty.style.visibility = ''; }
   };
-  // Each disc's path to the middle of the ring, run forwards to gather it or backwards to let it out.
-  const gather = (back = false, wait = 0) => {
-    gathered.forEach((a) => a.cancel());
-    gathered = [];
-    const h = empty.querySelector('i').getBoundingClientRect();
+  // Each tool's run: off towards the bottom left (leaning away from the ring), with a zigzag that grows in as it
+  // gets going. Leaving, it bolts and fades; coming back the same path is walked in towards home, slowing to a stop.
+  const scurry = (back = false) => {
+    runs.forEach((a) => a.cancel());
+    runs = [];
+    const h = empty.querySelector('i').getBoundingClientRect(), box = root.getBoundingClientRect();
     const hx = h.left + h.width / 2, hy = h.top + h.height / 2;
-    const paths = tools.map((el) => {
+    const reach = Math.max(80, Math.min(box.width, box.height) * 0.42);
+    const mice = tools.map((el) => {
       const r = el.querySelector('i').getBoundingClientRect();
       if (!r.width || (!back && !el.classList.contains('is-in'))) return null;
+      const x = r.left + r.width / 2, y = r.top + r.height / 2, d = Math.hypot(x - hx, y - hy) || 1;
       const base = getComputedStyle(el).transform;
-      return { el, dx: hx - (r.left + r.width / 2), dy: hy - (r.top + r.height / 2), base: base === 'none' ? '' : base };
+      return { el, d, ax: (x - hx) / d, ay: (y - hy) / d, base: base === 'none' ? '' : base };
     });
-    const far = Math.max(1, ...paths.map((p) => (p ? Math.hypot(p.dx, p.dy) : 0)));
-    paths.forEach((p) => {
-      if (!p) return;
-      const span = back ? EMERGE : GATHER, spread = SPREAD * span;
-      const lead = spread * (1 - Math.hypot(p.dx, p.dy) / far);
-      const timing = { duration: (span - spread) * 1000, delay: (wait + (back ? spread - lead : lead)) * 1000, fill: 'both', direction: back ? 'reverse' : 'normal' };
-      gathered.push(p.el.animate([
-        { transform: `translate(0px, 0px) ${p.base} scale(1)` },
-        { transform: `translate(${p.dx.toFixed(1)}px, ${p.dy.toFixed(1)}px) ${p.base} scale(.3)` },
-      ], { ...timing, easing: back ? 'cubic-bezier(.5, 0, .75, .55)' : 'cubic-bezier(.55, 0, .85, .4)' })); // quickening into the ring; easing out of it
-      gathered.push(p.el.animate(back ? [{ opacity: 1 }, { opacity: 1, offset: 0.65 }, { opacity: 0 }] : [{ opacity: 1 }, { opacity: 1, offset: 0.4 }, { opacity: 0 }],
-        { ...timing, easing: 'ease-in' }));
+    const far = Math.max(1, ...mice.map((m) => (m ? m.d : 0)));
+    mice.forEach((m) => {
+      if (!m) return;
+      m.delay = 0.1 * (m.d / far) + 0.03 * rnd(); // the nearest are startled first
+      m.dur = 0.24 + 0.08 * rnd();
+    });
+    const end = Math.max(0.01, ...mice.map((m) => (m ? m.delay + m.dur : 0)));
+    const slow = (back ? HOME : RUN) / end;
+    mice.forEach((m) => {
+      if (!m) return;
+      let dx = -0.62 + 0.38 * m.ax, dy = 0.62 + 0.38 * m.ay;
+      const n = Math.hypot(dx, dy) || 1; dx /= n; dy /= n;
+      const dist = reach * (0.75 + 0.45 * rnd()), amp = reach * (0.03 + 0.04 * rnd()), turns = 1.4 + rnd(), ph = rnd() * Math.PI * 2;
+      const frames = [];
+      for (let i = 0; i <= 8; i++) {
+        const t = i / 8; // the time along this tool's run
+        const a = back ? 1 - t * (2 - t) : 1 - Math.pow(1 - t, 1.7); // how far out: bolting off; coming back, easing in to a stop
+        const w = amp * Math.sin(turns * Math.PI * a + ph) * Math.min(1, a * 4);
+        const px = dx * dist * a - dy * w, py = dy * dist * a + dx * w;
+        const o = back ? smooth(clamp(t / 0.45)) : 1 - smooth(clamp((t - 0.2) / 0.8));
+        frames.push({ transform: `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px) ${m.base} scale(${(1 - 0.6 * a).toFixed(3)})`, opacity: o.toFixed(3) });
+      }
+      const delay = (back ? end - m.delay - m.dur : m.delay) * slow;
+      runs.push(m.el.animate(frames, { duration: m.dur * slow * 1000, delay: delay * 1000, fill: 'both' }));
     });
   };
-  // The chart holds its own layer up while the tools are in motion; everything but the tools and the ring fades.
-  const hold = () => { vis?.classList.add('gp-gathering'); root.classList.add('is-gathered'); };
-  // Back from slide 4: the chart waits, dark, for the ring to land (core.js says when its flight begins).
+  // While its tools run, the chart holds its own layer up; everything but the tools and the ring fades.
+  const bare = () => { vis?.classList.add('gp-held'); root.classList.add('is-bare'); };
+  // Back from slide 4: the chart waits, its tools away, for the ring (core.js says when its flight begins). Their
+  // runs home are laid out now and held at their start, so that the ring's lift-off frame stays light.
   const await_ = (ctx) => {
     visitCtx = ctx;
     reset();
     root.classList.add('is-drawn', 'is-labelled');
-    hold();
+    bare();
     empty.style.visibility = 'hidden';
+    tools.forEach((el) => el.classList.add('is-in'));
+    scurry(true);
+    runs.forEach((a) => a.pause());
     awaiting = ctx;
   };
-  window.GapGather = {
-    time: GATHER,
-    landed: LANDED, // how long the ring sits at the end of its flight back
+  window.GapScurry = {
     expect: (ctx) => { expected = ctx; },
-    // The ring has begun its flight back, lasting `flight` seconds.
-    emerge: (ctx, flight) => {
+    // The ring has begun its flight home, lasting `flight` seconds: the tools come home over its last HOME seconds.
+    home: (ctx, flight) => {
       if (awaiting !== ctx || !ctx.isCurrent()) return;
-      const at = (s, fn) => timers.push(window.deckLater(() => { if (awaiting === ctx && ctx.isTransitionCurrent()) fn(); }, Math.max(0, s) * 1000, ctx));
-      at(flight - LANDED, () => { root.classList.remove('is-gathered'); empty.style.visibility = ''; });
-      // The tools wait, hidden under the ring, and come out over the last of its flight.
-      tools.forEach((el) => el.classList.add('is-in'));
-      gather(true, Math.max(0, flight - EMERGE));
-      const done = gathered.length ? Promise.all(gathered.map((a) => a.finished)) : Promise.resolve();
+      timers.push(window.deckLater(() => {
+        if (awaiting === ctx && ctx.isTransitionCurrent()) { root.classList.remove('is-bare'); empty.style.visibility = ''; }
+      }, Math.max(0, flight - 0.6) * 1000, ctx));
+      const wait = Math.max(0, flight - HOME) * 1000;
+      runs.forEach((a) => { a.effect.updateTiming({ delay: a.effect.getTiming().delay + wait }); a.play(); });
+      const done = runs.length ? Promise.all(runs.map((a) => a.finished)) : Promise.resolve();
       done.then(() => {
         if (awaiting !== ctx) return;
-        ungather();
+        settle();
         entryFinish?.(ctx, 'completed');
       }, () => {});
     },
   };
-  let expected = null;
 
   // ---- Going back ----------------------------------------------------------
   // A step back to slide 2: the arrival from the field, played backwards. Each logo melts back into its orb, which
@@ -469,12 +483,12 @@
     return promise;
   };
   const sceneEnter = (ctx) => {
-    const promise = completion(ctx, (fn) => { entryFinish = fn; }, () => { retireForward(); if (awaiting === ctx) ungather(); if (waiting) { waiting.disconnect(); waiting = null; } });
+    const promise = completion(ctx, (fn) => { entryFinish = fn; }, () => { retireForward(); if (awaiting === ctx) settle(); if (waiting) { waiting.disconnect(); waiting = null; } });
     visitCtx = ctx;
-    const ringBack = expected === ctx; // core.js is about to fly the ring back here
+    const ringBack = expected === ctx; // core.js is about to fly the ring home
     expected = null;
     if (backs.length || backRaf || departRaf) endDepart();
-    if (ringBack && ctx.back && !motionOff()) await_(ctx); // a step back lands at rest, but out of the ring
+    if (ringBack && ctx.back && !motionOff()) await_(ctx); // a step back lands at rest, but with its tools running home
     else if (ctx.rest || ctx.direct) enter(0, ctx);
     else if (ctx.from === 1) arrive(ctx);
     else begin(ctx);
@@ -492,11 +506,16 @@
       return promise;
     }
     retireForward();
-    // On to slide 4: the tools gather under the ring as it is lifted off.
-    if (ctx.to === 3 && !ctx.direct && !ctx.rest && !motionOff()) { hold(); gather(); }
+    // On to slide 4: the tools run off as the ring lifts off.
+    if (ctx.to === 3 && !ctx.direct && !ctx.rest && !motionOff()) { bare(); scurry(); }
     // A direct navigation can settle before this departure tail has elapsed.
     // Keep the cleanup visit-owned, just like the motion it retires.
-    timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) reset(ctx.to === 3); }, 700, ctx));
+    timers.push(window.deckLater(() => {
+      if (slide.classList.contains('on')) return;
+      reset(ctx.to === 3);
+      // Once the slide has faded right out, the bare chart can be put back as it was.
+      if (ctx.to === 3) timers.push(window.deckLater(() => { if (!slide.classList.contains('on')) settle(); }, 1400, ctx));
+    }, 700, ctx));
   };
   // On a first load the Mycelial mark plays first (dot-transitions.js): the tools bloom once it has landed.
   const html = document.documentElement;
@@ -522,7 +541,7 @@
     retireForward(Boolean(backs.length || backRaf || departRaf));
     timers.forEach(window.deckCancelLater); timers = [];
     if (ctx.to !== 2) { reset(); return true; }
-    ungather();
+    settle();
     // Flight endpoints were measured in the old viewport. Finish at the new
     // chart instead of leaving old pixel coordinates suspended over it.
     show(false);
