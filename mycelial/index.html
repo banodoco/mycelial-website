@@ -965,6 +965,21 @@
     .st-card em { margin-top: 7px; padding-top: 5px; font-size: 13px; }
     .st-more { margin-top: 6px; font-size: 10.5px; line-height: 1.25; }
   }
+  /* On a phone the card names its examples without their sub-lines (and without the Models layer's list of models), in
+     a two-column grid a step larger; the shorter slot leaves the stack above it more height (stack.js). */
+  @media (max-width: 600px) and (orientation: portrait), (max-width: 600px) and (min-height: 501px) {
+    .st .st-card ul { gap: 7px 12px; }
+    .st .st-card li { line-height: 1.2; }
+    .st .st-card li b { font-size: 14.5px; }
+    .st .st-card li span, .st .st-more { display: none; }
+    .st .st-card code { font-size: 11.5px; }
+  }
+  /* A narrow or short phone keeps the names at their former size, so each still fits on one line. */
+  @media (max-width: 370px) and (orientation: portrait), (max-width: 600px) and (orientation: portrait) and (max-height: 740px) {
+    .st .st-card ul { column-gap: 10px; }
+    .st .st-card li b { font-size: 13.5px; }
+    .st .st-card code { font-size: 11px; }
+  }
   /* An upright tablet: the flags a step larger, and the card's slot narrower than the screen (stack.js centres it under
      the stack), so its type can be a step larger too. */
   @media (min-width: 761px) and (max-width: 1100px) and (orientation: portrait) {
