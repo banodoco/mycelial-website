@@ -299,6 +299,7 @@
   };
 
   // ---- Leaving for slide 4, and coming back ---------------------------------
+  const vis = root.parentElement;
   // On to slide 4 the tools scatter like startled mice, rippling out from the empty ring: each freezes for a beat,
   // then dashes off towards the bottom left, away from the ring, gathering speed and veering once or twice as it
   // goes, and towards the end of its run shrinks and is gone. The chart's axes and labels fade with the slide, and
@@ -559,9 +560,23 @@
     ctx.defer(() => { finish(ctx, 'cancelled'); cleanup(); });
     return promise;
   };
+  // The chart's frame (axes, their captions, the zones and the empty ring) is shown by is-drawn and is-labelled
+  // alone. Every entry starts it from a clean slate (no script animation or inline style left on it by an earlier
+  // visit), and once the entry has played, it is up whatever path the entry took.
+  const frame = [vis, root, ...root.querySelectorAll('.gp-axes, .gp-axes path, .gp-ax, .gp-zone, .gp-empty')].filter(Boolean);
+  const cleanFrame = () => frame.forEach((el) => {
+    el.getAnimations().forEach((a) => { if (!(a instanceof CSSAnimation) && !(a instanceof CSSTransition)) a.cancel(); });
+    ['opacity', 'visibility', 'transition', 'animation'].forEach((p) => el.style.removeProperty(p));
+  });
+  const frameUp = () => {
+    root.classList.add('is-drawn', 'is-labelled');
+    if (!pack) root.classList.remove('is-away');
+  };
   const sceneEnter = (ctx) => {
     const promise = completion(ctx, (fn) => { entryFinish = fn; }, () => { retireForward(); if (awaiting === ctx) settle(); if (waiting) { waiting.disconnect(); waiting = null; } });
+    promise.then((result) => { if (result === 'completed' && ctx.isCurrent() && slide.classList.contains('on')) frameUp(); });
     visitCtx = ctx;
+    cleanFrame();
     const ringBack = expected?.ctx === ctx ? expected : null; // core.js is about to fly the ring home
     expected = null;
     if (backs.length || backRaf || departRaf) endDepart();

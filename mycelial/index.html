@@ -504,6 +504,11 @@
   /* The tools running off to slide 4 and back (gap.js): copies of them run on a layer of their own over both
      slides, while the chart's own discs wait hidden. */
   .gp.is-away .gp-dot { visibility: hidden; }
+  /* The chart keeps a compositing layer of its own for as long as its slide is shown. Its frame (the axes, their
+     captions and the zones) is plain, unlayered content under the tools' own layers and, on a return, under the run
+     layer above; on an iPhone such content could drop out of the composited page though laid out and styled, as
+     the wheel slides' words once did. The layer lasts the whole visit, so nothing is promoted or demoted mid-turn. */
+  html[data-ver="f"] .gap-host:is(.on, [data-deck-present]) > .split > .vis { will-change: opacity; }
   .gp-run { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
   .gp-flight { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
   @media (prefers-reduced-motion: reduce) { .gp-dot::before, .gp-empty i { animation: none; } .gp-dot, .gp-dot i { transition: none; } }
@@ -2941,6 +2946,7 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
     html[data-deck-debug-slides] .slide:not(.on) { display:none!important; }
     html[data-deck-debug-scroll] .slide { overflow:visible!important; }
     [data-deck-debug-lift] { position:relative!important; z-index:2147483000!important; will-change:transform!important; }
+    html[data-deck-debug-chart] .gap-host > .split > .vis { will-change:auto!important; }
   `;
   document.head.appendChild(overrides);
   const retain = (label) => {
@@ -3013,7 +3019,8 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
     copyColumn(document.querySelector('.slide.on'))?.toggleAttribute('data-deck-debug-ink');
   });
   // The four below test where the text's compositing layer goes wrong; computed style and repaint are already cleared.
-  for (const name of ['layers', 'slides', 'scroll']) button(name, () => {
+  // 'chart' takes away slide 3's chart layer, to compare the frame (axes and captions) with and without it.
+  for (const name of ['layers', 'slides', 'scroll', 'chart']) button(name, () => {
     record(name);
     document.documentElement.toggleAttribute(`data-deck-debug-${name}`);
   });
@@ -3023,7 +3030,7 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
   });
   button('reset', () => {
     record('reset');
-    for (const name of ['flat', 'font', 'ink', 'canvases', 'layers', 'slides', 'scroll', 'lift']) {
+    for (const name of ['flat', 'font', 'ink', 'canvases', 'layers', 'slides', 'scroll', 'lift', 'chart']) {
       document.querySelectorAll(`[data-deck-debug-${name}]`).forEach(n => n.removeAttribute(`data-deck-debug-${name}`));
     }
     canvasesHidden = false;
@@ -3096,6 +3103,16 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
       faces: [...document.fonts].filter(face => families.includes(face.family.replaceAll('"', '')))
         .map(face => ({ family: face.family, style: face.style, weight: face.weight, status: face.status, unicodeRange: face.unicodeRange })) };
   };
+  // Slide 3's chart frame: its classes and the shown state of the axes, captions, zones and ring, to tell a frame
+  // that is switched off from one that is on but missing from the composited page.
+  const chartState = (slide) => {
+    const gp = slide?.matches('.gap-host') && slide.querySelector('[data-gap]');
+    if (!gp) return null;
+    const op = (sel) => [...gp.querySelectorAll(sel)].map((el) => { const cs = getComputedStyle(el); return cs.visibility === 'visible' ? (+cs.opacity).toFixed(2) : 'h'; }).join('/');
+    return { gp: gp.className, vis: `${gp.parentElement.className} op:${getComputedStyle(gp.parentElement).opacity} wc:${getComputedStyle(gp.parentElement).willChange}`,
+      axes: op('.gp-axes'), dash: [...gp.querySelectorAll('.gp-axes path')].map((p) => getComputedStyle(p).strokeDashoffset).join('/'),
+      captions: op('.gp-ax'), zones: op('.gp-zone'), ring: op('.gp-empty'), runs: document.querySelectorAll('.gp-run').length };
+  };
   // Read-only picture diagnostics: distinguish a hidden editor from a visible
   // editor whose canvas or compositor has lost its picture on a return visit.
   const artState = (slide) => {
@@ -3142,11 +3159,12 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
         stat: copyState(slide?.querySelector(':scope > .fw-stat')), h1: copyState(slide?.querySelector('h1')),
         clone: copyState(slide?.querySelector('.dt-copy-overlay')),
         ancestors: copyAncestors(slide?.querySelector('h1')) },
-      art: artState(slide),
+      art: artState(slide), chart: chartState(slide),
       fonts: fontsOf(slide), experiments: { flat: !!document.querySelector('[data-deck-debug-flat]'),
         font: !!copyColumn(slide)?.hasAttribute('data-deck-debug-font'), ink: !!copyColumn(slide)?.hasAttribute('data-deck-debug-ink'), canvasesHidden,
         layers: document.documentElement.hasAttribute('data-deck-debug-layers'), slides: document.documentElement.hasAttribute('data-deck-debug-slides'),
-        scroll: document.documentElement.hasAttribute('data-deck-debug-scroll'), lift: !!copyColumn(slide)?.hasAttribute('data-deck-debug-lift') },
+        scroll: document.documentElement.hasAttribute('data-deck-debug-scroll'), lift: !!copyColumn(slide)?.hasAttribute('data-deck-debug-lift'),
+        chart: document.documentElement.hasAttribute('data-deck-debug-chart') },
       onTopOfH1: hitsAt(slide?.querySelector('h1')),
       actions: taps.slice(), samples: samples.slice(), network: debug.network || null, ...cap };
     if (changed && snapshot.art) retain(demoVisits++ ? 'slide5 return' : 'slide5 entry');
@@ -3168,6 +3186,7 @@ if (new URLSearchParams(location.search).has('debug')) (() => {
       `net/entry/text:${t.network}/${t.entry}/${t.textReady} scene:${t.scenePending} rewind:${t.rewinding} recover:${t.recovering} wall/deck:${Math.round(t.wallMs || 0)}/${Math.round(t.deckMs || 0)} watchdog:${t.watchdogMs} queue:${c.pending} starts:${c.turnsStarted} wd:${cap.watchdogs}\n` +
       `slide:${c.index + 1} ${snapshot.slide?.classes.join(' ')} settled:${snapshot.slide?.settled} present:${snapshot.slide?.present}\n` +
       (snapshot.art ? `editor ${JSON.stringify(snapshot.art)}\n` : '') +
+      (snapshot.chart ? `chart ${JSON.stringify(snapshot.chart)}\nchart paint: ${paintOf(document.querySelector('.slide.on .gp-ax'))}\n` : '') +
       `copy clones:${snapshot.copy.liveCloneCount}\ncolumn ${shortCopy(snapshot.copy.column)}\nstat ${shortCopy(snapshot.copy.stat)}\nh1 ${shortCopy(snapshot.copy.h1)}\n` +
       `network current:${n.current} turning:${n.turning} visit:${n.visit} tweens:${n.textTweens} zones/hyphae/baked:${n.zones}/${n.hyphae}/${n.baked} canvas:${n.canvas}\n` +
       `canvas created:${cap.canvas.created} bytes~:${cap.canvas.bytes} nulls:${cap.canvas.nulls}\n` +
