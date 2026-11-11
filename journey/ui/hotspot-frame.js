@@ -160,6 +160,18 @@ export function copyContentBounds(rect, style = {}) {
  *  @param {object}   io.blocks         chapter id -> copy block element.
  *  @param {object}   io.sheetQuery     the coarse-pointer media query.
  */
+/* Per-frame custom-property writes, skipped when the string is the one
+   already set (most chips are unchanged most frames, all of them at rest).
+   This module is the only writer of these names, so the memo cannot go stale. */
+const writtenVars = new WeakMap();
+function setVar(el, name, value) {
+  let vars = writtenVars.get(el);
+  if (!vars) writtenVars.set(el, vars = new Map());
+  if (vars.get(name) === value) return;
+  vars.set(name, value);
+  el.style.setProperty(name, value);
+}
+
 export function createHotspotFrame({ hotspots, blocks, sheetQuery }) {
   const copyBounds = new Map();
   /** Hold a hovered chip's anchor still, and glide it home on release.
@@ -572,15 +584,15 @@ export function createHotspotFrame({ hotspots, blocks, sheetQuery }) {
     // breath, so all three movements overlap without becoming simultaneous.
     const labelIn = smoothA(clamp01((u - 0.14) / 0.78));
     const opacity = hotspotIconTabOpacity(u, departing);
-    h.btn.style.setProperty('--j-hot-shell-in', opacity.shell.toFixed(3));
-    h.btn.style.setProperty('--j-hot-shell-y', `${((1 - shellIn) * 1.5).toFixed(2)}px`);
-    h.btn.style.setProperty('--j-hot-shell-sx', shellSx.toFixed(3));
-    h.btn.style.setProperty('--j-hot-icon-in', opacity.icon.toFixed(3));
-    h.btn.style.setProperty('--j-hot-icon-y', `${((1 - iconIn) * 2.5).toFixed(2)}px`);
-    h.btn.style.setProperty('--j-hot-icon-scale', (0.92 + iconIn * 0.08).toFixed(3));
-    h.btn.style.setProperty('--j-hot-ico-s', markS.toFixed(3));
-    h.btn.style.setProperty('--j-hot-label-in', opacity.label.toFixed(3));
-    h.btn.style.setProperty('--j-hot-label-y', `${((1 - labelIn) * 2.5).toFixed(2)}px`);
+    setVar(h.btn, '--j-hot-shell-in', opacity.shell.toFixed(3));
+    setVar(h.btn, '--j-hot-shell-y', `${((1 - shellIn) * 1.5).toFixed(2)}px`);
+    setVar(h.btn, '--j-hot-shell-sx', shellSx.toFixed(3));
+    setVar(h.btn, '--j-hot-icon-in', opacity.icon.toFixed(3));
+    setVar(h.btn, '--j-hot-icon-y', `${((1 - iconIn) * 2.5).toFixed(2)}px`);
+    setVar(h.btn, '--j-hot-icon-scale', (0.92 + iconIn * 0.08).toFixed(3));
+    setVar(h.btn, '--j-hot-ico-s', markS.toFixed(3));
+    setVar(h.btn, '--j-hot-label-in', opacity.label.toFixed(3));
+    setVar(h.btn, '--j-hot-label-y', `${((1 - labelIn) * 2.5).toFixed(2)}px`);
   }
 
   /* PILL COLLISION DODGE (2026-08-10). With every anchor now a static world
@@ -763,7 +775,7 @@ export function createHotspotFrame({ hotspots, blocks, sheetQuery }) {
             const d = Math.max(0.05, viewDepth(w));
             h.hitRaw = worldR * (window.innerHeight * 0.5) / (d * tanHalf);
           }
-          h.hitEl.style.setProperty('--j-hit-x', `${(sx - tx + 11).toFixed(1)}px`);
+          setVar(h.hitEl, '--j-hit-x', `${(sx - tx + 11).toFixed(1)}px`);
         }
         h.sx = sx; h.sy = sy;
       }
@@ -778,9 +790,15 @@ export function createHotspotFrame({ hotspots, blocks, sheetQuery }) {
       // tabIndex is the live half; `.j-hot:not(.vis)` is visibility:hidden, so
       // a faded hotspot is out of the a11y tree as well as out of Tab.
       const interactive = departureOpacity === null && want && vis;
-      h.btn.tabIndex = interactive ? 0 : -1;
-      if (interactive) h.btn.removeAttribute('aria-hidden');
-      else h.btn.setAttribute('aria-hidden', 'true');
+      // Written only on change: an unchanged attribute write still queues a
+      // mutation and re-matches attribute selectors, ~29 chips every frame.
+      const tab = interactive ? 0 : -1;
+      if (h.btn.tabIndex !== tab) h.btn.tabIndex = tab;
+      if (h.ariaShown !== interactive) {
+        h.ariaShown = interactive;
+        if (interactive) h.btn.removeAttribute('aria-hidden');
+        else h.btn.setAttribute('aria-hidden', 'true');
+      }
     }
 
     resolveDodge();

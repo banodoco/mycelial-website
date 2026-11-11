@@ -572,6 +572,16 @@ export function createRail({ onNav, ready = true } = {}) {
   // (2RP left that row 2026-08-10; the Inspire node keeps it).
   const root = el('nav', 'j-rail');
   root.setAttribute('aria-label', 'Journey sections');
+  /* The Purpose tree's ~26 custom properties are written every frame from
+   update(); most frames most are unchanged (all of them at rest). Skip the
+   CSSOM write when the string is the one already set, so an unchanged
+   value costs no parse and no style invalidation of the rail subtree. */
+  const purposeVarsWritten = new Map();
+  const purposeVar = (name, value) => {
+    if (purposeVarsWritten.get(name) === value) return;
+    purposeVarsWritten.set(name, value);
+    root.style.setProperty(name, value);
+  };
   // Keep the early-painted rail honest: no queued gestures before the scene
   // can navigate. Capture also guards synthetic activation of disabled links.
   for (const type of ['click', 'pointerdown', 'keydown']) {
@@ -2680,56 +2690,56 @@ export function createRail({ onNav, ready = true } = {}) {
     for (const stage of ['below', 'leaving', 'above', 'gathering']) {
       root.classList.toggle(`j-rail-purpose-labels-${stage}`, labelStage === stage);
     }
-    root.style.setProperty('--purpose-label-fade', labelFade.toFixed(5));
+    purposeVar('--purpose-label-fade', labelFade.toFixed(5));
     // Child labels emerge with the last half of the tree's camera-paced arrival.
     const childLabelU = Math.max(0, Math.min(1, (treeU - 0.5) / 0.5));
-    root.style.setProperty('--purpose-child-label-u', (childLabelU * childLabelU * (3 - 2 * childLabelU)).toFixed(5));
+    purposeVar('--purpose-child-label-u', (childLabelU * childLabelU * (3 - 2 * childLabelU)).toFixed(5));
     // Hairline and row packing share the indicator's horizontal front. CSS
     // consumes this open fraction directly; no wall clock chases the dot.
-    root.style.setProperty('--purpose-gather-open-u', (1 - horizontalGatherU).toFixed(5));
+    purposeVar('--purpose-gather-open-u', (1 - horizontalGatherU).toFixed(5));
     /* The broad row scrim must gather with the row too. At Ownership it keeps
        the list's natural width (rather than the five-item +340px footprint),
        with just a modest vertical tightening around the three visible marks. */
-    root.style.setProperty(
+    purposeVar(
       '--nav-scrim-extra',
       `${(340 * (1 - gatherU)).toFixed(3)}px`,
     );
-    root.style.setProperty(
+    purposeVar(
       '--nav-scrim-height',
       `${(260 - 20 * gatherU).toFixed(3)}px`,
     );
-    root.style.setProperty(
+    purposeVar(
       '--purpose-peer-open-u',
       // on the row's own front, so the peers fade as they close in rather
       // than vanishing while the row is still travelling
       (1 - Math.min(1, horizontalGatherU / 0.92)).toFixed(5),
     );
-    root.style.setProperty('--purpose-scrim-u', navPoseU.toFixed(5));
+    purposeVar('--purpose-scrim-u', navPoseU.toFixed(5));
     // An opened tree that reaches further DOWN than the resting one is paid
     // upward: the row rises by what Ownership's arm gained, so its seat (the
     // lowest thing on screen) stays where it always was — 10px from the
     // bottom of a phone otherwise. The jaw reaches less far down than the
     // resting tree, so today this is 0 and Purpose holds its height.
     const openedLift = Math.max(0, REST_Y - L.major * 1.1);
-    root.style.setProperty('--purpose-rail-lift', `${(L.purposeLift * navPoseU + openedLift).toFixed(3)}px`);
-    root.style.setProperty('--purpose-tree-x', `${treeX.toFixed(3)}px`);
-    root.style.setProperty('--purpose-tree-opacity', treeU.toFixed(5));
-    root.style.setProperty('--purpose-tree-blur', `${(3 * (1 - treeU)).toFixed(3)}px`);
-    root.style.setProperty('--purpose-fork-u', forkU.toFixed(5));
-    root.style.setProperty('--purpose-branch-start', `${(ringR + connectorAir).toFixed(3)}px`);
-    root.style.setProperty('--purpose-ownership-x', `${ownershipAt.x.toFixed(3)}px`);
-    root.style.setProperty('--purpose-ownership-y', `${ownershipAt.y.toFixed(3)}px`);
-    root.style.setProperty('--purpose-manifesto-x', `${manifestoAt.x.toFixed(3)}px`);
-    root.style.setProperty('--purpose-manifesto-y', `${manifestoAt.y.toFixed(3)}px`);
-    root.style.setProperty('--purpose-ownership-angle', `${ownershipArm.angle.toFixed(4)}deg`);
-    root.style.setProperty('--purpose-ownership-length', `${ownershipArm.length.toFixed(3)}px`);
-    root.style.setProperty('--purpose-manifesto-angle', `${manifestoArm.angle.toFixed(4)}deg`);
-    root.style.setProperty('--purpose-manifesto-length', `${manifestoArm.length.toFixed(3)}px`);
-    root.style.setProperty('--purpose-child-u', childU.toFixed(5));
-    root.style.setProperty('--purpose-child-scale', childScale.toFixed(5));
-    root.style.setProperty('--purpose-tree-scale', treeScale.toFixed(5));
-    root.style.setProperty('--purpose-parent-scale', treeScale.toFixed(5));
-    root.style.setProperty('--purpose-mark-clip-radius', '50%');
+    purposeVar('--purpose-rail-lift', `${(L.purposeLift * navPoseU + openedLift).toFixed(3)}px`);
+    purposeVar('--purpose-tree-x', `${treeX.toFixed(3)}px`);
+    purposeVar('--purpose-tree-opacity', treeU.toFixed(5));
+    purposeVar('--purpose-tree-blur', `${(3 * (1 - treeU)).toFixed(3)}px`);
+    purposeVar('--purpose-fork-u', forkU.toFixed(5));
+    purposeVar('--purpose-branch-start', `${(ringR + connectorAir).toFixed(3)}px`);
+    purposeVar('--purpose-ownership-x', `${ownershipAt.x.toFixed(3)}px`);
+    purposeVar('--purpose-ownership-y', `${ownershipAt.y.toFixed(3)}px`);
+    purposeVar('--purpose-manifesto-x', `${manifestoAt.x.toFixed(3)}px`);
+    purposeVar('--purpose-manifesto-y', `${manifestoAt.y.toFixed(3)}px`);
+    purposeVar('--purpose-ownership-angle', `${ownershipArm.angle.toFixed(4)}deg`);
+    purposeVar('--purpose-ownership-length', `${ownershipArm.length.toFixed(3)}px`);
+    purposeVar('--purpose-manifesto-angle', `${manifestoArm.angle.toFixed(4)}deg`);
+    purposeVar('--purpose-manifesto-length', `${manifestoArm.length.toFixed(3)}px`);
+    purposeVar('--purpose-child-u', childU.toFixed(5));
+    purposeVar('--purpose-child-scale', childScale.toFixed(5));
+    purposeVar('--purpose-tree-scale', treeScale.toFixed(5));
+    purposeVar('--purpose-parent-scale', treeScale.toFixed(5));
+    purposeVar('--purpose-mark-clip-radius', '50%');
     // hidden while under Purpose, in view once clear of its ring (a child's
     // centre at 2 rings' radius has its edge just touching Purpose's)
     const childReveal = (c) => {

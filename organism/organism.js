@@ -2319,6 +2319,26 @@ const viewport = createViewportSync({
 // PAGE-lifetime, in the sense main.js's register uses: installed once, lives
 // until the document does, never taken back off. See the lifetime
 // classification at the head of createScene.
+/* RESIZE REALLOCATES EVERY TARGET (and flushes TAA), so a burst of resize
+   events — a window drag, a phone toolbar or visualViewport settling — must
+   not pay for it per event. The first event applies at once (nothing looks
+   stretched); the rest of a burst collapse into one trailing apply
+   RESIZE_SETTLE_MS after it. An event that changes nothing is dropped. */
+const RESIZE_SETTLE_MS = 150;
+{
+  const applyResize = viewport.resize;
+  let timer = null, pending = false, lastKey = null;
+  const sizeKey = () => `${innerWidth}x${innerHeight}@${devicePixelRatio}`;
+  viewport.resize = () => {
+    if (timer !== null) { pending = true; return; }
+    const key = sizeKey();
+    if (key !== lastKey) { lastKey = key; applyResize(); }
+    timer = setTimeout(() => {
+      timer = null;
+      if (pending) { pending = false; viewport.resize(); }
+    }, RESIZE_SETTLE_MS);
+  };
+}
 addEventListener('resize', viewport.resize);
 
 // The adaptive-resolution governor is owned by ./performance.js, beside the
@@ -2347,6 +2367,9 @@ if (PIN_PR === null)
        A page with no intro to wait for (?nointro, a skipped or frozen entry)
        has no boot window to sit out and settles immediately. */
     bootSettled: () => introApi.started || introApi.complete || intro <= 0,
+    // A catastrophic-ratchet step waits for the camera to land, on the same
+    // at-rest predicate the journey's warm queue uses (journey.js isAtRest).
+    canStep: () => !(globalThis.journey && globalThis.journey.atRest === false),
   }));
 
 /** Input policy (M5 — replaces the page's DOM event shield, which was the
