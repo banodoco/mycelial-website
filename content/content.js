@@ -649,7 +649,7 @@ export const CONTENT = {
         // The site menu's own 2RP row does still point there — see `site.links`
         // at the foot of this file, and the note on it.
         body: [
-          '2RP is an art and tech social network that aims to highlight the best of the ecosystem.',
+          '2RP is an art and tech social network that gives the art and knowledge coming out of the ecosystem a home.',
           'Open work, open models, and the people making both.',
         ],
         status: 'Coming soon.',
