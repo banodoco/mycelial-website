@@ -951,6 +951,7 @@
       background: linear-gradient(180deg, rgb(31 26 20 / .8), rgb(21 18 14 / .8));
       box-shadow: 0 18px 46px rgb(0 0 0 / .4), 0 0 30px rgb(240 200 119 / .04); opacity: 0; transition: opacity .38s ease; }
     .st-host.on .st.has-card::before { opacity: 1; }
+    .st-host.on .st.has-card.is-gathering::before { opacity: var(--st-gather, 1); transition: none; } /* it goes with its card as the stack gathers up */
     .st-card { padding: 10px 13px 10px 12px; transform: translateY(6px); background: transparent; border-color: transparent; box-shadow: none; }
     .st-card p { font-size: 13px; line-height: 1.25; margin-bottom: 8px; }
     .st-card ul { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }

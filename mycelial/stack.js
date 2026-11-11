@@ -174,6 +174,7 @@
 
   // ---- Plane state and the projection ----------------------------------------------------------
   const settledOf = (p) => ({ x: p.cx, y: p.cy, w: p.w, h: p.h, rx: TILT, rz: TURN, o: 1, c: 1, g: 0 });
+  // A plane's state; its pile (scene px, down the scene) is how far it has gathered toward the agent's plane.
   const st = PL.map(settledOf);
   const shown = PL.map(() => ({}));
   const box = (el, s) => {
@@ -189,19 +190,19 @@
     el.style.transform = `scale(${(w / nw).toFixed(5)}, ${(h / nh).toFixed(5)})`;
   };
   const applyPlanes = () => st.forEach((s, i) => {
-    const el = planes[i], was = shown[i], p = PL[i], gh = ghosts[i];
-    const moved = was.x !== s.x || was.y !== s.y || was.w !== s.w || was.h !== s.h;
+    const el = planes[i], was = shown[i], p = PL[i], gh = ghosts[i], pile = s.pile || 0;
+    const moved = was.x !== s.x || was.y !== s.y || was.w !== s.w || was.h !== s.h || (was.pile || 0) !== pile;
     const resized = was.w !== s.w || was.h !== s.h;
     const turned = was.rx !== s.rx || was.rz !== s.rz;
     // At rest the six-pixel tour lift is a translation, not five re-layouts.
     const ambient = !!amb && !build?.back && !gh?.firstChild;
     if (ambient) {
       if (!was.ambient || resized || was.x !== s.x) box(el, { ...s, y: p.cy });
-      const lift = `0 ${(s.y - p.cy).toFixed(3)}px`;
+      const lift = `0 ${(s.y + pile - p.cy).toFixed(3)}px`;
       if (el.style.translate !== lift) el.style.translate = lift;
     } else if (moved || was.ambient) {
       el.style.translate = '';
-      box(el, s);
+      box(el, pile ? { ...s, y: s.y + pile } : s);
     }
     const stretchChat = i === 3 && !!gh?.firstChild;
     if (resized || was.stretchChat !== stretchChat) {
@@ -266,6 +267,12 @@
     const a = w.pts[i - 1], b = w.pts[i], f = (d - w.len[i - 1]) / ((w.len[i] - w.len[i - 1]) || 1);
     return [lerp(a[0], b[0], f), lerp(a[1], b[1], f)];
   };
+  // A plane's corners just inside its rim and the middles of its two sides, in scene px; and those on the screen.
+  const edgesOf = (s) => ({
+    nl: projW(s, -s.w / 2 + 3, s.h / 2 - 3), nr: projW(s, s.w / 2 - 3, s.h / 2 - 3), fr: projW(s, s.w / 2 - 3, -s.h / 2 + 3), fl: projW(s, -s.w / 2 + 3, -s.h / 2 + 3),
+    lm: projW(s, -s.w / 2, 0), rm: projW(s, s.w / 2, 0),
+  });
+  const onScreen = (c) => Object.fromEntries(Object.entries(c).map(([key, p]) => [key, toS(p)]));
   const rng = (seed) => () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const layout = () => {
     const W = innerWidth, H = innerHeight;
@@ -276,11 +283,7 @@
     world.style.perspectiveOrigin = `${PO.x}px ${PO.y}px`;
     stackUp();
     // The whole picture's extent in scene px: labels, planes and roots.
-    const S = PL.map(settledOf);
-    const cw = S.map((s) => ({
-      nl: projW(s, -s.w / 2 + 3, s.h / 2 - 3), nr: projW(s, s.w / 2 - 3, s.h / 2 - 3), fr: projW(s, s.w / 2 - 3, -s.h / 2 + 3), fl: projW(s, -s.w / 2 + 3, -s.h / 2 + 3),
-      lm: projW(s, -s.w / 2, 0), rm: projW(s, s.w / 2, 0),
-    }));
+    const cw = PL.map((p) => edgesOf(settledOf(p)));
     const callXw = right ? Math.max(...cw.map((c) => c.rm.x)) + 40 : Math.min(...cw.map((c) => c.lm.x)) - 40; // the flags' column
     const h1 = slide.querySelector('h1').getBoundingClientRect();
     // On a desktop the cards open in a column beside the flags, right of the stack (the text top left); on a
@@ -318,7 +321,7 @@
     } else world.style.transform = `translate(${view.ox.toFixed(1)}px, ${view.oy.toFixed(1)}px) scale(${k.toFixed(4)})`;
     dpr = Math.min(2, Math.round(devicePixelRatio || 1) || 1);
     // Settled geometry, in screen px: the corners the threads tie together, the flags' places, the roots.
-    const corners = cw.map((c) => Object.fromEntries(Object.entries(c).map(([key, p]) => [key, toS(p)])));
+    const corners = cw.map(onScreen);
     const callX = toS({ x: callXw, y: 0 }).x;
     flags.forEach((el) => { el.style.left = `${callX.toFixed(1)}px`; });
     cards.forEach((c) => {
@@ -353,7 +356,7 @@
       const q = (j + 0.5) / 15, x = lerp(base.nl.x, base.nr.x, q) + (R() - 0.5) * 20 * k, y = lerp(base.nl.y, base.nr.y, q) - 4 * k;
       grow(x, y, Math.PI / 2 + (q - 0.5) * 1.5 + (R() - 0.5) * 0.5, (40 + R() * 62) * k, 0, R() * 0.35);
     }
-    geo = { corners, callX, roots, ways, anchors: A, base: corners.map((c) => c[E.m].y), ch, H, E, out };
+    geo = { corners, rest: corners, rootDy: 0, callX, roots, ways, anchors: A, base: corners.map((c) => c[E.m].y), ch, H, E, out };
     const pts = corners.flatMap((c) => [c.nl, c.nr, c.fl, c.fr]), flagW = Math.max(...flags.map((f) => f.offsetWidth));
     const hx0 = right ? Math.min(...pts.map((p) => p.x)) - 12 : callX - flagW - 10, hx1 = right ? callX + flagW + 10 : Math.max(...pts.map((p) => p.x)) + 12;
     const hy0 = Math.min(...pts.map((p) => p.y)) - 12, hy1 = Math.max(...pts.map((p) => p.y)) + ROOTS * k;
@@ -392,8 +395,8 @@
 
   // ---- Drawing the threads -----------------------------------------------------------------------
   // sh: how far the registration threads have drawn (top down); lb: the labels' leaders, per plane;
-  // rt: the roots' growth.
-  const vis = { sh: 1, lb: PL.map(() => 1), rt: 1 };
+  // rt: the roots' growth; gd: the guide's presence.
+  const vis = { sh: 1, lb: PL.map(() => 1), rt: 1, gd: 1 };
   // Flags are DOM controls: their reveal must not depend on a canvas draw succeeding.
   const syncFlagVisibility = () => vis.lb.forEach((q, i) => {
     const value = (q * q).toFixed(3);
@@ -428,8 +431,9 @@
   const drawBaseThreads = (g) => {
     metrics.baseDraws++;
     const { corners: C, roots } = geo;
-    // Roots under the foundation, and the long threads out to the right.
+    // Roots under the foundation, and the long threads out to the right; as the stack gathers they ride up with it.
     if (vis.rt > 0) {
+      g.save(); g.translate(0, geo.rootDy || 0);
       for (const r of roots) {
         const q = clamp((vis.rt - r.delay) / (1 - r.delay * 0.6));
         if (q <= 0) continue;
@@ -438,6 +442,7 @@
         const tip = clamp((q - 0.85) / 0.15);
         if (tip > 0) { const [x, y] = r.pts.at(-1); dot(g, x, y, 1, 0.75 * tip); r.dots.forEach(([dx, dy]) => dot(g, dx, dy, 0.8, 0.5 * tip)); }
       }
+      g.restore();
     }
     // Registration threads, corner to corner down the stack, drawn from the top: down both near corners and the far
     // one on the flags' side; the other far corner only takes a faint bead.
@@ -499,14 +504,16 @@
       dot(g, x0, m.y, 1.5, q * (0.7 + 0.3 * l));
     });
     // The guide: a bead of light with a short tail along its way, breathing while it waits at a flag.
-    if (guide.a > 0.01 && guide.pos) {
+    // (It lets go as the stack gathers up: vis.gd.)
+    const ga = guide.a * (vis.gd ?? 1);
+    if (ga > 0.01 && guide.pos) {
       const [x, y] = guide.pos;
       if (guide.tail) {
         const [tx, ty] = guide.tail, tl = g.createLinearGradient(tx, ty, x, y);
-        tl.addColorStop(0, GOLD(0)); tl.addColorStop(1, GOLD(0.8 * guide.a));
+        tl.addColorStop(0, GOLD(0)); tl.addColorStop(1, GOLD(0.8 * ga));
         g.lineWidth = 1.3; g.strokeStyle = tl; g.beginPath(); g.moveTo(tx, ty); g.lineTo(x, y); g.stroke();
       }
-      dot(g, x, y, 2.3 + 0.5 * guide.breath, guide.a);
+      dot(g, x, y, 2.3 + 0.5 * guide.breath, ga);
     }
   };
   const draw = () => {
@@ -1105,8 +1112,65 @@
   const sceneEnter = (ctx) => start(ctx);
   // Capture the agent avatar's projected corners once at handoff, then animate only transforms.
   let stackFlight = null, collapseSource = null;
+  // Going to slide 7 the stack gathers up behind her: the planes close their gaps into a tight pile on the agent's
+  // plane, the threads between their corners drawing them in, while the pile shrinks and slides under her, small
+  // enough to hide behind her before it goes. Flags, cards and the guide let go first; the roots draw back up into
+  // the foundation as it rises. Coming back, the same picture runs the other way. q: 0 the stack at rest, 1 gone.
+  // close: where the gaps have closed; fade: where the labels have gone; roots: where the roots have drawn in;
+  // shrink: the stretch over which the pile shrinks to its tucked size (its end is the small frame a late frame
+  // must still show); tuck: the tucked pile's width, in her widths.
+  const GATHER = { pitch: 12, close: 0.55, fade: 0.35, roots: 0.5, shrink: [0.12, 0.88], tuck: 1.2 };
+  let piled = null; // what the gathering changed, to give back
+  const pileAt = (q) => {
+    if (!geo) return;
+    if (!piled) piled = { lb: vis.lb.slice(), rt: vis.rt, gd: vis.gd };
+    const c = seep(clamp(q / GATHER.close)), a = 1 - seep(clamp(q / GATHER.fade));
+    st.forEach((s, i) => { s.pile = (PL[3].cy + (i - 3) * GATHER.pitch - PL[i].cy) * c; });
+    apply();
+    geo.corners = PL.map((p, i) => onScreen(edgesOf({ ...settledOf(p), y: p.cy + st[i].pile })));
+    geo.rootDy = geo.corners[4].nl.y - geo.rest[4].nl.y;
+    baseReady = false; // the cached roots and threads are the settled ones
+    vis.lb = piled.lb.map((l) => l * a); vis.rt = piled.rt * (1 - seep(clamp(q / GATHER.roots))); vis.gd = piled.gd * a;
+    flags.forEach((f) => { f.style.transition = 'none'; });
+    syncFlagVisibility();
+    cards.forEach((card, i) => {
+      card.style.transition = i === openI ? 'none' : '';
+      card.style.opacity = i === openI ? a.toFixed(3) : '';
+    });
+    root.classList.add('is-gathering'); root.style.setProperty('--st-gather', a.toFixed(3));
+    draw();
+  };
+  const unpile = () => {
+    if (!piled) return;
+    const was = piled;
+    piled = null;
+    st.forEach((s) => { s.pile = 0; });
+    if (geo) { geo.corners = geo.rest; geo.rootDy = 0; }
+    baseReady = false;
+    Object.assign(vis, was);
+    flags.forEach((f) => { f.style.transition = ''; });
+    cards.forEach((card) => { card.style.transition = ''; card.style.opacity = ''; });
+    root.classList.remove('is-gathering'); root.style.removeProperty('--st-gather');
+    apply(); syncFlagVisibility(); draw();
+  };
+  // The pile's tight extent on screen, for its tucked size and where it slides to.
+  const pileBox = () => {
+    const pts = PL.flatMap((p, i) => {
+      const c = onScreen(edgesOf({ ...settledOf(p), y: PL[3].cy + (i - 3) * GATHER.pitch }));
+      return [c.nl, c.nr, c.fl, c.fr];
+    });
+    const l = Math.min(...pts.map((p) => p.x)), r = Math.max(...pts.map((p) => p.x));
+    const t = Math.min(...pts.map((p) => p.y)), b = Math.max(...pts.map((p) => p.y));
+    return { x: (l + r) / 2, y: (t + b) / 2, w: r - l };
+  };
+  // Its size and its slide under her: at its tucked size (the end of shrink) its middle is under her middle.
+  const gatherAt = (q, tuck) => {
+    const [s0, s1] = GATHER.shrink, w = seep(clamp((q - s0) / (s1 - s0))), end = seep(clamp((q - s1) / (1 - s1)));
+    return { k: lerp(1, tuck, w) * (1 - 0.6 * end), w, a: 1 - end };
+  };
   const resetStackFlight = () => {
     root.style.transform = ''; root.style.transformOrigin = ''; root.style.opacity = '';
+    unpile();
   };
   const avatar = planes[3].querySelector('.st-avatar img');
   const flightGeometry = () => {
@@ -1154,16 +1218,26 @@
       copy.style.transform = quadTransform(rect.quad.map((p, i) => ({ x: lerp(p.x, upright[i].x, u), y: lerp(p.y, upright[i].y, u) })));
       copy.style.clipPath = u >= 1 ? '' : `ellipse(${lerp(23 * 14 / 30, 30, u)}px ${lerp(20 * 14 / 26, 30, u)}px at ${23 * 14 / 30}px ${20 * 10 / 26}px)`;
     };
+    // The pile gathers about her: it shrinks toward her middle (O) and its own middle (C) slides under it.
+    const sx = root.offsetWidth / box.width, sy = root.offsetHeight / box.height, P = pileBox();
+    const O = { x: (rect.left + rect.width / 2 - box.left) * sx, y: (rect.top + rect.height / 2 - box.top) * sy };
+    const C = { x: (P.x - box.left) * sx, y: (P.y - box.top) * sy };
+    const tuck = clamp(GATHER.tuck * rect.width / (P.w || 1), 0.002, 1);
+    let shownQ = null;
     const flight = { ctx, copy, hideCopy() { flight.draw(1); }, stand(q) { copy.style.visibility = 'visible'; pose(q); }, draw(q) {
       if (stackFlight !== flight || !ctx.isCurrent() || ctx.terminal) return;
       copy.style.visibility = q < 1 ? 'visible' : 'hidden';
       q = clamp(q);
-      root.style.transform = `scale(${Math.max(0.001, 1 - q ** 3)})`;
-      root.style.opacity = String(q < 0.98 ? 1 : (1 - q) / 0.02);
       pose(clamp(q * 0.5 / 0.18));
+      if (q === shownQ) return;
+      shownQ = q;
+      pileAt(q);
+      const { k, w, a } = gatherAt(q, tuck), m = k * w;
+      root.style.transform = `translate(${((O.x - C.x) * m).toFixed(2)}px, ${((O.y - C.y) * m).toFixed(2)}px) scale(${Math.max(0.001, k).toFixed(5)})`;
+      root.style.opacity = a.toFixed(3);
     } };
     stackFlight = flight;
-    root.style.transformOrigin = `${(rect.left + rect.width / 2 - box.left) * root.offsetWidth / box.width}px ${(rect.top + rect.height / 2 - box.top) * root.offsetHeight / box.height}px`;
+    root.style.transformOrigin = `${O.x}px ${O.y}px`;
     flight.release = ctx.transitionDefer(() => {
       if (stackFlight !== flight) return;
       stackFlight = null; copy.remove(); avatar.style.visibility = ''; resetStackFlight();
@@ -1204,11 +1278,11 @@
         const elapsed = now() - started;
         if (elapsed < 180) { flight.stand(easeIO(clamp(elapsed / 180))); frame = requestAnimationFrame(stepCollapse); return; }
         let q = clamp((elapsed - 180) / 500);
-        // A delayed frame must still show the stack small before it disappears.
-        if (q === 1 && !smallFrame) q = Math.cbrt(0.8);
+        // A delayed frame must still show the stack small, gathered under her, before it disappears.
+        if (q === 1 && !smallFrame) q = GATHER.shrink[1];
         flight.draw(q); flight.stand(1);
         if (q < 1) {
-          if (1 - q ** 3 <= 0.2 + 1e-9) smallFrame = true;
+          if (q >= GATHER.shrink[1] - 1e-9) smallFrame = true;
           frame = requestAnimationFrame(stepCollapse);
         } else settle('completed');
       };
