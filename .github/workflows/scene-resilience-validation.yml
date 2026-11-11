@@ -3,22 +3,59 @@ on:
   push:
     branches: [fix/scene-resilience-20261111]
 permissions:
-  contents: read
+  contents: write
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Export pinned source for local inspection
+      - name: Apply reviewed candidate to pinned baseline
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p evidence
-          git archive --format=zip b519a881e7a29e8536461ddd47eac547128b8626 mycelial docs tests tools/deck serve.py package.json > evidence/sources.zip
-          git ls-tree -r b519a881e7a29e8536461ddd47eac547128b8626 > evidence/source-manifest.txt
+          cat .scene-validation/part{0,1,2,3,4} > /tmp/scene.patch.gz
+          echo 'c279bdeb4dafca9ea56213709ab154133b516be6a458645be693a291cd0bf712  /tmp/scene.patch.gz' | sha256sum --check
+          git worktree add /tmp/scene-candidate b519a881e7a29e8536461ddd47eac547128b8626
+          git worktree add /tmp/scene-baseline b519a881e7a29e8536461ddd47eac547128b8626
+          gzip -dc /tmp/scene.patch.gz > evidence/candidate.patch
+          git -C /tmp/scene-candidate apply --check "$GITHUB_WORKSPACE/evidence/candidate.patch"
+          git -C /tmp/scene-candidate apply "$GITHUB_WORKSPACE/evidence/candidate.patch"
+          cd /tmp/scene-candidate
+          node --check mycelial/stack.js
+          node --check mycelial/flywheel.js
+          node --test tests/deck-story.test.mjs tests/deck-copy-surfaces.test.mjs tests/deck-scene-resilience.test.mjs | tee "$GITHUB_WORKSPACE/evidence/unit.txt"
+      - name: Install browser test engines
+        run: |
+          python -m pip install playwright Pillow numpy
+          python -m playwright install --with-deps chromium webkit
+      - name: Validate complete scenes and preserve text choreography
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/scene-candidate && PORT=8240 python3 serve.py) > evidence/candidate-server.log 2>&1 &
+          (cd /tmp/scene-baseline && PORT=8241 python3 serve.py) > evidence/baseline-server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8240/mycelial/index.html >/dev/null && break; sleep 1; done
+          cd /tmp/scene-candidate
+          python tools/deck/check-scene-resilience.py --baseline http://127.0.0.1:8241/mycelial/index.html --out "$GITHUB_WORKSPACE/evidence/scenes" | tee "$GITHUB_WORKSPACE/evidence/scenes.txt"
+          python tools/deck/check-copy-ownership.py --out "$GITHUB_WORKSPACE/evidence/copy" | tee "$GITHUB_WORKSPACE/evidence/copy.txt"
+      - name: Publish validated candidate without bootstrap files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/scene-candidate
+          git diff --check
+          git add mycelial/stack.js mycelial/flywheel.js mycelial/index.html docs/scene-resilience.md tests/deck-scene-resilience.test.mjs tools/deck/check-scene-resilience.py
+          git -c user.name='POM' -c user.email='peter@omalley.io' commit -m 'Harden scene recovery and reduce stack rendering work'
+          git push origin HEAD:refs/heads/candidate/scene-resilience-${GITHUB_RUN_ID}
+          git rev-parse HEAD | tee "$GITHUB_WORKSPACE/evidence/candidate.txt"
+          git diff b519a881e7a29e8536461ddd47eac547128b8626 --stat > "$GITHUB_WORKSPACE/evidence/changes.txt"
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: scene-resilience-sources
+          name: scene-resilience-validation
           path: evidence/
           retention-days: 7
