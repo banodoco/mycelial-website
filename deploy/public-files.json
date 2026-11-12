@@ -20,7 +20,8 @@
     "robots.txt",
     "serve.py",
     "site.webmanifest",
-    "sitemap.xml"
+    "sitemap.xml",
+    "visible-viewport.js"
   ],
   "trees": [
     {
