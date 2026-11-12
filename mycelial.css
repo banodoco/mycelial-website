@@ -207,6 +207,7 @@ body, button, input, select, textarea { font-family: var(--mycelial-body); }
 .j-manifesto-verse,
 .manifesto-static .manifesto-verse {
   display: block;
+  box-sizing: border-box;   /* fit.js may hold a line short of the navigation */
   padding-left: 1.4em;
   text-indent: -1.4em;
 }
@@ -458,12 +459,23 @@ body .j-manifesto .j-manifesto-panel { translate: none; }
   }
 }
 /* Give the complete manifesto a wider reading measure before its overflow
-   lift is needed. Keep the signature and navigation clearances intact. */
+   lift is needed. Keep the signature and navigation clearances intact.
+   2026-11-12: on desktop the open page is a band from just under the logo
+   to 10% above the viewport's foot, filled by the fitted manuscript; its
+   top, foot and width are measured by journey/manifesto/fit.js (the
+   values here are only what a page shows before its first fit). The width
+   stops short of the navigation's settled marks instead of the height
+   stopping above them, and the old 52rem height cap no longer applies. */
 @media (min-width: 721px) {
-  .j-manifesto .j-manifesto-panel { width: min(44rem, 58vw); }
+  .j-manifesto .j-manifesto-panel { width: var(--manifesto-desktop-width, min(44rem, 58vw)); }
   body .j-manifesto:is(.is-open, .is-measuring) {
-    --manifesto-reserve: var(--manifesto-desktop-reserve, 8rem);
+    --mycelial-reading-top: var(--manifesto-desktop-top, 10vh);
+    --manifesto-reserve: var(--manifesto-desktop-reserve, 10vh);
     align-items: flex-start;
+  }
+  body .j-manifesto:is(.is-open, .is-measuring) .j-manifesto-panel {
+    max-height: calc(100dvh - var(--mycelial-reading-top) - var(--manifesto-reserve));
+    padding-block: 0;
   }
 }
 @media (max-width: 720px) {
@@ -1036,7 +1048,9 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
 /* SHORT DESKTOPS SET THE VERSE A LITTLE TIGHTER (2026-11-12). Seventeen
    verse lines at the paragraphs' double leading fitted 1280x720 at under
    11px; at 1.7 the same box fits it at about 12.5px. Taller desktops keep
-   the approved leading. */
+   the approved leading. Kept with the full-height band (fit.js): there
+   1280x720 fits at about 15.5px at double leading and 17.7px at 1.7, level
+   with the 19-20px a 1440x900 screen gets. */
 @media (min-width: 721px) and (max-height: 800px) {
   .j-manifesto .j-manifesto-line { line-height: 1.7; }
 }

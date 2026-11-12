@@ -19,16 +19,26 @@ try {
    const radius = parseFloat(getComputedStyle(mark, '::after').width) * rect.width / parseFloat(style.width) / 2;
    return { left: rect.left + rect.width / 2 - radius, right: rect.left + rect.width / 2 + radius,
     top: rect.top + rect.height / 2 - radius };
-  }).filter(circle => circle.right >= text.left && circle.left <= text.right);
+  });
+  // 2026-11-12: the column runs past the marks' x and stops short of them
+  // only where a line is level with them, so the check is the inked text
+  // itself against each circle, not the column box against the row.
+  const range = document.createRange(), ink = [];
+  for (const verse of box.querySelectorAll('.j-manifesto-verse')) {
+   range.selectNodeContents(verse);
+   ink.push(...[...range.getClientRects()].filter(r => r.width > 1));
+  }
+  const collisions = circles.filter(c => ink.some(r => r.left < c.right && r.right > c.left && r.top < c.top + (c.right - c.left) && r.bottom > c.top)).length;
   return { font: parseFloat(getComputedStyle(first).fontSize), scroll: root.classList.contains('is-scroll-reading'),
    overflow: box.scrollHeight - box.clientHeight, lifted: box.classList.contains('is-lifted'),
    full: all.every(p => !p.hidden), revealed: all.every(p => p.classList.contains('shown')),
-   end: last.getBoundingClientRect().bottom, bottom: text.bottom, navTop: Math.min(...circles.map(circle => circle.top)) };
+   end: last.getBoundingClientRect().bottom, bottom: text.bottom, collisions,
+   fill: (last.getBoundingClientRect().bottom - first.getBoundingClientRect().top) / innerHeight };
  });
  const assertFit = (s, viewport) => {
   assert.ok(s.full && !s.scroll && !s.lifted && s.overflow <= 1 && s.end <= s.bottom + 1, JSON.stringify({viewport,...s}));
-  assert.ok(s.end < s.navTop, `text clears navigation: ${JSON.stringify({viewport,...s})}`);
-  assert.ok(s.font <= 22);
+  assert.equal(s.collisions, 0, `text clears navigation: ${JSON.stringify({viewport,...s})}`);
+  assert.ok(s.font <= 32, 'MAX_FIT_PX in journey/manifesto/fit.js');
  };
  const initial = await state();
  for (let i = 0; i < 8; i++) {
@@ -44,7 +54,7 @@ try {
  for (const [width, height] of [[1440,900],[1280,720],[1440,500],[1440,1100],[1024,768],[800,600],[1280,500],[1920,1080]]) {
   await page.setViewportSize({width,height}); await page.waitForTimeout(150);
   const s = await state(); assertFit(s, `${width}x${height}`);
-  console.log('FIT',width,height,s.font,'navigation clearance',s.navTop-s.end);
+  console.log('FIT',width,height,s.font,'fills',s.fill.toFixed(2),'of the height');
   if ((width===1440&&height===900)||(width===1280&&height===720)||(width===1440&&height===500)) {
    await page.screenshot({path:`/tmp/manifesto-fit-${width}x${height}.png`});
   }
