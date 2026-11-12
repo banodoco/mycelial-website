@@ -1682,8 +1682,13 @@ check('MUTD [executed] nine mutants of slice D\'s three shipped sites, each nami
      projects through the published `project` rather than through
      `projectStable(v, camera)`, so it names no camera at all (§B.7, C5). The REGION is
      the same code; only what the free variables are called changed. */
+  /* fix/visible-canvas: the pass converts NDC through the visible viewport
+     (visible-viewport.js's ndcToClientX/Y, visibleSize) instead of reading
+     window.innerWidth/innerHeight, so those three are free variables too —
+     bound below to the same 1000x1000 frame the `window` double carries. */
   const S3_FREE = ['box', 'hotspots', 'project', 'viewDepth',
-    'tanHalf', 'window', 'chapterIds', 'chapters', 'debug'];
+    'tanHalf', 'window', 'chapterIds', 'chapters', 'debug',
+    'ndcToClientX', 'ndcToClientY', 'visibleSize'];
   const runS3 = (src) => {
     const region = regionOf(src, '    const excluded = new Set();', '    return excluded;');
     // Guards read CODE, not comments: the region's own comment QUOTES the
@@ -1702,7 +1707,9 @@ check('MUTD [executed] nine mutants of slice D\'s three shipped sites, each nami
     }));
     calls = [];
     const out = fn(box, hotspots, (v) => ({ x: v.x, y: v.y, z: 0.5 }), () => 1, 0.5,
-      { innerWidth: 1000, innerHeight: 1000 }, [...RUNTIME_CHAPTER_IDS], doubles(), null);
+      { innerWidth: 1000, innerHeight: 1000 }, [...RUNTIME_CHAPTER_IDS], doubles(), null,
+      (x) => (x * 0.5 + 0.5) * 1000, (y) => (-y * 0.5 + 0.5) * 1000,
+      () => ({ width: 1000, height: 1000, top: 0, left: 0 }));
     return { excluded: out.excluded, colliding: out.debug.colliding.slice().sort(), calls: [...calls] };
   };
 

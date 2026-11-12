@@ -29,6 +29,7 @@
 //
 // The camera leg — the arc around and in under the cap, and the rest pose it
 // settles on — is chapters/equip/camera.js.
+import { ndcToClientY, visibleSize } from '../../../visible-viewport.js';
 import * as THREE from 'three';
 import { FIXED_HOTSPOTS } from '../../structure.js';
 import { restProgress } from '../../route.js';
@@ -209,7 +210,7 @@ export function createEquip(sceneApi) {
   const HEAD_STALE_MS = 250;
   let headTop = NaN, headKey = '', headAt = -Infinity, headEl = null;
   function headingTop() {
-    const key = `${innerWidth}x${innerHeight}`;
+    const key = `${visibleSize().width}x${visibleSize().height}`;
     const now = performance.now();
     if (key === headKey && now - headAt < HEAD_STALE_MS) return headTop;
     headKey = key; headAt = now;
@@ -227,7 +228,7 @@ export function createEquip(sceneApi) {
   function stalkScreenY(y) {
     _sa.set(0, y, 0);
     swayGroup.localToWorld(_sa).project(camera);
-    return (-_sa.y * 0.5 + 0.5) * innerHeight;
+    return ndcToClientY(_sa.y);
   }
   /** The stalk-axis point whose chip rests AGENT_GAP_PX above the heading,
    *  or null when there is nothing to solve against. Screen y falls

@@ -1,3 +1,4 @@
+import { ndcToClientX, ndcToClientY, visibleSize } from '../../visible-viewport.js';
 /* ==================================================================== *
  * journey/ui/hover-zone.js — the hover ZONE owner (order U06).
  *
@@ -247,9 +248,9 @@ export function createHoverZones({ hotState, owner, announce, host, el, sheetQue
           // Measured, it never binds: the crown projects to r 123 (1440x900),
           // 109 (1280x800), 89 (375x812) and the 140 cap (430x932).
           const zFloor = sheetQuery.matches ? 22 : 18;
-          const r = Math.max(zFloor, Math.min(140, z.radius * (window.innerHeight * 0.5) / (d * tanHalf)));
-          const zx = (v.x * 0.5 + 0.5) * window.innerWidth;
-          const zy = (-v.y * 0.5 + 0.5) * window.innerHeight;
+          const r = Math.max(zFloor, Math.min(140, z.radius * (visibleSize().height * 0.5) / (d * tanHalf)));
+          const zx = ndcToClientX(v.x);
+          const zy = ndcToClientY(v.y);
           z.el.style.transform = `translate(${(zx - r).toFixed(1)}px, ${(zy - r).toFixed(1)}px)`;
           z.el.style.width = z.el.style.height = `${(r * 2).toFixed(1)}px`;
           z.r = r;

@@ -1,3 +1,4 @@
+import { visibleSize } from '../../../visible-viewport.js';
 import { createHeroBodyFogClaim } from '../hero-body-fog.js';
 // journey-v6 — FINAL epilogue, PRODUCTION STAGE (W4-D).
 //
@@ -1064,8 +1065,8 @@ export function createFinal(sceneApi) {
     if (sceneApi.setGroundNavPocket) {
       const dpr = window.devicePixelRatio || 1;
       const pocket = purposeNavPocket({
-        width: window.innerWidth,
-        height: window.innerHeight,
+        width: visibleSize().width,
+        height: visibleSize().height,
       });
       sceneApi.setGroundNavPocket({
         x: pocket.x * dpr,

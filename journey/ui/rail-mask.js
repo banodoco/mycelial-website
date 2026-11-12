@@ -30,6 +30,7 @@
  *            its painted geometry is settled and the one instant it is read.
  * ==================================================================== */
 
+import { ndcToClientX, ndcToClientY, visibleSize } from '../../visible-viewport.js';
 import { railBox } from '../layout/rail-geometry.js';
 
 /** Profile controls need 24 px of honest air outside the complete painted
@@ -76,11 +77,11 @@ export function createRailMask({ hotspots, railGeom, chapters, chapterIds }) {
         if (!ow) continue;
         const ov = project(ow.clone());
         if (ov.z > 1) continue;
-        const ox = (ov.x * 0.5 + 0.5) * window.innerWidth;
-        const oy = (-ov.y * 0.5 + 0.5) * window.innerHeight;
+        const ox = ndcToClientX(ov.x);
+        const oy = ndcToClientY(ov.y);
         const wr = h.radius() || 0;
         const rr = wr > 0
-          ? wr * (window.innerHeight * 0.5) / (Math.max(0.05, viewDepth(ow)) * tanHalf)
+          ? wr * (visibleSize().height * 0.5) / (Math.max(0.05, viewDepth(ow)) * tanHalf)
           : 0;
         const cx = Math.max(box.left, Math.min(ox, box.right));
         const cy = Math.max(box.top, Math.min(oy, box.bottom));
