@@ -80,6 +80,7 @@ import { createHeroMode, growthView } from './journey/boot/hero-mode.js';
 import { createEntryQueue } from './journey/boot/entry-queue.js';
 import { createJourneyHandoff } from './journey/boot/handoff.js';
 import { attachHeroCues } from './hero-cues.js';
+import { heroSpores } from './organism/hero-spores.js';
 // Fetch/parse the full journey graph during the quiet preparation frame. The
 // previous late import began only after the 7.6s hero timer and moved a whole
 // module waterfall into the settled scene.
@@ -146,15 +147,18 @@ const entryQueue = createEntryQueue();
    the class of each is unchanged. What moved is WHEN, and for five of them
    that is the whole of this order's user-visible effect.
 
-   THE REGISTER — 13 listener sites, by class (16 until 2026-08-30, 14 until
-   the resize hook became a visible-viewport subscription; the
-   callout entry below carries the two the Equip promotion deleted):
+   THE REGISTER — 15 listener sites, by class (16 until 2026-08-30, 14 until
+   the resize hook became a visible-viewport subscription, 13 until the
+   page-exit pair; the callout entry below carries the two the Equip
+   promotion deleted):
 
      PAGE      window error / unhandledrejection — the error CHANNEL is
                journey/boot/scene-note.js's; these two sites hand it each
                event's message and are registered here because they are
                page-lifetime window listeners like every other line below.
      PAGE      the skip link's click
+     PAGE      pagehide (lose every WebGL context) and pageshow (reload a
+               back/forward-cache restore) — LEAVING GIVES THE GPU BACK
      GATED     the `?introat` load hook — inside `if (introAt !== null)`
      PAGE      the canvas's webglcontextlost / webglcontextrestored pair,
                and the 2.5s grace timer the first one arms
@@ -369,6 +373,34 @@ const heroCues = attachHeroCues(document.querySelector('.ui .hero-cues'));
    A rejected module lands in the same catch as a thrown createScene, and
    the visitor gets the same note. */
 let sceneApi = null;
+
+/* LEAVING GIVES THE GPU BACK AT ONCE (2026-11-12, the 8 GB Mac whose every
+   reload booted slower than the last). Left to the collector, a reloaded
+   page's contexts — the scene's and the prelude worker's — outlive it for
+   a while, and the next load allocates its own on top: at a Retina window
+   that is a few hundred MB of unified memory per instance, and every
+   synchronous call into a GPU process that is swapping parks this thread.
+   So on pagehide every context is lost, which frees all of its targets,
+   textures and buffers in one call, and its canvas drops to 1x1. The
+   scene's canvas is three's (`data-engine`, set before its context is made
+   and appended only after), so it is found even mid-build, before
+   sceneApi exists; the prelude ends its own worker. No loop needs
+   stopping: a hidden, unloading document gets no more frames. Registered
+   before the await, because the prelude holds a context long before the
+   scene exists, and fenced so one throw cannot skip the rest.
+   A page restored from the back/forward cache comes back with dead
+   contexts, so it reloads; that is simpler than rebuilding a scene. */
+let leaving = false;
+addEventListener('pagehide', () => {
+  leaving = true;
+  try { heroSpores.release(); } catch { /* keep releasing */ }
+  for (const c of document.querySelectorAll('canvas[data-engine]')) {
+    try { c.getContext('webgl2').getExtension('WEBGL_lose_context').loseContext(); } catch { /* already lost */ }
+    try { c.width = c.height = 1; } catch { /* nothing left to shrink */ }
+  }
+});
+addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
+
 try {
   const { createScene } = await organismModuleP;
   sceneApi = await createScene({
@@ -439,6 +471,7 @@ if (sceneApi) {
   let lossToken = 0;
   let lossNoteOwner = null;
   canvas.addEventListener('webglcontextlost', (e) => {
+    if (leaving) return; // our own release on pagehide: no restore, no note
     e.preventDefault(); // tell the browser it should attempt a restore
     const token = ++lossToken;
     sceneApi.setRenderEnabled(false);

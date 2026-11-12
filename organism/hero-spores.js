@@ -2826,9 +2826,24 @@ function createPreload() {
     return Math.max((NET_EXIT_S + 0.25) * 1000, 3050, fadeLeft + 100);
   }
 
+  /** The page is going (main.js's pagehide): give the GPU back NOW rather
+   *  than whenever the collector gets to it. stop() lets the worker idle;
+   *  this ends it, and with it its OffscreenCanvas context. */
+  function release() {
+    const gl = state.gl;
+    const threads = [worker, retiredWorker];
+    stop();
+    retiredWorker = null;
+    dropEarlyWorker();
+    for (const w of threads) if (w) w.terminate();
+    const lose = gl && gl.getExtension('WEBGL_lose_context');
+    if (lose) lose.loseContext();
+  }
+
   return {
     boot,
     stop,
+    release,
     /* THE IGNITION CONTRACT, one consumer: journey/boot/handoff.js asks
        preludeMsUntilStrike() when the journey is prepared, delays its
        normal releaseIntro() by exactly that long, and calls
