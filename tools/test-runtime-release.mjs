@@ -39,6 +39,38 @@ try {
   assert.equal(readFileSync(join(root, a.base, 'shared.js'), 'utf8'), "export const value='A';");
   assert.equal(readFileSync(join(root, b.base, 'shared.js'), 'utf8'), "export const value='B';");
   verifyRetainedReleases(root);
+  // ?rt= override: a unique retained prefix selects that snapshot; anything
+  // else keeps the live base and says why. Nothing outside runtime/<listed>/.
+  const history = JSON.parse(readFileSync(join(root, 'runtime-history.json'), 'utf8'));
+  assert.deepEqual(history.releases.map(r => r.hash), [a.hash, b.hash]);
+  const bootstrapB = readFileSync(join(root, 'runtime-release.js'), 'utf8');
+  const boot = (search) => {
+    const win = { location: { search, href: 'http://x/' + search } };
+    const imports = [], appended = [];
+    vm.runInNewContext(bootstrapB, { window: win, URL, document: {
+      createElement: () => ({ style: {}, setAttribute() {}, appendChild(child) { appended.push(child); } }),
+      head: { appendChild: map => imports.push(JSON.parse(map.textContent)) },
+      body: { appendChild: badge => appended.push(badge) },
+    } });
+    return { base: win.__runtimeBase, override: win.__runtimeOverride, imports: imports[0].imports, appended };
+  };
+  assert.equal(boot('').base, b.base);
+  assert.equal(boot('').override, undefined);
+  assert.equal(boot('?diag=1').base, b.base);
+  const older = boot(`?diag=1&rt=${a.hash.slice(0, 8)}`);
+  assert.equal(older.base, a.base);
+  assert.equal(older.imports['./main.js'], a.base + 'main.js');
+  assert.equal(older.override.hash, a.hash);
+  assert.ok(older.appended.some(node => node.id === 'runtime-override-badge'));
+  for (const bad of ['zz', a.hash.slice(0, 7), a.hash.slice(0, 8).toUpperCase(), '../../x', 'https%3A%2F%2Fevil', 'f'.repeat(64)]) {
+    const result = boot(`?rt=${bad}`);
+    assert.equal(result.base, b.base, bad);
+    assert.equal(result.override.problem, 'unknown', bad);
+  }
+  assert.equal(boot(`?rt=${b.hash}`).override.live, true);
+  writeFileSync(join(root, 'runtime-history.json'), JSON.stringify({ version: 1, releases: history.releases.slice(1) }));
+  assert.throws(() => buildRuntimeRelease({ root, check: true }), /stale/);
+  writeFileSync(join(root, 'runtime-history.json'), JSON.stringify(history));
   write('main.js', 'import missing from "./absent.js";');
   assert.throws(() => collectRuntime(root), /ENOENT/);
   write('main.js', 'import("../outside.js");');
@@ -49,7 +81,7 @@ try {
   write(join(a.base, 'shared.js'), 'tampered');
   assert.throws(() => verifyRetainedReleases(root), /Modified immutable/);
   write(join(a.base, 'shared.js'), originalA);
-  console.log('PASS runtime release: source graph closure, missing/escaping imports, stale check, retained A after B, immutable bytes, entry/Three mapping');
+  console.log('PASS runtime release: source graph closure, missing/escaping imports, stale check, retained A after B, immutable bytes, entry/Three mapping, ?rt= override (prefix, invalid, unknown) and history');
 
   const { spawn } = await import('node:child_process');
   const { createServer } = await import('node:http');
