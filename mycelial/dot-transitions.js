@@ -773,6 +773,31 @@
     } });
   };
   const place = (p) => { dot.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px)`; };
+  // Slide 1's words are let down (--text-shift, collage.js) once its fonts and ring are measured, which can be after the
+  // node was placed over them. The node follows its label: where the label has moved, the anchor, the node, the tuft
+  // and the opening's thread (its last point) move with it, so it is never left standing above where the words went.
+  const refollow = () => {
+    if (!anchor || !current || !active()) return;
+    const now = anchorOf(current);
+    if (!now) return;
+    const dx = now.x - anchor.x, dy = now.y - anchor.y;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    anchor = now;
+    place(anchor);
+    for (const h of hyphae) if (h.keep) for (const p of h.pts) { p[0] += dx; p[1] += dy; }
+    const end = opening?.trail?.pts?.at(-1);
+    if (end) { end[0] += dx; end[1] += dy; }
+    draw();
+  };
+  {
+    let shifted = '';
+    new MutationObserver(() => {
+      const v = slides[0].style.getPropertyValue('--text-shift');
+      if (v === shifted) return;
+      shifted = v;
+      if (current === slides[0]) refollow();
+    }).observe(slides[0], { attributes: true, attributeFilter: ['style'] });
+  }
 
   // Text shows only inside a soft-edged circle around the node; growing the
   // circle reveals it from the node outward, shrinking it draws it back in.
