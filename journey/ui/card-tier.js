@@ -190,8 +190,8 @@ export function createCardTier({ shell, owner, hotspots, hotState, reduceMotion,
     if (!items.length) return;
     const first = items[0], last = items[items.length - 1];
     const at = document.activeElement;
-    if (e.shiftKey && (at === first || !card.contains(at))) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && (at === last || !card.contains(at))) { e.preventDefault(); first.focus(); }
+    if (e.shiftKey && (at === first || !card.contains(at))) { e.preventDefault(); last.focus({ preventScroll: true }); }
+    else if (!e.shiftKey && (at === last || !card.contains(at))) { e.preventDefault(); first.focus({ preventScroll: true }); }
   });
 
   /* ---------------- bottom sheet: drag to dismiss (PL-1.3) ----------------
@@ -408,7 +408,7 @@ export function createCardTier({ shell, owner, hotspots, hotState, reduceMotion,
     // new open supplied none (a deep link / hashchange); an explicit trigger
     // always wins, so Escape lands on the control the visitor last used.
     focusReturn.remember(trigger);
-    cardClose.focus();
+    cardClose.focus({ preventScroll: true });
     // Focus does not MOVE on a retarget (it was already inside the dialog) and
     // there is nothing to move it from on a deep link, so neither case
     // announces itself. Say what is now showing (a11y debt #5).

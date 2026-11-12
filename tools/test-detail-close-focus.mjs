@@ -456,10 +456,13 @@ check('D1', 'closeCard() reaches a synchronous release', closeKit.hasRelease,
   /* U03 gave the focus return ONE owner. The two lines this used to pin
      inside closeCard() are now the whole body of `restore()`, so the same
      bytes are pinned where they now live — and, because there is only one
-     copy of them left, the pin cannot go stale by mirroring a second. */
+     copy of them left, the pin cannot go stale by mirroring a second.
+     (fix/visible-canvas: the return now passes { preventScroll: true } —
+     the trigger is on screen by construction, and on iOS a bare focus()
+     can scroll the visual viewport.) */
   check('D9', 'the focus return itself is unchanged',
     /if \(wasPinned\) focusReturn\.restore\(\);/.test(body)
-      && /if \(trigger && document\.contains\(trigger\)\) trigger\.focus\(\);\s*trigger = null;/
+      && /if \(trigger && document\.contains\(trigger\)\) trigger\.focus\(\{ preventScroll: true \}\);\s*trigger = null;/
         .test(bodyOf(selSrc, 'createFocusReturn')),
     'byte-for-byte the pre-fix return, in its one owner');
   check('D9', 'journey.js still clears detailNode synchronously before closeCard()',
