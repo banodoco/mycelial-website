@@ -14,7 +14,7 @@ Branch `fix/transitions-round2`. One commit per item, plus a runtime release.
    20 px above the heading at every height, and it no longer lingers below
    the heading after a toolbar resize.
 
-Commits: `ebcb202` (item 1), `5887c92` (item 2), the item 3 commit, and a runtime
+Commits: `ebcb202` (item 1), `5887c92` (item 2), `df3f8e5` (item 3), and a runtime
 release `efaa28ef` (`npm run runtime:check` passes, `npm run test:runtime` passes).
 
 How everything was measured: headless Chromium + SwiftShader under Playwright's
