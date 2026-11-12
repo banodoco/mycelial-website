@@ -571,6 +571,8 @@
      layer above; on an iPhone such content could drop out of the composited page though laid out and styled, as
      the wheel slides' words once did. The layer lasts the whole visit, so nothing is promoted or demoted mid-turn. */
   html[data-ver="f"] .gap-host:is(.on, [data-deck-present]) > .split > .vis { will-change: opacity; }
+  /* The captions fade in on their own layers; made once the slide is shown, they are already there when the fade starts. */
+  html[data-ver="f"] .gap-host:is(.on, [data-deck-present]) .gp-ax, html[data-ver="f"] .gap-host:is(.on, [data-deck-present]) .gp-zone { will-change: opacity; }
   .gp-run { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
   .gp-flight { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
   @media (prefers-reduced-motion: reduce) { .gp-dot::before, .gp-empty i { animation: none; } .gp-dot, .gp-dot i { transition: none; } }
