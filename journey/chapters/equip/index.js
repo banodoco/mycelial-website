@@ -108,6 +108,29 @@ const STALK_LOCAL_HIGH = new THREE.Vector3(0, 3.2, 0);
 const stalkHigh = () => typeof innerWidth === 'number'
   && innerWidth < STALK_HIGH_BELOW_W;
 
+// ON A PORTRAIT PHONE THE AGENT RESTS RIGHT ABOVE THE HEADING, AT EVERY
+// VISIBLE HEIGHT (2026-11, owner: "Sometimes on mobile ... [it] ends up below
+// the Equip sign, and other times it's above the Equip sign. It should be
+// right above it consistently.") The chip rides a fixed point on the 3D stalk,
+// which projects at a fixed FRACTION of the frame, while the copy block is
+// anchored to the frame's BOTTOM by a fixed number of pixels — so every change
+// of visible height (the iOS toolbar showing or hiding, Safari's tab bar, a
+// shorter phone) slides one against the other. Measured at rest under a fake
+// clock, every navigation path agreeing to +-3 px at a given size: chip bottom
+// to heading top 101 px at 390x844, 64 at 390x764, 48 at 390x734, 16 at
+// 375x667, and at 375x587 the anchor projects onto the heading and the copy
+// rule hides the chip. So on a portrait phone the anchor's height on the
+// stalk axis is SOLVED, from the live camera, to put the chip's bottom
+// AGENT_GAP_PX above the heading's laid-out top, clamped to the stalk
+// [STALK_Y_MIN, STALK_LOCAL_HIGH.y]. Where even the stalk top cannot clear
+// the copy the copy rule still owns the frame, as before. Every other frame
+// (landscape, tablets, desktop) keeps the authored anchors above.
+const AGENT_GAP_PX = 24;          // chip bottom -> heading top
+const AGENT_BELOW_ANCHOR_PX = 24; // icon-tab chip: anchor -> chip bottom (35 px pill, 11 above)
+const STALK_Y_MIN = 0.8;   // the stalk runs 0..3.91; 1.6 still clamped at 390x844 (gap 39 px)
+const portraitPhone = () => typeof innerWidth === 'number'
+  && innerWidth < 600 && innerHeight > innerWidth;
+
 /* ------------------------------------------------------------------ */
 /* The arrival ripple                                                  */
 /* ------------------------------------------------------------------ */
@@ -174,7 +197,56 @@ export function createEquip(sceneApi) {
   });
 
   function localOf(id) {
-    return id === 'agent' && stalkHigh() ? STALK_LOCAL_HIGH : LOCAL_OF[id];
+    if (id !== 'agent') return LOCAL_OF[id];
+    const solved = portraitPhone() ? agentPhoneLocal() : null;
+    return solved || (stalkHigh() ? STALK_LOCAL_HIGH : LOCAL_OF[id]);
+  }
+
+  /* The heading's LAID-OUT top (offsets, so the copy's arrival transform
+     never moves the target), re-read when the frame size changes and at most
+     every HEAD_STALE_MS otherwise, so a late font reflow cannot leave a
+     stale seat. NaN when the block is not laid out. */
+  const HEAD_STALE_MS = 250;
+  let headTop = NaN, headKey = '', headAt = -Infinity, headEl = null;
+  function headingTop() {
+    const key = `${innerWidth}x${innerHeight}`;
+    const now = performance.now();
+    if (key === headKey && now - headAt < HEAD_STALE_MS) return headTop;
+    headKey = key; headAt = now;
+    if (!headEl || !headEl.isConnected) {
+      headEl = typeof document === 'undefined' ? null
+        : document.querySelector('.j-block[data-chapter="equip"] .j-h');
+    }
+    let y = 0;
+    for (let el = headEl; el; el = el.offsetParent) y += el.offsetTop;
+    headTop = headEl && headEl.offsetHeight > 0 ? y : NaN;
+    return headTop;
+  }
+  const _sa = new THREE.Vector3();
+  const _agentPhone = new THREE.Vector3();
+  function stalkScreenY(y) {
+    _sa.set(0, y, 0);
+    swayGroup.localToWorld(_sa).project(camera);
+    return (-_sa.y * 0.5 + 0.5) * innerHeight;
+  }
+  /** The stalk-axis point whose chip rests AGENT_GAP_PX above the heading,
+   *  or null when there is nothing to solve against. Screen y falls
+   *  monotonically as the point climbs the axis, but NOT affinely — the phone
+   *  camera looks up the stalk from below, and a two-point interpolation over
+   *  [STALK_Y_MIN, top] missed by up to 30 px — so the solve is a bisection
+   *  (16 steps: under 1/1000 of a unit on the axis). */
+  function agentPhoneLocal() {
+    if (!swayGroup) return null;
+    const top = headingTop();
+    if (!(top > 0)) return null;
+    let lo = STALK_Y_MIN, hi = STALK_LOCAL_HIGH.y;
+    if (!(stalkScreenY(lo) - stalkScreenY(hi) > 1)) return null;   // behind, edge-on, or not yet posed
+    const want = top - AGENT_GAP_PX - AGENT_BELOW_ANCHOR_PX;
+    for (let i = 0; i < 16; i++) {
+      const m = (lo + hi) / 2;
+      if (stalkScreenY(m) > want) lo = m; else hi = m;   // still too low on screen: climb
+    }
+    return _agentPhone.set(0, (lo + hi) / 2, 0);
   }
 
   function worldOf(local) {
