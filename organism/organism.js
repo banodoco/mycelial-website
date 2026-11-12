@@ -2422,10 +2422,16 @@ const viewport = createViewportSync({
    stretched); the rest of a burst collapse into one trailing apply
    RESIZE_SETTLE_MS after it. An event that changes nothing is dropped. */
 const RESIZE_SETTLE_MS = 150;
+// What the canvas actually HAS, not what the box is now: the renderer was
+// sized when it was constructed, and the box may have settled since.
+const _builtSize = renderer.getSize(new THREE.Vector2());
+// Set for one apply: the size change it carries was never on screen (the
+// boot reconcile below), so there is no old picture to ease away from.
+let resizeSnapNext = false;
 {
   const applyResize = viewport.resize;
   let timer = null, pending = false, lastKey = null;
-  let applied = visibleSize();
+  let applied = { ...visibleSize(), width: _builtSize.x, height: _builtSize.y };
   const sizeKey = () => { const v = visibleSize(); return `${v.width}x${v.height}+${v.top}@${devicePixelRatio}`; };
   const apply = () => {
     const prev = applied, next = visibleSize();
@@ -2433,7 +2439,12 @@ const RESIZE_SETTLE_MS = 150;
     // The frame currently on screen, in the coordinates of the new canvas.
     const live = viewEase ? viewEaseState(viewEase, viewEase.u) : { H: prev.height, Y: 0 };
     const dh = next.height - prev.height;
-    const ease = !CAPTURE && coarsePointer && coarsePointer.matches
+    const snap = resizeSnapNext;
+    resizeSnapNext = false;
+    // While the spore prelude still draws through its own projection it
+    // re-frames in one step on this same change; the scene steps with it, or
+    // the falling spore and the ground it lands on disagree for the ease.
+    const ease = !snap && !heroSpores.ownsFrame && !CAPTURE && coarsePointer && coarsePointer.matches
       && Math.abs(next.width - prev.width) < 1 && Math.abs(dh) >= 1
       && Math.abs(dh) <= VIEW_EASE_MAX_DH;
     applyResize();
@@ -2461,6 +2472,25 @@ const RESIZE_SETTLE_MS = 150;
 // event stays as a second door, and the size key makes the pair one apply.
 visibleViewport.subscribe(viewport.resize);
 addEventListener('resize', viewport.resize);
+/* A SETTLE THAT LANDED BEFORE THIS LINE WAS HEARD BY NOBODY (fix/visible-
+   canvas, owner on Chrome iOS: from the deck, in a new tab, "the spore falls
+   WAY lower"). The renderer is sized near the top of createScene, and this
+   subscription is installed at its end — on a phone that is seconds of
+   module work, and a new tab's bars settle inside it. Every other reader
+   (setView, the director, the spore layer) already took the settled box, so
+   the canvas stayed at the large height under a camera aspect for the small
+   one: the scene stretched and its landing site sat ~50 px below the spore
+   layer's. Reconcile once, now: only when the two disagree, so a load whose
+   box never moved (every desktop, ?capture) does nothing here. */
+{
+  const now = visibleSize();
+  if (Math.abs(_builtSize.x - now.width) >= 1 || Math.abs(_builtSize.y - now.height) >= 1) {
+    // The scene has not been on screen at the built size (the frame loop
+    // started in this same task), so this re-frame snaps; it does not ease.
+    resizeSnapNext = true;
+    viewport.resize();
+  }
+}
 
 // The adaptive-resolution governor is owned by ./performance.js, beside the
 // calibration memory it reads and writes. Registered here so it keeps its slot

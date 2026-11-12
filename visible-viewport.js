@@ -173,14 +173,25 @@ export function createVisibleViewport({ read, now, raf = null, publish = null,
     get polling() { return polling; },
     poke,
     refresh,
-    /** fn(next, prev) on every published change. Returns the unsubscribe. */
-    subscribe(fn) {
+    /** fn(next, prev) on every published change. Returns the unsubscribe.
+     *  `since` is the box the caller built itself for, if it read one before
+     *  subscribing: when the box has moved since, fn runs at once with it —
+     *  a settle that lands between a boot-time read and the subscription
+     *  must not be lost (a new tab's bars settle inside that window). */
+    subscribe(fn, since = null) {
       subs.push(fn);
+      if (since && moved(since, current)) fn(current, since);
       return () => { const i = subs.indexOf(fn); if (i >= 0) subs.splice(i, 1); };
     },
-    /** fn(next, prevSettled) once per burst, SETTLED_MS after its last change. */
-    subscribeSettled(fn) {
+    /** fn(next, prevSettled) once per burst, SETTLED_MS after its last
+     *  change. `since` as for subscribe; a missed change is delivered on the
+     *  settled tier's own delay. */
+    subscribeSettled(fn, since = null) {
       if (!settledSubs.length) settledBase = current;
+      if (since && moved(since, current)) {
+        const late = () => fn(current, since);
+        if (setTimer) setTimer(late, SETTLED_MS); else late();
+      }
       settledSubs.push(fn);
       return () => { const i = settledSubs.indexOf(fn); if (i >= 0) settledSubs.splice(i, 1); };
     },

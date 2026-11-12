@@ -20,8 +20,18 @@
  *   V7  node (no window): visibleSize() reads the stubbed globals live
  *   V8  the settled tier hears a five-step toolbar settle once, SETTLED_MS
  *       after its last step; a pixel-ratio change alone is a change
+ *   V9  a settle that lands BETWEEN a consumer's boot-time read and its
+ *       subscription is delivered on subscribe (`since`), on both tiers —
+ *       the new-tab race that left the scene canvas at the large height
+ *   V10 the consumers that must agree are wired to that contract (source
+ *       text — the scene and the spore layer cannot be built in node): the
+ *       scene reconciles the size its renderer was BUILT at when it
+ *       subscribes, the spore layer subscribes with the box it was composed
+ *       for and re-sends the worker its size on every change, and the scene
+ *       does not ease its framing while the layer still owns its own frame
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   computeVisible, createVisibleViewport, visibleSize, SETTLE_MS, SETTLED_MS,
 } from '../visible-viewport.js';
@@ -170,6 +180,36 @@ row('V8', 'settled tier: one call per burst, SETTLED_MS after the last step; dpr
   w.dpr = 2; w.vp.poke();
   assert.equal(fast.length, 6, 'a pixel-ratio change alone is published');
   assert.equal(w.vp.get().dpr, 2);
+});
+
+row('V9', 'a change before subscribing is not lost: `since` delivers it, on both tiers', () => {
+  const w = world({ lh: 900, vv: { width: 430, height: 880, scale: 1, offsetTop: 0, offsetLeft: 0 } });
+  const builtFor = w.vp.get();                      // the consumer reads at boot...
+  w.vv = { ...w.vv, height: 738 }; w.frame();       // ...the bars settle...
+  const fast = [], settled = [];
+  w.vp.subscribe((n, p) => fast.push([n.height, p.height]), builtFor);   // ...then it subscribes
+  w.vp.subscribeSettled((n, p) => settled.push([n.height, p.height]), builtFor);
+  assert.deepEqual(fast, [[738, 880]], 'immediate tier: delivered on subscribe');
+  w.run(SETTLED_MS + 32);
+  assert.deepEqual(settled, [[738, 880]], 'settled tier: delivered after its delay');
+  const quiet = [];
+  w.vp.subscribe(() => quiet.push(1), w.vp.get());
+  assert.deepEqual(quiet, [], 'nothing when the box has not moved');
+});
+
+row('V10', 'scene and spore layer: same source, same tier, no lost settle, no split ease', () => {
+  const src = (f) => readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
+  const org = src('organism/organism.js'), spores = src('organism/hero-spores.js');
+  assert.match(org, /const _builtSize = renderer\.getSize\(/, 'the scene remembers the size it was built at');
+  assert.match(org, /visibleViewport\.subscribe\(viewport\.resize\);/, 'the scene resizes on the immediate tier');
+  assert.match(org, /Math\.abs\(_builtSize\.x - now\.width\) >= 1 \|\| Math\.abs\(_builtSize\.y - now\.height\) >= 1\) \{[\s\S]{0,240}viewport\.resize\(\);/,
+    'and reconciles a settle that landed before it subscribed');
+  assert.match(org, /const ease = !snap && !heroSpores\.ownsFrame/, 'no framing ease while the layer projects on its own');
+  assert.match(spores, /offResize = visibleViewport\.subscribe\(onResize, builtFor\);/, 'the layer subscribes with the box it was composed for');
+  assert.match(spores, /worker\.postMessage\(\{ type: 'resize', view: state\.view, quiet: measureCopyBox\(\), \.\.\.measureCanvas\(\) \}\);/,
+    'every change re-sends the worker its view and canvas size');
+  assert.match(spores, /const vp = visibleSize\(\);\s*return \{\s*width: Math\.max\(1, Math\.round\(vp\.width \* pr\)\),\s*height: Math\.max\(1, Math\.round\(vp\.height \* pr\)\)/,
+    'the layer canvas is sized from the same visible box as the scene');
 });
 
 if (failed) { console.log(`visible viewport: ${failed} FAILED`); process.exit(1); }

@@ -2575,6 +2575,7 @@ function createPreload() {
     if (!stage || !stage.parentNode) return;
     state.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     state.heroMode = createHeroMode();
+    const builtFor = visibleSize();   // the box this layer is composed for
     state.view = readView(state.heroMode);
     state.mode = chooseMode();
     if (state.mode !== 'worker') dropEarlyWorker();
@@ -2661,7 +2662,7 @@ function createPreload() {
     // resize. The visible viewport publishes both (and the changes no event
     // announces), so the worker's anchor stays on the same measured rail as
     // the scene; reframe preserves the current spore and re-aims its flight.
-    offResize = visibleViewport.subscribe(onResize);
+    offResize = visibleViewport.subscribe(onResize, builtFor);
     // A hidden tab pays for nothing. rAF is already suspended by
     // every current engine when the document is hidden; parking the loop
     // explicitly also covers the cases where it is not (an occluded but
@@ -2848,6 +2849,11 @@ function createPreload() {
       }
     },
     get failed() { return state.failed; },
+    /** True while this layer draws the stream through its OWN projection
+     *  (state.view), i.e. live and not yet following the scene's camera.
+     *  The scene must not ease its framing then (organism.js VIEW_EASE_S):
+     *  the layer re-frames in one step, so both have to. */
+    get ownsFrame() { return !!(state.live && !state.handedOff); },
     get field() { return state.field; },
     get view() { return state.view; },
     get reduced() { return state.reduced; },

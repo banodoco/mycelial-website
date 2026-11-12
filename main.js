@@ -238,6 +238,9 @@ if (skipLink) {
    build the scene from viewFor(current) with those trackers -> mount(),
    which publishes the `mode-*` class to <body> AFTER the scene exists. */
 const heroMode = createHeroMode();
+// The box the hero was composed for; the settled re-frame below catches up
+// if it moves before that subscription exists (visible-viewport.js `since`).
+const heroBuiltFor = visibleSize();
 const TRACKS = heroMode.tracks;
 
 // --- scene init ---
@@ -856,7 +859,7 @@ if (sceneApi) {
     // may all have changed with the breakpoint); the animator follows
     // the easing camera on its own
     railRefresh();
-  });
+  }, heroBuiltFor);
 }
 
 // hovering a callout gently lights its region of the specimen
