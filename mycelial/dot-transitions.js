@@ -49,7 +49,14 @@
   const THREAD = '240,200,119', NODE = '255,217,145';
   const REST = 0.42; // what a lasting thread settles to, as a share of its fresh glow
   let hyphae = [], blooms = [], nodes = [], netOn = false, netRaf = 0, netLast = 0, dpr = 1;
-  let vw = innerWidth, vh = innerHeight;
+  // The canvas's own box (fixed, inset: 0: the box the slides are laid out in), never innerWidth x innerHeight, which
+  // Chrome on an iPhone can report at its large viewport: the bitmap is drawn at the size it is shown at, and nothing
+  // here can stand taller than the screen.
+  const netBox = () => {
+    const w = net.clientWidth, h = net.clientHeight;
+    return w > 0 && h > 0 ? { w, h } : { w: innerWidth, h: innerHeight };
+  };
+  let { w: vw, h: vh } = netBox();
   // The settled network as geometry, so a resize can redraw it in place: { pts, w, a } threads and { x, y, a } nodes.
   let baked = [];
   const CAP = 6000; // past this the network is full: new threads still glow on their way, then fade instead of staying
@@ -100,14 +107,13 @@
   // size() says so, for the ground it no longer reaches to be grown over.
   const size = (from, to) => {
     dpr = Math.min(2, devicePixelRatio || 1);
-    let sx = innerWidth / vw, sy = innerHeight / vh;
+    const box = netBox();
+    let sx = box.w / vw, sy = box.h / vh;
     const o = from || { x: vw / 2, y: vh / 2 };
-    vw = innerWidth; vh = innerHeight;
+    vw = box.w; vh = box.h;
     const n = to || { x: vw / 2, y: vh / 2 };
     net.width = ground.width = Math.round(vw * dpr);
     net.height = ground.height = Math.round(vh * dpr);
-    // The visible box, live: the bitmap and its CSS box agree whatever a phone's toolbar is doing.
-    net.style.width = `${vw}px`; net.style.height = `${vh}px`;
     const w = warp * sx / sy, even = w > 1.25 || w < 0.8;
     if (even) { const k = Math.sqrt(sx * sy); sx = k / Math.sqrt(warp); sy = k * Math.sqrt(warp); warp = 1; } else warp = w;
     if (sx !== 1 || sy !== 1 || even) {
@@ -773,13 +779,17 @@
     } });
   };
   const place = (p) => { dot.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px)`; };
-  // Slide 1's words are let down (--text-shift, collage.js) once its fonts and ring are measured, which can be after the
-  // node was placed over them. The node follows its label: where the label has moved, the anchor, the node, the tuft
-  // and the opening's thread (its last point) move with it, so it is never left standing above where the words went.
+  // The node follows its label, whatever moves it: slide 1's words let down (--text-shift, collage.js) once fonts and
+  // ring are measured, or a phone's bars settling the screen's height while the opening is still on (its resize is
+  // held until then). Where the label has moved, the anchor, the node, the tuft and the opening's thread (its last
+  // point) move with it, in the same frame, so it is never left standing above where the words went and never hops
+  // there later. Called every idle frame (idle) and on --text-shift; the label's own idle wander (the copy's
+  // translate) is taken out, so the node never chases the text that is following it.
   const refollow = () => {
-    if (!anchor || !current || !active()) return;
-    const now = anchorOf(current);
-    if (!now) return;
+    if (!anchor || !current || !active() || turning) return;
+    const at = anchorOf(current), lead = textOf(current)[0];
+    if (!at) return;
+    const off = lead ? copyOffset(lead) : { x: 0, y: 0 }, now = { x: at.x - off.x, y: at.y - off.y };
     const dx = now.x - anchor.x, dy = now.y - anchor.y;
     if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
     anchor = now;
@@ -797,6 +807,8 @@
       shifted = v;
       if (current === slides[0]) refollow();
     }).observe(slides[0], { attributes: true, attributeFilter: ['style'] });
+    // And as the screen's box changes, before that frame is painted (a resize lands between frames, after idle ran).
+    if (window.ResizeObserver) new ResizeObserver(() => refollow()).observe(html);
   }
 
   // Text shows only inside a soft-edged circle around the node; growing the
@@ -1299,6 +1311,7 @@
     last = now;
     idleRaf = requestAnimationFrame(idle);
     if (turning || !anchor) return;
+    refollow();
     t += dt;
     driftBlend = Math.min(1, driftBlend + dt / 1.7);
     const blend = driftBlend * driftBlend * (3 - 2 * driftBlend);
