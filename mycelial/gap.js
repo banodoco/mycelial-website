@@ -643,5 +643,49 @@
     if (near()) size();
     return ctx.to !== 2 || (sky.width > 0 && sky.height > 0);
   };
+  // ---- Preparing ahead ----------------------------------------------------
+  // Nothing in this slide is painted until it is shown (hidden slides are visibility: hidden), so the first visit in
+  // a page load used to meet its one-off work as the captions faded: the logos' first decodes (one as each tool
+  // lands), the captions' first shaping and glyph raster (their face, and the system fallback for the arrows ← →,
+  // which the italic Cormorant subset does not carry). Do that work once per page load while the viewer is still on
+  // slide 2 (as flywheel.js does for its wheel): every logo decoded, the captions' face loaded, and the captions'
+  // exact text painted once in a near-transparent copy that is removed again.
+  let readyAhead = false, readyAheadBusy = false, primer = null;
+  const captionFaces = () => {
+    const faces = new Map();
+    root.querySelectorAll('.gp-ax, .gp-zone').forEach((el) => {
+      const s = getComputedStyle(el), font = `${s.fontStyle} ${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
+      faces.set(font, (faces.get(font) || '') + el.textContent);
+    });
+    return faces;
+  };
+  const loadFaces = () => Promise.all([...captionFaces()].map(([font, text]) => document.fonts.load(font, text).catch(() => {})));
+  const paintAhead = () => new Promise((resolve) => {
+    if (motionOff() || primer) { resolve(); return; }
+    primer = document.createElement('div');
+    primer.setAttribute('aria-hidden', 'true');
+    primer.style.cssText = 'position:fixed;left:0;top:0;z-index:-1;pointer-events:none;opacity:.02;will-change:opacity;white-space:nowrap;';
+    root.querySelectorAll('.gp-ax, .gp-zone').forEach((el) => {
+      const copy = el.cloneNode(true);
+      copy.removeAttribute('style');
+      copy.style.cssText = 'position:static;display:block;opacity:1;transition:none;';
+      primer.appendChild(copy);
+    });
+    document.body.appendChild(primer);
+    requestAnimationFrame(() => requestAnimationFrame(() => { primer?.remove(); primer = null; resolve(); }));
+  });
+  const prepareAhead = () => {
+    if (readyAhead || readyAheadBusy) return;
+    readyAheadBusy = true;
+    const imgs = tools.map((el) => el.querySelector('img')).filter((img) => img && img.getAttribute('src'));
+    loadFaces().then(() => Promise.all(imgs.map((img) => (img.decode ? img.decode().catch(() => {}) : null))))
+      .then(paintAhead).catch(() => {}).then(() => { readyAheadBusy = false; readyAhead = imgs.length === tools.filter((el) => el.querySelector('img')).length; });
+  };
+  // Once slide 2 is at rest (and for a direct load on slide 2 or 3, when it settles): in a quiet moment, so slide 2's own
+  // reveal is never competing with it. The slide's pictures arrive when it is the next slide; if they are not in yet, a later settle tries again.
+  const readySoon = () => setTimeout(() => idleSoon(() => { if (fieldSlide?.classList.contains('on') || slide.classList.contains('on')) prepareAhead(); }), 400);
+  const settledWatch = new MutationObserver(() => { if ((fieldSlide?.hasAttribute('data-settled') || slide.hasAttribute('data-settled')) && !readyAhead) readySoon(); });
+  [fieldSlide, slide].filter(Boolean).forEach((s) => settledWatch.observe(s, { attributes: true, attributeFilter: ['data-settled', 'class'] }));
+  if (fieldSlide?.hasAttribute('data-settled') || slide.hasAttribute('data-settled')) readySoon();
   window.deckRegisterScene?.([2], { enter: sceneEnter, exit: sceneExit, restore: sceneRestore, resize: sceneResize });
 })();
