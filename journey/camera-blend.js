@@ -10,15 +10,16 @@ import { arcLerp } from './camera-path.js';
  *  it falls back to the shipped linear map. Monotone by construction: the
  *  metric is a nonnegative per-segment sum; stationary departure samples
  *  consume no time. */
-function routePaceP(blend, e) {
+export function routePaceP(blend, e, raw = false) {
   if (e <= 0) return blend.routeFromP;
   if (e >= 1) return blend.routeTargetP;
   const pace = blend.routePace;
   if (!pace) {
     return blend.routeFromP + (blend.routeTargetP - blend.routeFromP) * e;
   }
-  const cum = pace.cum, n = cum.length - 1;
-  const u = e * pace.total;
+  // `raw` selects the floor-free table the CAMERA rides (see buildRoutePace)
+  const cum = raw ? pace.camCum : pace.cum, n = cum.length - 1;
+  const u = e * (raw ? pace.camTotal : pace.total);
   let lo = 0, hi = n;
   while (hi - lo > 1) {
     const m = (lo + hi) >> 1;
@@ -54,8 +55,9 @@ export function blendEaseRate(f, slope, k) {
 
 /** Shared camera/rail/wordmark phase for a flight. */
 export function blendPhase(blend, f) {
-  const departingFirstLeg = blend.routeFaithful && blend.routeTargetP > blend.routeFromP;
-  return departingFirstLeg ? f * f * (3 - 2 * f) : blendEase(f);
+  // One quintic for every hop: the first outward leg used to launch on a
+  // cubic (~21 u/s^2 at t=0, -10 at touchdown), the one jolt in the set.
+  return blendEase(f);
 }
 
 /** Build the frame-critical direct-jump camera compositor once. */
@@ -67,10 +69,9 @@ export function createCameraBlendStepper(sceneApi, director, lens, guarded, onEn
     blend.t += dt * blend.play;
     if (blend.t < 0) blend.t = 0;
     const f = Math.min(blend.t / blend.dur, 1);
-    // The first outward leg has a long authored stationary prelude. Its
-    // distance table now skips that hold; a cubic launch then makes movement
-    // perceptible promptly, with zero velocity at both ends. Use this same
-    // phase for the rail and camera so the wordmark remains synchronized.
+    // The first outward leg's distance table skips its authored stationary
+    // prelude, so the same quintic as every other hop starts moving promptly.
+    // Rail and camera share this phase so the wordmark stays synchronized.
     const e = blendPhase(blend, f);
     // The rail consumes the camera's exact eased clock for both ordinary
     // clicks and cyclic wraps. Journey progress itself is already parked at
@@ -89,8 +90,9 @@ export function createCameraBlendStepper(sceneApi, director, lens, guarded, onEn
        every later frame reader can consume the same value. */
     if (blend.routeFaithful) {
       blend.presentedP = routePaceP(blend, e);
-      director.apply(blend.presentedP, dt);
-      guarded('lens', () => lens.setLookOverride(lens.lookOf(blend.presentedP)));
+      const camP = routePaceP(blend, e, true);
+      director.apply(camP, dt);
+      guarded('lens', () => lens.setLookOverride(lens.lookOf(camP)));
       if (f >= 1) onEnd(true);
       return;
     }

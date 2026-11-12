@@ -77,12 +77,25 @@ const DEPART_S = 1.0;
 const DEPART_MIN_S = 0.8;
 const ARRIVE_S = 0.8;
 const ARRIVE_LEAD_S = 1.3;
+/* Intro -> Inspire only (copy-arrival.js passes it): the words are the last
+   thing to settle, finishing just before touchdown instead of 0.5 s ahead of
+   it, so heading and camera read as one arrival rather than two. */
+export const ARRIVE_WITH_CAMERA_LEAD_S = 0.85;
 const ARRIVE_MIN_SHARE = 0.5;
 
+/* Intro -> Inspire chapter gate (embers, hence chips), as a pure function of
+   the flight's FRACTION f = t / dur — the same blend clock the camera is
+   spent on, so no duration or dropped-frame stretch can separate them. */
+export const INTRO_INSPIRE_GATE = { onset: 0.45, land: 1 };
+export function introInspireGate(f) {
+  return INTRO_INSPIRE_GATE.land
+    * smoothA((f - INTRO_INSPIRE_GATE.onset) / (1 - INTRO_INSPIRE_GATE.onset));
+}
+
 /** The schedule for a flight of `dur` seconds. */
-export function navCopySchedule(dur) {
+export function navCopySchedule(dur, lead = ARRIVE_LEAD_S) {
   const departStart = Math.min(DEPART_DELAY_MAX_S, DEPART_DELAY_SHARE * dur);
-  const arriveStart = Math.max(ARRIVE_MIN_SHARE * dur, dur - ARRIVE_LEAD_S,
+  const arriveStart = Math.max(ARRIVE_MIN_SHARE * dur, dur - lead,
     departStart + DEPART_MIN_S);
   return {
     departStart,
@@ -99,8 +112,8 @@ export function navCopyDeparture(t, dur) {
 }
 
 /** Incoming words' arrival fraction (0..1). May reach 1 after `dur`. */
-export function navCopyArrival(t, dur) {
-  const s = navCopySchedule(dur);
+export function navCopyArrival(t, dur, lead) {
+  const s = navCopySchedule(dur, lead);
   return smoothA((t - s.arriveStart) / s.arriveDur);
 }
 

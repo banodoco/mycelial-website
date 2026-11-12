@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { manifestoPose, descentU, CAMERA_SECONDS, smoother, ascentAt } from '../journey/manifesto/pose.js';
+import { manifestoPose, descentU, CAMERA_SECONDS } from '../journey/manifesto/pose.js';
 const from = { position: { x: -15.4864, y: 5.2453, z: 3.4893 },
   target: { x: -3.023, y: 1.3933, z: -1.8471 }, fov: 53.5004, roll: -5 * Math.PI / 180 };
 for (const aspect of [390 / 844, 430 / 932]) {
@@ -12,7 +12,7 @@ for (const aspect of [390 / 844, 430 / 932]) {
       assert.ok(pose.position.y <= previousY + 1e-6, 'return descends monotonically');
       previousY = pose.position.y;
       if (k >= 0.9) {
-        assert.ok((pose.position.y - from.position.y) / (top.position.y - from.position.y) < 0.01,
+        assert.ok((pose.position.y - from.position.y) / (top.position.y - from.position.y) < 0.015,
           'final tenth is a settle, not a second downward flight');
         assert.ok(Math.abs(pose.fov - from.fov) < 0.8, 'lens has substantially reached Purpose before the final settle');
         assert.ok(Math.abs(pose.roll - from.roll) < 0.009, 'five-degree bank returns with the flight');
@@ -25,18 +25,41 @@ for (const aspect of [390 / 844, 430 / 932]) {
     assert.equal(landing.roll, from.roll);
   }
 }
-// The desktop's original inverse remains unchanged, including early returns.
-for (const start of [0.06, 0.5, 1]) for (const k of [0, 0.25, 0.5, 0.75, 0.99]) {
-  const top = start * CAMERA_SECONDS;
-  const goal = ascentAt(top, 1.6) * (1 - smoother(k));
-  let lo = 0, hi = top;
-  for (let i = 0; i < 30; i++) {
-    const mid = (lo + hi) / 2;
-    if (ascentAt(mid, 1.6) < goal) lo = mid; else hi = mid;
+// Desktop and phone returns are one eased glide from any height (2026-11:
+// desktop's height-only key crossed the climb's sideways frame shift in
+// 0.2 s, a 126 u/s whip, then re-accelerated and pitched in its last second).
+// Step the real clock at 60 Hz from the authored Purpose rests.
+const { returnSecondsFrom } = await import('../journey/manifesto/pose.js');
+const deskRest = { position: { x: -14.72, y: 2.73, z: 2.70 }, target: { x: -3.06, y: 0.83, z: -1.94 }, fov: 45.5, roll: 0 };
+const phoneRest = { ...from, fieldCenter: { x: .251658, z: -1.823989 } };
+const gaze = p => { const d = ['x', 'y', 'z'].map(c => p.target[c] - p.position[c]); const n = Math.hypot(...d); return d.map(v => v / n); };
+for (const [rest, aspect, maxSpeed, maxAccel] of [[deskRest, 1.6, 100, 1000], [phoneRest, 390 / 844, 25, 600]]) {
+  for (const start of [0.1, 0.36, 0.5, 0.75, 1]) {
+    const seconds = returnSecondsFrom(start);
+    let previous = manifestoPose(rest, start * CAMERA_SECONDS, aspect), velocity = null, k = 0;
+    const rows = [];
+    while (k < 1) {
+      k = Math.min(1, k + 1 / seconds / 60);
+      const pose = manifestoPose(rest, descentU(start, k, aspect, rest.position.y) * CAMERA_SECONDS, aspect);
+      const v = ['x', 'y', 'z'].map(c => (pose.position[c] - previous.position[c]) * 60);
+      const a = gaze(previous), b = gaze(pose);
+      const turn = Math.acos(Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])) * 60;
+      if (velocity) assert.ok(Math.hypot(...v.map((c, i) => (c - velocity[i]) * 60)) < maxAccel,
+        `${aspect}: return from ${start} has no velocity spike`);
+      rows.push({ speed: Math.hypot(...v), turn });
+      assert.ok(rows.at(-1).speed < maxSpeed, `${aspect}: return from ${start} stays under ${maxSpeed} u/s`);
+      velocity = v; previous = pose;
+    }
+    const last = rows.slice(-60);
+    for (let i = 1; i < last.length; i++) {
+      assert.ok(last[i].speed <= last[i - 1].speed + 1e-6, `${aspect}: return from ${start} decelerates through its last second`);
+      if (i > 6) assert.ok(last[i].turn <= last[i - 1].turn + 0.002, `${aspect}: return from ${start} stops turning as it lands`);
+    }
+    assert.deepEqual(previous.position, rest.position);
+    assert.deepEqual(previous.target, rest.target);
   }
-  assert.equal(descentU(start, k, 1.6, from.position.y), (lo + hi) / 2 / CAMERA_SECONDS);
 }
-console.log('PASS mobile early/late return: monotone descent, no final dip, lens/bank settle, exact landing; desktop unchanged');
+console.log('PASS early/late returns: monotone descent, no final dip, lens/bank settle, exact landing; desktop/phone single glide without spikes');
 
 // Real camera quaternions catch a smooth-position/abrupt-heading return.
 const THREE = await import('../vendor/three/three.module.js');

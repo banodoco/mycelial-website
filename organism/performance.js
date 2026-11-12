@@ -175,11 +175,16 @@ export function createPixelRatioPolicy(pinPr) {
  *        the intro has been released. Omitted, every frame counts, which is
  *        the pre-2026-09-01 behaviour and is kept only so this parameter is a
  *        pure addition for any other caller.
+ * @param {function} [deps.canStep] Returns false while a step would land in
+ *        visible motion (a camera flight). A post-settle step decided then is
+ *        held and applied on the first frame it returns true. Omitted, a step
+ *        applies when decided, as before.
  * @returns {function(number, number): void} `frame(t, dt)`
  */
 export function createAdaptiveResolution({ renderer, policy, syncSizes, calibrateAt,
-                                           bootSettled = null }) {
+                                           bootSettled = null, canStep = null }) {
   let perfTime = 0, perfFrames = 0, perfClamped = 0, perfStrikes = 0;
+  let stepHeld = false;
   /* The shared-clock reading at which sampling actually began — the first
      frame after bootSettled() went true, NOT t = 0. `calibrateAt` is measured
      from here, which is what restores its authored meaning (see
@@ -257,6 +262,20 @@ export function createAdaptiveResolution({ renderer, policy, syncSizes, calibrat
       policy.remember(renderer.getPixelRatio());
       return;
     }
+    /* NEVER MID-FLIGHT. The step reallocates every target and flushes the
+       TAA history (a stall plus a one-frame flash); during a flight that is
+       the hitch itself. The decision stands; only its frame waits. */
+    if (stepHeld) {
+      if (canStep && !canStep()) return;
+      stepHeld = false;
+      const held = renderer.getPixelRatio();
+      if (held > 1) {
+        renderer.setPixelRatio(Math.max(1, held - 0.25));
+        syncSizes();
+        policy.remember(renderer.getPixelRatio());
+      }
+      return;
+    }
     perfTime += dt;
     perfFrames++;
     if (dt >= 0.0499) perfClamped++;
@@ -273,6 +292,7 @@ export function createAdaptiveResolution({ renderer, policy, syncSizes, calibrat
     if (clampedShare > 0.5 && pr > 1) {
       if (++perfStrikes < 2) return;
       perfStrikes = 0;
+      if (canStep && !canStep()) { stepHeld = true; return; }
       renderer.setPixelRatio(Math.max(1, pr - 0.25));
       syncSizes();
       policy.remember(renderer.getPixelRatio());   // the memory follows the machine

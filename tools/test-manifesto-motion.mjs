@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { CONTENT } from '../content/content.js';
-import { manifestoPose, mobileFieldCenter, frameShiftAt, aerialPlacements, planAerialReveals, aerialRevealAt, AERIAL_BODY_COUNT, AERIAL_SCALE_MIN, AERIAL_SCALE_MAX, CAMERA_SECONDS, SPIRAL_START_SECONDS, MOBILE_LIFT_SECONDS, MOBILE_OVERHEAD_TURN, descentU, lineSecondsFor, mobileReadingSchedule, revealSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, FIRST_LINE_SECONDS, TITLE_SECONDS, awaySecondsFrom, returnSecondsFrom } from '../journey/manifesto/pose.js';
+import { manifestoPose, mobileFieldCenter, frameShiftAt, aerialPlacements, planAerialReveals, aerialRevealJob, aerialRevealAt, AERIAL_BODY_COUNT, AERIAL_SCALE_MIN, AERIAL_SCALE_MAX, CAMERA_SECONDS, SPIRAL_START_SECONDS, MOBILE_LIFT_SECONDS, MOBILE_OVERHEAD_TURN, descentU, lineSecondsFor, mobileReadingSchedule, revealSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, FIRST_LINE_SECONDS, LINE_BREATH_SECONDS, LINE_SECONDS_PER_WORD, TITLE_SECONDS, awaySecondsFrom, returnSecondsFrom } from '../journey/manifesto/pose.js';
 
 const from = { position: { x: 8, y: 3, z: 9 }, target: { x: 0, y: 2, z: 0 }, fov: 46 };
 for (const t of [0, 0.2, 0.8, SPIRAL_START_SECONDS]) {
@@ -60,24 +60,34 @@ for (let seconds = 0; seconds <= CAMERA_SECONDS; seconds += .02) {
   const heading = Math.atan2(Math.sin(delta), Math.cos(delta));
   assert.ok(heading >= lastHeading - 1e-8 && heading <= MOBILE_OVERHEAD_TURN + 1e-8,
     'small heading turn is smooth and never overshoots or flips');
+  // The orbit runs through the whole climb, so the pull-back reads as motion.
+  if (seconds >= 0.6 && seconds <= CAMERA_SECONDS * .88) assert.ok(heading > lastHeading,
+    `overhead zoom keeps turning (${seconds.toFixed(2)} s)`);
   lastHeading = heading;
-  if (seconds >= MOBILE_LIFT_SECONDS) assert.ok(Math.abs(heading - MOBILE_OVERHEAD_TURN) < 1e-8,
-    'overhead zoom holds its finished framing');
   if (seconds >= MOBILE_LIFT_SECONDS) {
     assert.ok(Math.abs(pitch + Math.PI / 2) < 1.1e-5, 'remaining zoom stays straight down');
     assert.equal(pose.roll, 0);
   }
 }
+{
+  const end = manifestoPose(phoneFrom, CAMERA_SECONDS, .5);
+  const delta = Math.atan2(end.target.z - end.position.z, end.target.x - end.position.x)
+    - Math.atan2(from.target.z - from.position.z, from.target.x - from.position.x);
+  assert.ok(Math.abs(Math.atan2(Math.sin(delta), Math.cos(delta)) - MOBILE_OVERHEAD_TURN) < 1e-6,
+    'the orbit finishes its whole turn as the flight lands');
+}
 assert.ok(manifestoPose(phoneFrom, MOBILE_LIFT_SECONDS, .5).position.y >= from.position.y + 16);
 assert.equal(manifestoPose(phoneFrom, CAMERA_SECONDS, .5).position.y, 38);
 for (const startU of [.08, .2, .6, 1]) {
   const initial = manifestoPose(phoneFrom, startU * CAMERA_SECONDS, .5).position.y - from.position.y;
-  for (const k of [.1, .3, .5, .9]) {
+  let previous = initial;
+  for (let k = 0; k <= 1; k += 1 / 64) {
     const seconds = descentU(startU, k, .5, from.position.y) * CAMERA_SECONDS;
     const height = manifestoPose(phoneFrom, seconds, .5).position.y - from.position.y;
-    const eased = k*k*k*(k*(k*6-15)+10);
-    assert.ok(Math.abs(height - initial * (1 - eased)) < 1e-6,
-      'returns invert the complete new lift without a second landing move');
+    assert.ok(height <= previous + 1e-9, 'return descends monotonically');
+    // the return keys on height and tilt together; its final tenth is a settle
+    if (k >= .9) assert.ok(height <= initial * .015, 'returns invert the complete new lift without a second landing move');
+    previous = height;
   }
 }
 assert.equal(TITLE_SECONDS, 0, 'the title is written on the press');
@@ -86,8 +96,9 @@ assert.equal(TITLE_SECONDS, 0, 'the title is written on the press');
 const words = [26, 27, 20, 25, 21];
 const LINE_SECONDS = lineSecondsFor(words);
 assert.equal(LINE_SECONDS[0], FIRST_LINE_SECONDS);
+assert.deepEqual([LINE_BREATH_SECONDS, LINE_SECONDS_PER_WORD], [1.2, .125], 'the halved pause (2026-11) is the authored rhythm');
 const gaps = LINE_SECONDS.slice(1).map((t, i) => t - LINE_SECONDS[i]);
-gaps.forEach((g, i) => assert.ok(Math.abs(g - (1.6 + .14 * words[i])) < .001, `beat ${i + 2} follows a readable pause (${g.toFixed(2)} s)`));
+gaps.forEach((g, i) => assert.ok(Math.abs(g - (LINE_BREATH_SECONDS + LINE_SECONDS_PER_WORD * words[i])) < .01, `beat ${i + 2} follows a readable pause (${g.toFixed(2)} s)`));
 assert.ok(gaps[2] < gaps[1], 'the shortest sentence hands on sooner');
 assert.ok(LINE_SECONDS.at(-1) <= CAMERA_SECONDS - 5, 'the last line lands well inside the flight, not at its end');
 console.log('Manifesto motion: vertical lift, monotone 100° CCW spiral, camera-clock expansion, responsive cap scale and aligned reading beats pass.');
@@ -383,11 +394,14 @@ assert.equal(mobileParagraphs[1].hidden, true, 'early lead plans the next paragr
 assert.ok(!mobileParagraphs[1].classes.has('shown'), 'admitted incoming paragraph remains visually uninked');
 assert.ok(readingAdvance() > 0 && readingAdvance() < 25, 'the scroll is already moving before new text starts');
 advanceMobileTo(secondStart - 0.025);
-assert.ok(readingAdvance() > 70, 'the lead visibly advances before incoming ink starts');
+// The halved sentence pause (about 1 s from readable to the next ink) leaves
+// the lead a second, not two, so it has covered less of its way by then.
+assert.ok(readingAdvance() > 30, 'the lead visibly advances before incoming ink starts');
 assert.equal(mobile.shownLines, 1);
 advanceMobileTo(secondStart + 0.05);
 assert.equal(mobile.shownLines, 2, 'new paragraph starts after a clear pre-ink scroll lead');
-advanceMobileTo(secondStart + 0.1);
+// Two seconds into the follow's own clock (it used to start ~1.9 s before ink).
+advanceMobileTo(mobileSchedule.admit[1] + 2.02);
 assert.ok(readingAdvance() > 70 && readingAdvance() < 164, 'next reveal gently moves into the bottom of the view');
 const beforeResizeFollow = mobileBox.scrollTop;
 resizeObservers.at(-1).callback();
@@ -509,6 +523,15 @@ for (const aspect of [1440/900,390/844]) {
   const first = planAerialReveals(scheduled, from, aspect, new Float32Array(scheduled.length*2));
   const again = planAerialReveals(scheduled, from, aspect, new Float32Array(scheduled.length*2));
   assert.deepEqual(first, again, 'same departure and placements must reproduce the reveal schedule');
+  // the resumable job (rest-time prewarm) is bit-identical however it is cut:
+  // stopped after every step, and after every 3rd
+  for (const every of [1, 3]) {
+    const job = aerialRevealJob(scheduled, from, aspect, new Float32Array(scheduled.length*2));
+    let asks = 0, steps = 0;
+    while (!job.step(() => ++asks % every === 0)) steps++;
+    assert.ok(steps > 3, 'the reveal job really stops between runs');
+    assert.deepEqual(job.output, first, `a sliced reveal plan equals the one-call plan (every ${every})`);
+  }
   assert.equal(first.at(-2), -1, 'existing field bodies remain outside the arrival schedule');
   const counts = [0, .28, .5, .71, .93, 1].map(f => f * CAMERA_SECONDS).map(t => placements.filter((b,i) => aerialRevealAt(t,first[i*2],first[i*2+1]) > 0.1).length);
   assert.equal(counts[0], 0, 'new aerial bodies start absent');
@@ -676,15 +699,23 @@ for (const aspect of [390 / 844, 1.6]) {
   assert.ok(count > 0 && count < colony.lod.near + colony.lod.far,
     'both phone and desktop omit offscreen bodies from instance submission');
   const groundCount = groundGeometry.drawRange.count, sporesCount = sporeGeometry.drawRange.count;
-  assert.ok(groundCount > 0 && groundCount < gp.count, 'offscreen ground strands do not reach the GPU');
-  assert.ok(sporesCount < sg.count, 'offscreen or unarrived spore cohorts do not reach the GPU');
+  // 2026-11: the batch indices are written once per prepared flight (in
+  // arrival order) and a frame draws one contiguous run of them, so a
+  // changing view never re-uploads them mid-flight (colony.js cullBatches).
+  assert.ok(groundCount > 0 && groundCount <= gp.count, 'arrived, in-view ground strands are drawn');
+  assert.ok(sporesCount <= sg.count, 'spore cohorts draw through the same fixed index');
   assert.equal(groundCount % 40, 0, 'whole curved strands survive the guard band');
+  assert.equal(groundGeometry.drawRange.start % 40, 0, 'the drawn run starts on a whole strand');
   assert.equal(sporesCount % 54, 0, 'whole full-lifetime spore cohorts survive the guard band');
-  const indices = [groundGeometry, sporeGeometry].map(g => Array.from(g.index.array.slice(0, g.drawRange.count)));
+  const run = g => Array.from(g.index.array.slice(g.drawRange.start, g.drawRange.start + g.drawRange.count));
+  const indices = [groundGeometry, sporeGeometry].map(run);
   const versions = [groundGeometry.index.version, sporeGeometry.index.version];
   for (let i = 0; i < 60; i++) paintPhone(CAMERA_SECONDS);
   assert.deepEqual([groundGeometry.index.version, sporeGeometry.index.version], versions,
     'stationary camera does not upload batch indices');
+  for (const s of [0.3, 0.6, 0.9, 1]) paintPhone(CAMERA_SECONDS * s);
+  assert.deepEqual([groundGeometry.index.version, sporeGeometry.index.version], versions,
+    'a moving camera and new arrivals never re-upload batch indices');
   viewCamera.lookAt(viewCamera.position.x, viewCamera.position.y + 20, viewCamera.position.z);
   colony.set(1,80,200,CAMERA_SECONDS);
   assert.equal(drawnCount(), 0);
@@ -693,7 +724,7 @@ for (const aspect of [390 / 844, 1.6]) {
   assert.ok(colony.group.children.filter(o => o.geometry === groundGeometry || o.geometry === sporeGeometry)
     .every(o => !o.visible), 'empty ground and spore batches also skip their draw calls');
   paintPhone(CAMERA_SECONDS);
-  assert.deepEqual([groundGeometry, sporeGeometry].map(g => Array.from(g.index.array.slice(0,g.drawRange.count))), indices,
+  assert.deepEqual([groundGeometry, sporeGeometry].map(run), indices,
     'turning back restores exactly the same strand and spore identities');
   console.log(`${aspect < 1 ? 'Mobile' : 'Desktop'} visible submissions: ${count} bodies, ${groundCount}/${gp.count} ground vertices, ${sporesCount}/${sg.count} spores.`);
 }
@@ -722,3 +753,37 @@ assert.ok(purposeColony.group.visible, 'Purpose seats survive the first Manifest
 assert.deepEqual(purposeColony.group.children.map(o => [o, o.geometry, o.material]), purposeResources,
   'Purpose/Manifesto reuse the same batches and GPU resources');
 console.log('Purpose quality: existing far seats only, visible submission, no duplicate ground/spores, stable branch resources pass.');
+
+// 2026-11 (take-off hitch): the flight's preparation is cached by its
+// inputs and can be advanced ahead of the press in small slices. A warmed
+// or repeated prepare() commits exactly what a cold one does, and an
+// unchanged re-entry re-uploads none of the shared links, gates or indices.
+{
+  const warmColony = createAerialColony({ groups: { stem, mushroom: cap } }, []);
+  const coldColony = createAerialColony({ groups: { stem, mushroom: cap } }, []);
+  const sharedOf = c => {
+    const ground = c.group.children.find(o => o.geometry.attributes.aColonyLink).geometry;
+    const spores = c.group.children.find(o => o.geometry.attributes.aSporeGate).geometry;
+    return [ground.attributes.aColonyLink, spores.attributes.aSporeGate, ground.index, spores.index];
+  };
+  const snapshot = c => c.group.children.map(o => [o.geometry.index && Array.from(o.geometry.index.array),
+    ...['aColonyPose', 'aColonyTone', 'aColonyReveal', 'aColonyLink', 'aSporeGate'].map(k => o.geometry.attributes[k] && Array.from(o.geometry.attributes[k].array))]);
+  let slices = 0;
+  while (!warmColony.prewarm(from, 1.6, 2) && slices < 500) slices++;
+  assert.ok(slices > 2 && slices < 500, `the preparation advances in several bounded slices (${slices})`);
+  const versions = sharedOf(warmColony).map(a => a.version);
+  warmColony.prepare(from, 1.6);
+  coldColony.prepare(from, 1.6);
+  assert.deepEqual(sharedOf(warmColony).map(a => a.version), versions, 'a warmed press re-uploads nothing it already sent');
+  assert.deepEqual(snapshot(warmColony), snapshot(coldColony), 'warmed and cold presses prepare identical flights');
+  assert.deepEqual(warmColony.lod, coldColony.lod);
+  warmColony.prepare(from, 1.6);
+  assert.deepEqual(sharedOf(warmColony).map(a => a.version), versions, 'an unchanged re-entry re-uploads no links, gates or indices');
+  // abandoned half-way for another pose, then pressed: the press completes it
+  const other = { ...from, position: { ...from.position, x: from.position.x + 1 } };
+  warmColony.prewarm(other, 1.6, 0);
+  warmColony.prepare(other, 1.6);
+  coldColony.prepare(other, 1.6);
+  assert.deepEqual(snapshot(warmColony), snapshot(coldColony), 'an abandoned warm-up is finished by the press');
+  console.log(`Manifesto prepare cache: ${slices + 1} warm slices, identical to a cold press, no re-upload on re-entry pass.`);
+}

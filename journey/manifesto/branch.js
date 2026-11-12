@@ -51,12 +51,34 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
   // carrying its index as --w so the stylesheet staggers the reveal. The
   // heading's accessible name stays the plain title.
   title.setAttribute('aria-label', CONTENT.manifesto.title);
+  // A word (or title letter) enters as stacked layers whose OPACITY alone
+  // animates (see "THE WORDS ARRIVE AS LAYERS", mycelial.css): its real
+  // content, wrapped in .j-manifesto-base, is the sharp layer, and an
+  // aria-hidden .j-manifesto-fx draws blurred/gold copies from data-w as
+  // pseudo-content with empty alt text, so copy and screen readers see the
+  // text once. The word's own leading space stays outside the wrapper, so
+  // the layers anchor where its first letter is even when that space wraps.
+  // Words with a break opportunity inside (hyphens) keep the plain
+  // opacity-only entrance: the layers cannot wrap.
+  function inkWord(el, lead, content, text) {
+    if (!text || /[-\u2010-\u2015/]/.test(text)) { el.append(lead, ...content); return false; }
+    const base = document.createElement('span');
+    base.className = 'j-manifesto-base';
+    base.append(...content);
+    const fx = document.createElement('span');
+    fx.className = 'j-manifesto-fx';
+    fx.setAttribute('aria-hidden', 'true');
+    fx.setAttribute('data-w', text);
+    el.setAttribute('data-w', text);
+    el.append(lead, fx, base);
+    return true;
+  }
   for (const [i, ch] of [...CONTENT.manifesto.title].entries()) {
     const glyph = document.createElement('span');
     glyph.className = 'j-manifesto-glyph';
     glyph.setAttribute('aria-hidden', 'true');
     glyph.setAttribute('style', `--w:${i}`);
-    glyph.textContent = ch;
+    if (!inkWord(glyph, '', [ch], /\S/.test(ch) ? ch : '')) glyph.textContent = ch;
     title.appendChild(glyph);
   }
   // The approved body is five paragraph beats, with its animated words
@@ -67,6 +89,8 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     || CONTENT.manifesto.body.match(/[^.!?]+[.!?]+/g) || [CONTENT.manifesto.body];
   const lineEls = [];
   const lastWordBeats = [];
+  const lineHasName = [];
+  const lineInk = [];
   const chapterLinks = [];
   let note = null;
   for (const sentence of sentences) {
@@ -81,6 +105,7 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     const isName = (i) => /^Mycelial\b/.test(words[i] || '');
     let phraseThread = null, chapterLink = null;
     let lastWordBeat = 0;
+    const inkList = [];   // this line's layered words, in reveal order (see inkTick)
     words.forEach((word, i) => {
       const span = document.createElement('span');
       span.className = isName(i) ? 'j-manifesto-word is-name' : 'j-manifesto-word';
@@ -117,7 +142,8 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
         } else {
           ink.textContent = concept.ink || word;
         }
-        span.append(lead, ink, endsThread ? '' : concept.suffix || '', endsThread ? '' : trail);
+        const suffix = endsThread ? '' : concept.suffix || '';
+        if (inkWord(span, lead, [ink, suffix, endsThread ? '' : trail], `${concept.ink || word}${suffix}`)) inkList.push({ el: span, w: beat });
       } else if (destination) {
         if (i === destination.start) {
           const link = document.createElement('a');
@@ -138,10 +164,11 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
         const ink = document.createElement('span');
         ink.className = 'manifesto-link-ink';
         const text = word.match(/^[A-Za-z]+/)?.[0] || word;
-        ink.textContent = (i > destination.start ? ' ' : '') + text;
-        span.append(lead, ink);
+        ink.textContent = text;
+        if (inkWord(span, lead + (i > destination.start ? ' ' : ''), [ink], text)) inkList.push({ el: span, w: beat });
       } else {
-        span.textContent = `${lead}${word}${trail}`;
+        if (inkWord(span, lead, [word + trail], word)) inkList.push({ el: span, w: beat });
+        else span.textContent = `${lead}${word}${trail}`;
       }
       // A single inline decoration flows across words and line breaks. It is
       // outside word opacity, so the thread is never chopped into word pulses.
@@ -160,7 +187,7 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
           const punctuation = document.createElement('span');
           punctuation.className = 'j-manifesto-word';
           punctuation.style.setProperty('--w', beat);
-          punctuation.textContent = suffix;
+          if (inkWord(punctuation, '', [suffix], suffix)) inkList.push({ el: punctuation, w: beat });
           line.appendChild(punctuation);
         }
         // The inter-word space belongs to the link; the following space does not.
@@ -172,7 +199,7 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
           const punctuation = document.createElement('span');
           punctuation.className = 'j-manifesto-word';
           punctuation.style.setProperty('--w', beat);
-          punctuation.textContent = concept.suffix;
+          if (inkWord(punctuation, '', [concept.suffix], concept.suffix)) inkList.push({ el: punctuation, w: beat });
           line.appendChild(punctuation);
         }
         // Keep punctuation and the following separator outside the decorated phrase.
@@ -196,6 +223,8 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     lines.appendChild(line);
     lineEls.push(line);
     lastWordBeats.push(lastWordBeat);
+    lineInk.push(inkList);
+    lineHasName.push(words.some((_, i) => isName(i)));
   }
   /* NO CONTROLS ON THE PAGE (2026-10-03/04 — Hannah: "remove pause in
      general", then "remove the return button and just leave a reveal all
@@ -596,6 +625,62 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       if (!available) hint.close();
     }
   }
+  // The entrance layers exist only while a sentence (or the title) is
+  // arriving: ONE timer per sentence, not per word, drops them so the settled
+  // page is plain text again (.is-settled, mycelial.css).
+  const settleTimers = new Map();
+  function settleAfter(el, seconds) {
+    clearTimeout(settleTimers.get(el));
+    el.classList.remove('is-settled');
+    if (reduceMotion.matches) return;
+    settleTimers.set(el, setTimeout(() => { settleTimers.delete(el); el.classList.add('is-settled'); }, seconds * 1000 + 200));
+  }
+  // Only words about to arrive, or arriving, carry promoted layers: each
+  // sentence is walked by ONE shared timer that marks a word .is-arriving
+  // INK_LEAD_SECONDS before its beat (writes only, no layout read), and one
+  // delegated animationend on the column marks it .is-done, dropping its
+  // layers while its neighbours are still arriving.
+  const INK_LEAD_SECONDS = 0.2;
+  const inkRuns = new Map();
+  const inkTouched = new Set();
+  let inkTimer = null;
+  function inkTick() {
+    clearTimeout(inkTimer);
+    inkTimer = null;
+    const now = performance.now();
+    for (const [i, run] of inkRuns) {
+      const elapsed = (now - run.t0) / 1000;
+      while (run.next < run.words.length
+        && run.words[run.next].w * WORD_STAGGER_SECONDS - run.lateness - elapsed < INK_LEAD_SECONDS) {
+        const { el } = run.words[run.next++];
+        el.style.setProperty('--act', `${elapsed}s`);
+        el.classList.add('is-arriving');
+      }
+      if (run.next >= run.words.length) inkRuns.delete(i);
+    }
+    if (inkRuns.size) inkTimer = setTimeout(inkTick, 120);
+  }
+  function resetInk(i) {
+    inkRuns.delete(i);
+    for (const { el } of lineInk[i]) el.classList.remove('is-arriving', 'is-done');
+  }
+  lines.addEventListener('animationend', event => {
+    if (!/^j-manifesto-fx-(gold|both)/.test(event.animationName)) return;
+    event.target.closest?.('.j-manifesto-word')?.classList.add('is-done');
+  });
+  function unsettle(el) {
+    clearTimeout(settleTimers.get(el));
+    settleTimers.delete(el);
+    el.classList.remove('is-settled');
+  }
+  let titleOn = false;
+  function showTitle(on) {
+    if (titleOn === on) return;
+    titleOn = on;
+    root.classList.toggle('title-shown', on);
+    if (on) settleAfter(root, 2.6 + [...CONTENT.manifesto.title].length * 0.07);
+    else unsettle(root);
+  }
   function paintLines(count, admitted = count) {
     paintChapterLinks();
     const next = Math.max(0, Math.min(sentences.length, count));
@@ -609,8 +694,15 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       if (i >= previous && i < shownLines) {
         // A frame may cross the scheduled beat by a few milliseconds. Catch
         // CSS up to that same clock so its final fade ends with the camera.
-        line.style.setProperty('--reveal-lateness', `${Math.max(0, elapsed - readingStarts[i])}s`);
-      }
+        const lateness = Math.max(0, elapsed - readingStarts[i]);
+        line.style.setProperty('--reveal-lateness', `${lateness}s`);
+        if (!reduceMotion.matches) {
+          inkTouched.add(i);
+          inkRuns.set(i, { t0: performance.now(), lateness, words: lineInk[i], next: 0 });
+          inkTick();
+        }
+        settleAfter(line, lastWordBeats[i] * WORD_STAGGER_SECONDS + (lineHasName[i] ? 4.2 : WORD_REVEAL_SECONDS) - lateness);
+      } else if (i >= shownLines) { unsettle(line); if (inkTouched.delete(i)) resetInk(i); }
       line.hidden = scrollReading && i >= shownLines;
       line.classList.toggle('shown', i < shownLines);
     });
@@ -677,7 +769,7 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     onTravelLock(true);
     if (field) field.setManifesto(0, 0, from, camera.aspect, seatLight);
     // the title is written on the press itself (TITLE_SECONDS)
-    root.classList.toggle('title-shown', reduceMotion.matches || TITLE_SECONDS <= 0);
+    showTitle(reduceMotion.matches || TITLE_SECONDS <= 0);
     shownLines = -1; liftKey = '';
     paintLines(reduceMotion.matches ? sentences.length : 0);
     clearTimeout(closingTimer);
@@ -686,7 +778,8 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     document.body.classList.add('j-manifesto-open');
     root.hidden = false;
     root.classList.add('is-open');
-    fitDesktop(true);
+    // keyed on its box and fonts: a prewarmed or repeated press reads once
+    fitDesktop();
     liftKey = '';
     liftColumn();
     measureReadingPadding();
@@ -865,7 +958,7 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
            retire its own ring under them. */
         seatLight = smoother(elapsed / SEAT_IN_SECONDS);
         u = Math.min(1, elapsed / cameraSeconds);
-        root.classList.toggle('title-shown', elapsed >= TITLE_SECONDS);
+        showTitle(elapsed >= TITLE_SECONDS);
         paintLines(readingStarts.filter(s => elapsed >= s).length,
           readingAdmissions.filter(s => elapsed >= s).length);
         updateReadingFollow();
@@ -885,6 +978,35 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     }
     apply(u, frameSeconds);
   }
+  /** Prepare the press ahead of it, while Purpose rests: the colony's
+   *  flight plan and GPU buffers for the pose on screen now, then the
+   *  desktop text fit. Each call does about `budgetMs` of work; it returns
+   *  true once nothing is left. Safe to call repeatedly and to abandon:
+   *  begin() finishes whatever is missing, exactly as without it. */
+  let fitWarmKey = '';
+  function prewarm({ budgetMs = 8 } = {}) {
+    if (active || reduceMotion.matches) return true;
+    const from = capture();
+    from.fieldCenter = mobileFieldCenter(field?.seats, from.target);
+    // colony.js publishes itself under this registered symbol (AERIAL_COLONY)
+    const colony = globalThis[Symbol.for('mycelial.manifesto.aerialColony')];
+    if (colony) {
+      const drawnBefore = colony.warm.report;
+      if (!colony.prewarm(from, camera.aspect, budgetMs)) return false;
+      // its warm draw spent this slice; the text fit takes the next one
+      if (colony.warm.report !== drawnBefore) return false;
+    }
+    const fitKey = `${window.innerWidth}x${window.innerHeight}`;
+    if (window.innerWidth > 720 && fitWarmKey !== fitKey) {
+      fitWarmKey = fitKey;
+      // measured with the open page's reserve but never painted: shown and
+      // hidden again inside this one task (see .is-measuring, mycelial.css)
+      root.classList.add('is-measuring');
+      root.hidden = false;
+      try { fitDesktop(); } finally { root.hidden = true; root.classList.remove('is-measuring'); }
+    }
+    return true;
+  }
   function handleKey(event) {
     if (!active || event.key !== 'Escape') return;
     event.preventDefault();
@@ -898,8 +1020,9 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
   }
   window.addEventListener('keydown', handleKey);
 
-  return {
+  const api = {
     begin,
+    prewarm,
     returnTo,
     retarget,
     update,
@@ -956,7 +1079,18 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       readingInputs.forEach(type => panel.removeEventListener(type, stopReadingFollow));
       window.removeEventListener('keydown', handleKey);
       root.remove();
+      settleTimers.forEach(clearTimeout);
+      clearTimeout(inkTimer);
       if (active) exit();
+      if (latestBranch === api) latestBranch = null;
     },
   };
+  latestBranch = api;
+  return api;
+}
+
+let latestBranch = null;
+/** The journey's idle hook while Purpose is at rest (see prewarm above). */
+export function prewarmManifesto(options) {
+  return latestBranch ? latestBranch.prewarm(options) : true;
 }

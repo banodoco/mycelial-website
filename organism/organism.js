@@ -317,6 +317,8 @@ class TemporalAccumulatePass extends Pass {
   }
   dispose() { this.history.dispose(); this.quad.dispose(); }
 }
+// below this history share the pass is skipped outright (taaFrame)
+const TAA_MIN_WEIGHT = 0.02;
 const taaPass = new TemporalAccumulatePass(_dbSize.width, _dbSize.height);
 // ?notaa=1 disables the accumulation, for A/B measuring it
 // (parsed once, in ../flags.js — THE flag registry)
@@ -368,11 +370,22 @@ function taaFrame() {
   // ~2.5 frames of history: the lightest touch that still holds the moiré
   // down, keeping the sway's motion trail well under a pixel
   taaPass.weight = 0.6 * Math.exp(-motion * 150);
+  // NO PASS WHILE IT CANNOT CONTRIBUTE (2026-11 — Manifesto stutter, esp.
+  // phones). Through a flight the weight sits near 0, yet the pass still ran
+  // its 10-tap blend and history copy at full resolution every frame. Below
+  // TAA_MIN_WEIGHT it now stands aside (the composer hands the frame straight
+  // to the OutputPass); its history is then stale, so the first frame back
+  // starts a fresh average (validHistory false: blend weight 0, history
+  // seeded from this frame) — the same restart a resize or a lost context
+  // takes. Any rest (frozen ?capture= included) has weight 0.6: unchanged.
+  const taaLive = !NOTAA && taaPass.weight >= TAA_MIN_WEIGHT;
+  if (taaLive && !taaPass.enabled) taaPass.validHistory = false;
+  taaPass.enabled = taaLive;
   // Jitter only as much as history can resolve. During the aerial orbit,
   // motion rejects almost all history; a full Halton offset then becomes
   // visible frame-to-frame shaking of the fine mushroom outlines. Restore
   // the sampling spread smoothly as the camera settles, with no threshold.
-  const jitterGain = taaPass.enabled ? taaPass.weight / 0.6 : 0;
+  const jitterGain = taaLive ? taaPass.weight / 0.6 : 0;
   camera.projectionMatrix.elements[8] += j[0] * 1.6 * jitterGain / db.width;
   camera.projectionMatrix.elements[9] += j[1] * 1.6 * jitterGain / db.height;
   _taaPrevPos.copy(camera.position);
@@ -2319,6 +2332,26 @@ const viewport = createViewportSync({
 // PAGE-lifetime, in the sense main.js's register uses: installed once, lives
 // until the document does, never taken back off. See the lifetime
 // classification at the head of createScene.
+/* RESIZE REALLOCATES EVERY TARGET (and flushes TAA), so a burst of resize
+   events — a window drag, a phone toolbar or visualViewport settling — must
+   not pay for it per event. The first event applies at once (nothing looks
+   stretched); the rest of a burst collapse into one trailing apply
+   RESIZE_SETTLE_MS after it. An event that changes nothing is dropped. */
+const RESIZE_SETTLE_MS = 150;
+{
+  const applyResize = viewport.resize;
+  let timer = null, pending = false, lastKey = null;
+  const sizeKey = () => `${innerWidth}x${innerHeight}@${devicePixelRatio}`;
+  viewport.resize = () => {
+    if (timer !== null) { pending = true; return; }
+    const key = sizeKey();
+    if (key !== lastKey) { lastKey = key; applyResize(); }
+    timer = setTimeout(() => {
+      timer = null;
+      if (pending) { pending = false; viewport.resize(); }
+    }, RESIZE_SETTLE_MS);
+  };
+}
 addEventListener('resize', viewport.resize);
 
 // The adaptive-resolution governor is owned by ./performance.js, beside the
@@ -2347,6 +2380,9 @@ if (PIN_PR === null)
        A page with no intro to wait for (?nointro, a skipped or frozen entry)
        has no boot window to sit out and settles immediately. */
     bootSettled: () => introApi.started || introApi.complete || intro <= 0,
+    // A catastrophic-ratchet step waits for the camera to land, on the same
+    // at-rest predicate the journey's warm queue uses (journey.js isAtRest).
+    canStep: () => !(globalThis.journey && globalThis.journey.atRest === false),
   }));
 
 /** Input policy (M5 — replaces the page's DOM event shield, which was the

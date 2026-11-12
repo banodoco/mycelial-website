@@ -626,7 +626,7 @@ export const CONTENT = {
     tworp: {
       chapter: 'inspire',
       label: '2RP',
-      short: 'An art and tech publication',
+      short: 'An art and tech social network',
       // The "coming soon" promise as a sidebar badge (Hannah, 2026-08-20):
       // a gold pill on the 2RP row instead of a second sentence in the line.
       badge: 'Soon',
@@ -649,7 +649,7 @@ export const CONTENT = {
         // The site menu's own 2RP row does still point there — see `site.links`
         // at the foot of this file, and the note on it.
         body: [
-          '2RP is an art and tech publication that aims to highlight the best of the ecosystem.',
+          '2RP is an art and tech social network that gives the art and knowledge coming out of the ecosystem a home.',
           'Open work, open models, and the people making both.',
         ],
         status: 'Coming soon.',

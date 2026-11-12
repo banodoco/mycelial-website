@@ -1,0 +1,17 @@
+{
+ "note": "journey/cards/index.js edits made by the 2026-11 card-warming deferral (hitch pass P1). Reversing them (shipped -> previous) yields the bytes the U01b/U01c move proofs pin. Generated from git diff, not retyped.",
+ "edits": [
+  {
+   "shipped": "//\n// `overrides.enqueue(job)` (2026-11, hitch pass P1): the production caller.\n// The journey's rest-time warm queue (journey.js warmHiddenChapters) passes\n// it once the journey is interactive, and each job runs in one of its idle\n// slices, never during a flight. Media fetches then ask for low priority so\n// they cannot outbid anything the page is still loading. Without `enqueue`\n// the original timer cascade below runs unchanged (the tests' contract).\n",
+   "previous": ""
+  },
+  {
+   "shipped": "\n  if (typeof overrides.enqueue === 'function') {\n    overrides.enqueue(() => { if (!cancelled) for (const f of WARM_FONTS) doc.fonts.load(`1em '${f}'`).catch(() => {}); });\n    for (const p of [...WARM_LIGHT, ...WARM_HEAVY]) {\n      overrides.enqueue(() => { if (!cancelled) fetchFn(`${CARD_ASSETS}/${p}`, { priority: 'low' }).catch(() => {}); });\n    }\n    return function cancelCardWarming() { cancelled = true; };\n  }\n",
+   "previous": ""
+  },
+  {
+   "shipped": "/* NO SELF-START any more (2026-11, hitch pass P1). The import-time\n   `startCardWarming()` began ~6 MB of fetches 1.5 s after the journey's\n   module graph evaluated — inside the intro, against the baked geometry and\n   the module graph themselves. The explicit call site U01c planned is now\n   journey.js's rest-time warm queue (see `enqueue` above). */\n",
+   "previous": "if (typeof document !== 'undefined') {\n  // let the journey's own boot work land first; warming is strictly surplus.\n  // Self-start by design (U01a preserves today's behavior) -- a later order\n  // (U01c/B-series) replaces this with an explicit call site from main.js\n  // or the journey facade so the cascade can actually be cancelled.\n  startCardWarming();\n}\n"
+  }
+ ]
+}

@@ -19,7 +19,14 @@ export function loadPortraitSprite(timeoutMs = 10000) {
       clearTimeout(timer);
       fn(value);
     };
-    image.onload = finish(() => resolve({ sheet: image }));
+    /* Decoded OFF the main thread before anyone draws it (2026-11, hitch
+       pass): a loaded <img> is otherwise decoded synchronously inside the
+       first atlas bake's drawImage. A refused decode still resolves — the
+       bake then decodes as it always did. */
+    image.onload = finish(() => {
+      const decoded = typeof image.decode === 'function' ? image.decode().catch(() => {}) : null;
+      Promise.resolve(decoded).then(() => resolve({ sheet: image }));
+    });
     image.onerror = finish(() => reject(new Error('portrait sprite failed to load')));
     image.src = PORTRAIT_SPRITE.url;
   });

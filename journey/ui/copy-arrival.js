@@ -71,7 +71,8 @@
 
 import { JOURNEY_SCHEMA } from '../structure.js';
 import {
-  bandOpacity, clamp01, smoothA, navCopyArrival, navCopyDeparture, ticketClock,
+  bandOpacity, clamp01, smoothA, navCopyArrival, navCopyDeparture, ticketClock, ARRIVE_WITH_CAMERA_LEAD_S,
+  INTRO_INSPIRE_GATE, introInspireGate,
 } from './bands.js';
 import { createArrivalMotion } from './arrival-motion.js';
 import {
@@ -150,6 +151,15 @@ function copyDepartureOpacity(phase) {
 const FLIGHT_ENVELOPES = {
   standard: { onset: 0.76, land: 0.38 },
   hero: { onset: 0.64, land: 0.74 },
+  /* Intro -> Inspire: the destination's embers kindle IN the flight's closing
+     stretch so the last is lit at touchdown (the owner: content should come
+     in with the camera). The 0.38 ceiling above exists so a second ember
+     never kindles while the exits are still off-frame (inspire/index.js,
+     LAND_ON); on this route-faithful leg the authored arrival pose has the
+     exits in view from about f 0.5, so the gate rides the flight CLOCK (not
+     the quintic phase, which is nearly done by f 0.8) across [onset, 1]. The
+     chips' own 540/700 ms floors then finish ~0.3 s after landing. */
+  introInspire: INTRO_INSPIRE_GATE, // gate itself: bands.js introInspireGate(f)
 };
 
 export function createCopyArrival({ blocks, actionRows, heroBlock, rail, reduceMotion }) {
@@ -466,7 +476,7 @@ export function createCopyArrival({ blocks, actionRows, heroBlock, rail, reduceM
         gate: Number.isFinite(inAir.gate) ? inAir.gate : eased[inAir.id] || 0,
         atP: Number.isFinite(inAir.ticket.targetP) ? inAir.ticket.targetP : travelP,
         // the seconds-priced arrival keeps its own clock across touchdown
-        clock: clock ? { t: clock.t, dur: clock.dur, from: inAir.from } : null,
+        clock: clock ? { t: clock.t, dur: clock.dur, from: inAir.from, lead: inAir.lead } : null,
       } : null;
     }
     if (!nav || nav.kind !== 'carrying') return null;
@@ -479,7 +489,7 @@ export function createCopyArrival({ blocks, actionRows, heroBlock, rail, reduceM
     let clocked = false;
     if (nav.clock) {
       if (dt > 0) nav.clock.t += dt;
-      const a = navCopyArrival(nav.clock.t, nav.clock.dur);
+      const a = navCopyArrival(nav.clock.t, nav.clock.dur, nav.clock.lead);
       nav.floor = Math.max(nav.floor, nav.clock.from + (1 - nav.clock.from) * a);
       clocked = a < 1;
       if (!clocked) nav.clock = null;
@@ -629,12 +639,15 @@ export function createCopyArrival({ blocks, actionRows, heroBlock, rail, reduceM
       const phase = Math.max(0, Math.min(1, Number(inAir.ticket.phase) || 0));
       if (inAir.id === id) {
         const clock = ticketClock(inAir.ticket);
+        const fromIntro = id === 'inspire' && clock && inAir.ticket.fromP < 0.2;
+        inAir.lead = fromIntro ? ARRIVE_WITH_CAMERA_LEAD_S : undefined;
         const arrival = inAir.ticket.manifestoHeroReturn
           ? smoothA((phase - 0.4) / 0.55)
-          : clock ? navCopyArrival(clock.t, clock.dur)
+          : clock ? navCopyArrival(clock.t, clock.dur, inAir.lead)
             : smoothA((phase - (1 - NAV_COPY_FADE_PHASE)) / NAV_COPY_FADE_PHASE);
-        const env = FLIGHT_ENVELOPES[COPY_SURFACES[id].flightLead];
-        const gateLead = smoothA((phase - env.onset) / (1 - env.onset));
+        const env = FLIGHT_ENVELOPES[fromIntro ? 'introInspire' : COPY_SURFACES[id].flightLead];
+        const gateLead = fromIntro ? introInspireGate(Math.min(1, clock.t / clock.dur)) / env.land
+          : smoothA((phase - env.onset) / (1 - env.onset));
         const gateLanding = Math.max(inAir.gateFrom, env.land);
         inAir.gate = inAir.gateFrom + (gateLanding - inAir.gateFrom) * gateLead;
         return inAir.from + (1 - inAir.from) * arrival;

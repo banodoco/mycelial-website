@@ -14,8 +14,11 @@ try {
     // deliberately applied before boot, not patched after the spore launches.
     if(largeViewport) await page.route('**/journey/site.css',async route=>{
       const response=await route.fetch();
-      await route.fulfill({response,body:(await response.text()).replace(
-        'calc(13.5vh - var(--nav-centre-bottom))','calc(125.82px - var(--nav-centre-bottom))')});
+      const css=await response.text();
+      const from='calc(13.5vh - var(--nav-centre-bottom))';
+      // Fail loudly if the calc moves: a silent no-op would test an unpatched layout.
+      if(css.split(from).length!==2) throw new Error('landing-anchor patch: expected exactly one "'+from+'" in site.css');
+      await route.fulfill({response,body:css.replace(from,'calc(125.82px - var(--nav-centre-bottom))')});
     });
     if(process.env.TEST_LEGACY_HERO_MODE) await page.route('**/journey/boot/hero-mode.js',async route=>
       route.fulfill({contentType:'text/javascript',body:await readFile(process.env.TEST_LEGACY_HERO_MODE,'utf8')}));
