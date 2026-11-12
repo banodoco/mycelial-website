@@ -26,6 +26,15 @@ export function createAnimationLifecycle({ beforeRender, render }) {
   let held = false;
   let heldFramesLeft = 0;
   let heldW = 0, heldH = 0;
+  /* THE FOURTH GATE: REST CADENCE (2026-11-11 — mobile stability). A source
+     (organism/rest-cadence.js, wired in main.js) answers 1 (draw), 2 (draw
+     every other frame) or 0 (hold) per frame; null = always draw. Like the
+     others it gates the composer only — loop, clock and animators run on. A
+     window size change always lets the frame through (the canvas was just
+     reallocated and cleared). */
+  let cadenceSource = null;
+  let cadenceIx = 0;
+  let cadenceW = 0, cadenceH = 0;
 
   /** Register a per-frame callback `fn(t, dt)` under `name`. Returns a
    *  handle: call it to remove exactly this registration. The handle is
@@ -107,7 +116,16 @@ export function createAnimationLifecycle({ beforeRender, render }) {
       }
       const holdPasses = !held || heldFramesLeft > 0;
       if (held && heldFramesLeft > 0) heldFramesLeft--;
-      if (renderEnabled && pageVisible && holdPasses) {
+      let cadencePasses = true;
+      if (cadenceSource) {
+        const every = cadenceSource();
+        const resized = typeof innerWidth === 'number'
+          && (innerWidth !== cadenceW || innerHeight !== cadenceH);
+        if (resized) { cadenceW = innerWidth; cadenceH = innerHeight; }
+        cadencePasses = resized || every === 1 || (every > 1 && (++cadenceIx % every) === 0);
+        if (every === 1) cadenceIx = 0;
+      }
+      if (renderEnabled && pageVisible && holdPasses && cadencePasses) {
         beforeRender();
         render();
       }
@@ -158,6 +176,10 @@ export function createAnimationLifecycle({ beforeRender, render }) {
      *  NOT freezeTime(): that one parks the clock for the capture tooling and
      *  leaves the composer rendering every frame. */
     setRenderEnabled(on) { renderEnabled = !!on; },
+    /** Install (or clear, with null) the rest-cadence source: a function
+     *  called once per frame returning 1 (draw), n > 1 (draw every nth
+     *  frame) or 0 (hold the last frame). See the fourth gate above. */
+    setCadenceSource(fn) { cadenceSource = typeof fn === 'function' ? fn : null; cadenceIx = 0; },
     /** Hold the last rendered frame on the canvas (after `settle` more
      *  renders), or release the hold. See the third gate above. */
     holdRender(on, settle = 3) {

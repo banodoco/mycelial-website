@@ -13,7 +13,8 @@ import { createAnimationLifecycle } from './animation.js';
 import { createAdaptiveResolution } from './performance.js';
 import { DRAW_GLSL, PULSE_GLSL } from './shaders.js';
 import { createRendererSetup, createViewportSync } from './renderer.js';
-import { NOTAA, TAA_CLASSIC, NOFADE, DBG, PIN_PR } from '../flags.js';
+import { NOTAA, TAA_CLASSIC, NOFADE, DBG, PIN_PR, CAPTURE } from '../flags.js';
+import { createRestCadence } from './rest-cadence.js';
 
 // =====================================================================
 // TABLE OF CONTENTS (order as they appear below; M2 split the marked
@@ -211,6 +212,32 @@ const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(
 // normalize the composer's logical size before adding any passes; otherwise it
 // multiplies the TAA history by DPR a second time until the first resize.
 composer.setSize(_cssSize.width, _cssSize.height);
+/* ONE MULTISAMPLED TARGET, NOT TWO (2026-11-11 — mobile stability: "the
+   site shuts down after I click around a bunch", iPhone). EffectComposer
+   makes its second ping-pong buffer by clone(), so renderTarget2 inherited
+   samples: 4 and a 4x depth buffer: at a phone's 2x DPR that is ~60 MB of
+   GPU memory (4x RGBA16F colour + 4x depth) for a buffer that only ever
+   receives full-screen passes, where every sample of a pixel is the same
+   value and the resolve returns it unchanged. Only the scene draw needs
+   the samples. It landed in rt2 on alternate frames because this pipeline
+   swaps an odd number of times per frame (TAA, grade, output), so the
+   read buffer flipped every frame; `pinSceneTarget` below swaps back after
+   each composed frame, so the scene always draws into rt1 — which is also
+   what the warm-up and compile helpers that bind `composer.readBuffer`
+   (journey/boot/hero-gpu.js, journey.js warm queue) always assumed. */
+{
+  const single = new THREE.WebGLRenderTarget(_dbSize.width, _dbSize.height,
+    { type: THREE.HalfFloatType, depthBuffer: false });
+  composer.renderTarget2.dispose();
+  composer.renderTarget2 = single;
+  // the constructor starts with readBuffer = rt2; the scene must draw into
+  // the multisampled one from the very first frame (and the boot warm-ups)
+  composer.readBuffer = composer.renderTarget1;
+  composer.writeBuffer = single;
+}
+const pinSceneTarget = () => {
+  if (composer.readBuffer !== composer.renderTarget1) composer.swapBuffers();
+};
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.56, 0.45, 0.1);
 composer.addPass(bloom);
@@ -2141,7 +2168,7 @@ const animationLifecycle = createAnimationLifecycle({
     taaFrame();
     heroSpores.syncCamera(camera, _steadyProj);
   },
-  render: () => composer.render(),
+  render: () => { composer.render(); pinSceneTarget(); },
 });
 const { animators, addAnimator } = animationLifecycle;
 /** Register a per-frame callback `fn(t, dt)`, run in insertion order every
@@ -2384,6 +2411,34 @@ if (PIN_PR === null)
     // at-rest predicate the journey's warm queue uses (journey.js isAtRest).
     canStep: () => !(globalThis.journey && globalThis.journey.atRest === false),
   }));
+
+/* REST CADENCE (2026-11-11 — mobile stability; ./rest-cadence.js has the
+   why). On a touch device the composer draws every other frame after a rest
+   with no input, and holds its frame while the menu panel covers the scene;
+   any touch, key or wheel restores full rate on that frame. Wired here,
+   beside the governor, for the same reason the governor's canStep is: this
+   file owns the frame loop, and the at-rest predicate is the journey's
+   published one (journey.js isAtRest). The cover test names the journey's
+   menu panel (.j-menu, journey/site.css) — the one overlay that is opaque
+   and nearly full-width on a phone. PAGE-lifetime: capture-phase, passive
+   listeners, never taken back off. Never under ?capture. */
+if (!CAPTURE) {
+  const coarseQuery = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : null;
+  const cadence = createRestCadence({
+    now: () => performance.now(),
+    coarse: () => !!(coarseQuery && coarseQuery.matches),
+    atRest: () => !!(globalThis.journey && globalThis.journey.atRest === true),
+    covered: () => {
+      const menu = document.querySelector('.j-menu.open');
+      return !!menu && menu.getBoundingClientRect().width >= innerWidth * 0.85;
+    },
+    frozen: () => animationLifecycle.isFrozen(),
+  });
+  for (const type of ['pointerdown', 'pointermove', 'touchstart', 'wheel', 'keydown']) {
+    addEventListener(type, cadence.input, { capture: true, passive: true });
+  }
+  animationLifecycle.setCadenceSource(cadence.frame);
+}
 
 /** Input policy (M5 — replaces the page's DOM event shield, which was the
  *  same reach-in class as buffer overwrites, aimed at input). Two modes:
