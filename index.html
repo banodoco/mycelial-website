@@ -325,8 +325,33 @@
       const query = new URLSearchParams(location.search);
       const skipLift = ['nointro', 'capture'].some(key => query.has(key))
         || matchMedia('(prefers-reduced-motion: reduce)').matches;
+      // When the lift last moved, so the release can wait for a pose that
+      // has held still for a few frames (see requestRelease below).
+      let liftMovedAt = -Infinity;
+      let remeasureLift = () => {};
       if (!skipLift) {
         body.classList.add('hero-growth-lift');
+        // THE LIFT IS CENTRED IN WHAT IS VISIBLE, NOT IN THE FIXED BOX
+        // (fix/load-polish; owner, opening the homepage from the deck: the
+        // text "jumps up a little", and not every time). On iOS, above all in
+        // a tab just opened from a link, the fixed inset:0 box can still be
+        // the LARGE viewport (~880 px on a phone showing ~738) when this
+        // first runs, and shrink to the visible height a moment later, with
+        // or without a resize event. Centred against the large box and then
+        // re-centred against the settled one, the copy hopped 62 px up in one
+        // frame while it was fading in (measured, 430x880 settling to 738).
+        // So the rail keeps its distance from the box's bottom, but that
+        // bottom is the visual viewport's whenever it is the shorter of the
+        // two, and the result no longer depends on how far the box has
+        // settled. The start pose is two numbers: the centred top
+        // (--hero-lift-target, a registered length mycelial.css eases once
+        // the copy is released) and the copy's own top (--hero-lift-normal,
+        // instant, so a layout change under the copy cancels in the same
+        // frame). A real re-centre after the reveal (rotation, bars that did
+        // change the visible height) glides instead of hopping.
+        const vv = window.visualViewport;
+        const probe = document.createElement('span');
+        let lastLift = null;
         const measureLift = () => {
           const heading = hero.querySelector('h1');
           const sub = hero.querySelector('.sub');
@@ -335,27 +360,48 @@
           const heroStyle = getComputedStyle(hero);
           const headingStyle = getComputedStyle(heading);
           // A probe resolves the same responsive rail position without reading
-          // its entrance animation or its moving chapter layout.
-          const probe = document.createElement('span');
+          // its entrance animation or its moving chapter layout; stretched
+          // top to bottom, the same probe reads the fixed box's height.
           probe.style.cssText = 'position:fixed;visibility:hidden;bottom:calc(var(--nav-centre-bottom) + var(--nav-hero-lift) + var(--nav-major) / 2);height:0;';
           body.append(probe);
-          const railTop = probe.getBoundingClientRect().top;
+          const probeTop = probe.getBoundingClientRect().top;
+          probe.style.cssText = 'position:fixed;visibility:hidden;top:0;bottom:0;';
+          const boxHeight = probe.getBoundingClientRect().height;
           probe.remove();
+          // Pinch zoom also shrinks the visual viewport; it is not a toolbar.
+          const visibleBottom = vv && Math.abs(vv.scale - 1) < 0.01 && vv.height > 0
+            ? Math.min(boxHeight, vv.offsetTop + vv.height) : boxHeight;
+          const railTop = probeTop - (boxHeight - visibleBottom);
           const normalTop = hero.offsetTop + parseFloat(heroStyle.paddingTop);
           // The cues ride with the copy, so they belong to the block being centred.
           const cues = hero.querySelector('.hero-cues');
           const cueHeight = cues ? cues.offsetHeight + parseFloat(getComputedStyle(cues).marginTop) : 0;
           const contentHeight = heading.offsetHeight + parseFloat(headingStyle.marginBottom) + sub.offsetHeight + cueHeight;
           const centeredTop = (header.getBoundingClientRect().bottom + railTop - contentHeight) / 2;
-          hero.style.setProperty('--hero-growth-offset', `${Math.max(0, centeredTop - normalTop)}px`);
+          const target = `${Math.max(normalTop, centeredTop).toFixed(2)}px`;
+          hero.style.setProperty('--hero-lift-normal', `${normalTop.toFixed(2)}px`);
+          hero.style.setProperty('--hero-lift-target', target);
+          if (lastLift !== null && target !== lastLift) liftMovedAt = performance.now();
+          lastLift = target;
         };
         measureLift();
-        const layoutObserver = new ResizeObserver(measureLift);
+        const layoutObserver = new ResizeObserver(() => measureLift());
         layoutObserver.observe(hero);
         layoutObserver.observe(hero.querySelector('h1'));
         layoutObserver.observe(hero.querySelector('.sub'));
-        addEventListener('resize', measureLift);
-        document.fonts.ready.then(measureLift);
+        for (const type of ['resize', 'pageshow', 'load']) addEventListener(type, () => measureLift());
+        vv?.addEventListener('resize', () => measureLift());
+        vv?.addEventListener('scroll', () => measureLift());
+        document.fonts.ready.then(() => measureLift());
+        // iOS does not promise an event when its bars settle, so the first
+        // seconds are also re-read once a frame; it stops on its own.
+        const settleUntil = performance.now() + 2000;
+        const settle = now => {
+          measureLift();
+          if (now < settleUntil) requestAnimationFrame(settle);
+        };
+        requestAnimationFrame(settle);
+        remeasureLift = measureLift;
       }
       const ENTRY_WAIT_CAP = 1800;
       let released = false;
@@ -382,8 +428,18 @@
         void hero.offsetHeight; // make sure layout has asked for the faces
         return document.fonts.status === 'loaded' ? null : document.fonts.ready;
       };
+      // Nor is it revealed against a height that is still settling: if the
+      // start pose moved in the last few frames, the release waits a frame
+      // and asks again (the cap still has the last word). A settled page,
+      // which is every normal load, passes this in the caller's task.
+      const LIFT_SETTLE_MS = 50;
       let capped = false;
       const requestRelease = () => {
+        remeasureLift();
+        if (!capped && performance.now() - liftMovedAt < LIFT_SETTLE_MS) {
+          requestAnimationFrame(requestRelease);
+          return;
+        }
         const wait = capped ? null : fontsSettled();
         if (wait === null) release();
         else wait.then(() => release(), () => release());
