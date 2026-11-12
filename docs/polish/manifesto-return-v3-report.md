@@ -227,7 +227,13 @@ Node suites, before (`9c5736c`) → after:
 - **pass on both:** test-manifesto-motion, -return, test-mobile-manifesto-range, test-manifesto-entry, -concepts, test-colony-retirement, test-final-background-tissue, -ring-handoff, -spore-ownership, test-frame-order, test-transition, test-no-scroll-navigation, test-mobile-stability, test-rest-warm-queue, test-return-pace;
 - **fail on both, with the identical first error:** test-rail-handoff, test-chapter-contract, test-frame-publication, test-global-hooks, test-page-lifetime. These are environment and shallow-clone failures that predate this branch.
 
-`npm run runtime:check` verifies `runtime/84bebd5c…`. The release build (`RUNTIME_MODE=release`) booted on 800×500 and 390×844 with **no page errors**. A Return from the top (desktop 3.45 s, phone 4.54 s), a rail tap to Connect (desktop) and an early Return (phone) all completed. These release runs had the composer disabled.
+**After merging `origin/main` (`f125fb2`, visible-viewport work):**
+- `runtime/266e397a…` is built and verified. The earlier `84bebd5c…` is kept.
+- The same node suites pass and fail as before the merge.
+- A sanity phone Return from the top (BROWSER, render disabled) on the merged source and on the merged release build reproduces the numbers above exactly: 4.51 s, flow 5.22, flow change 0.065, one surge, 0 reversals, 41 °/s, no page errors.
+- The glide reads no window size: it takes the camera's own aspect. That aspect is set by the renderer, which now reads `visible-viewport.js`.
+
+Before the merge, `npm run runtime:check` verified `runtime/84bebd5c…`. The release build (`RUNTIME_MODE=release`) booted on 800×500 and 390×844 with **no page errors**. A Return from the top (desktop 3.45 s, phone 4.54 s), a rail tap to Connect (desktop) and an early Return (phone) all completed. These release runs had the composer disabled.
 
 
 ## 4. Contact sheets
