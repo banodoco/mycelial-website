@@ -181,6 +181,22 @@ export const PIN_PR = Number.isFinite(_pr) && _pr > 0 ? Math.min(_pr, 3) : null;
  *  path. Any other value, or none, leaves the normal choice. */
 export const PRELUDE_THREAD = _qs.get('prelude'); // string | null
 
+/** ?nowarm=1 — turn the rest-time GPU warm queue off entirely
+ *  (journey/journey.js warmHiddenChapters): no compile, texture or draw
+ *  units, no rescans, and card media is fetched on demand only. Each
+ *  chapter then uploads on first sight, as before the queue existed. For an
+ *  A/B on a machine that stutters or hangs after the intro. Read by:
+ *  journey/journey.js. Field diagnosis; harmless for a visitor. Any value
+ *  but '0' turns it on (`?nowarm` alone included). */
+export const NOWARM = _qs.has('nowarm') && _qs.get('nowarm') !== '0'; // boolean
+
+/** ?warmprofile=conservative|normal — force the warm queue's profile
+ *  instead of its device gate (navigator.deviceMemory <= 8, four or fewer
+ *  cores, or a slow unit choose 'conservative'). Read by: journey/journey.js,
+ *  which reports the choice and its reason in journey.warmReport().profile.
+ *  QA/field diagnosis. Any other value, or none, leaves the gate's choice. */
+export const WARM_PROFILE = _qs.get('warmprofile'); // string | null
+
 /** ?notaa=<truthy, substring match> — disable the TAA accumulation pass,
  *  for A/B measuring its cost/quality. Read by: organism/organism.js.
  *  QA-only. SUBSTRING MATCH, not a parsed key (see note at bottom). */

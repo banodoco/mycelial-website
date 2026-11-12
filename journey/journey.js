@@ -31,7 +31,8 @@ import {
   CHAPTERS, CHAPTER_IDS, chapterAt, restProgress, startOf, HERO_REST_P,
 } from './route.js';
 import { HERO_INTRO_MS, DEEP_LINK_DETAIL_DELAY_MS } from './constants.js';
-import { STEADY, P as P_FLAG, POSE as POSE_FLAG, CAPTURE, ASPECT } from '../flags.js';
+import { STEADY, P as P_FLAG, POSE as POSE_FLAG, CAPTURE, ASPECT, NOWARM, WARM_PROFILE } from '../flags.js';
+import { reportPageError } from '../page-error.js';
 import { visibleSize } from '../visible-viewport.js';
 import { startChapterEntry, snapChapterPlacements } from './chapter-entry.js';
 import { registerChapterInteractions } from './chapter-interactions.js';
@@ -2161,15 +2162,62 @@ export function boot(opts = {}) {
      goes idle (this is the common case on a phone whose frame fills its
      budget, and always on a software rasteriser) still gets one slice per
      WARM_STARVE_MS of rest, of at most WARM_STARVE_BUDGET_MS — a short
-     slice at rest is the lesser hitch. */
+     slice at rest is the lesser hitch.
+
+     A GOOD CITIZEN ON A WEAK MACHINE (2026-11, the 8 GB Mac: "Page
+     Unresponsive" and stutter after the intro). The first version began
+     0.3 s after the intro, ran the first unit of every slice whatever it
+     cost, and pushed every chapter's residency (~50 MB of textures with
+     mipmaps, ~10 MB of buffers, the 4096x1024 hover atlas that
+     portrait-remix.js keeps lazy on purpose) into the visitor's first
+     seconds at the Intro. Measured headless (software GL): one hover-atlas
+     initTexture held the page's thread for 7.3 s. So:
+       · START: not before WARM_START_MS of rest after the intro. The
+         resolution governor calibrates up to calibrateAt + 2.5 s after the
+         release (organism.js: intro + 1.4; performance.js's starved
+         allowance), i.e. up to ~3.9 s after the intro ends; nothing here
+         may land inside that window or the first visible interactive
+         seconds. Any input within WARM_INPUT_QUIET_MS waits too.
+       · BUDGET: a unit starts only if its estimated cost (learned from
+         this machine's own units, per byte) fits what is left of the
+         slice. A draw is split to fit; a unit that cannot be split (a
+         compile, one texture) may run, but alone in its own slice.
+       · NEED: only the chapters next to the visitor on the rail (and the
+         one they are at). Far chapters wait until the visitor has moved,
+         or WARM_FAR_IDLE_MS of rest — and never on the conservative
+         profile. A texture over WARM_LARGE_BYTES is never warmed at the
+         Intro, only at its own chapter or a neighbour, one per slice, and
+         never within WARM_LARGE_GAP_MS of another (and not at all on a
+         software rasteriser, where it can block indefinitely).
+       · DEVICE: navigator.deviceMemory <= 8 (note: Chrome reports at most
+         8), four or fewer cores, or any unit slower than WARM_SLOW_UNIT_MS
+         selects the conservative profile; a slow unit also backs the queue
+         off exponentially. journey.warmReport().profile says which, and why.
+       · RESCAN: after a drain, a new rest after a flight looks again at
+         once; otherwise the rescan waits WARM_RESCAN_MS, doubling up to
+         WARM_RESCAN_MAX_MS while nothing is found, and its walk stops
+         between chapters when the slice's budget is spent.
+       · ?nowarm=1 (flags.js NOWARM) turns all of it off, for an A/B. */
   const WARM_REST_MS = 300;
+  const WARM_START_MS = 4000;
+  const WARM_INPUT_QUIET_MS = 500;
   const WARM_POLL_MS = 150;
   const WARM_STARVE_MS = 500;
   const WARM_STARVE_BUDGET_MS = 6;
   const WARM_SLICE_MIN_MS = 6;
   const WARM_RESCAN_MS = 3000;
+  const WARM_RESCAN_MAX_MS = 60000;
   const WARM_DRAW_BYTES = 1 << 20;
   const WARM_DRAW_OBJECTS = 160;
+  const WARM_FAR_IDLE_MS = 20000;
+  const WARM_LARGE_BYTES = 4 << 20;
+  const WARM_LARGE_GAP_MS = 1000;
+  const WARM_SLOW_UNIT_MS = 48;
+  const WARM_BACKOFF_MAX_MS = 16000;
+  /* The conservative profile: adjacent chapters only, a slower cadence, and
+     smaller warm draws. */
+  const WARM_CONSERVATIVE = { drawBytes: 256 << 10, starveMs: 1000, starveBudgetMs: 4, far: false };
+  const WARM_NORMAL = { drawBytes: WARM_DRAW_BYTES, starveMs: WARM_STARVE_MS, starveBudgetMs: WARM_STARVE_BUDGET_MS, far: true };
   // A layer no chapter uses (the colony keeps 31 for its own warm draw).
   const WARM_LAYER = 30;
   /* REST WARM TASKS. Extra rest-time preparation registers here and runs in
@@ -2211,6 +2259,10 @@ export function boot(opts = {}) {
     const r = sceneApi.renderer;
     if (warmStarted || !r || typeof r.compileAsync !== 'function') return;
     warmStarted = true;
+    if (NOWARM) {
+      warmProbe = () => ({ disabled: '?nowarm', profile: { name: 'off', why: '?nowarm' } });
+      return;
+    }
     const props = r.properties && typeof r.properties.get === 'function' ? r.properties : null;
     const tried = new WeakMap();      // texture -> the version last handed to initTexture
     const drawn = new WeakSet();      // geometry this queue has warm-drawn
@@ -2241,6 +2293,50 @@ export function boot(opts = {}) {
        `?warmdraw=1` keeps them, so the GL harness can measure them. */
     const softwareGl = /swiftshader|llvmpipe|softpipe|software/i.test(sceneApi.rendererName || '')
       && !/[?&]warmdraw=1(?:&|$)/.test(location.search);
+    /* THE DEVICE GATE. deviceMemory is Chrome's (rounded, capped at 8) and
+       undefined in Safari and Firefox; a forced ?warmprofile= wins. */
+    const nav = typeof navigator !== 'undefined' ? navigator : {};
+    const profile = { name: 'normal', why: 'default', deviceMemory: nav.deviceMemory ?? null,
+      cores: nav.hardwareConcurrency ?? null, backoffMs: 0, slowUnits: 0 };
+    let P = WARM_NORMAL;
+    const conservative = (why) => {
+      if (P === WARM_CONSERVATIVE || WARM_PROFILE === 'normal') return;
+      P = WARM_CONSERVATIVE; profile.name = 'conservative'; profile.why = why;
+    };
+    if (WARM_PROFILE === 'conservative') conservative('?warmprofile=conservative');
+    else if (WARM_PROFILE === 'normal') profile.why = '?warmprofile=normal';
+    else if (typeof nav.deviceMemory === 'number' && nav.deviceMemory <= 8) conservative(`deviceMemory ${nav.deviceMemory}`);
+    else if (typeof nav.hardwareConcurrency === 'number' && nav.hardwareConcurrency <= 4) conservative(`${nav.hardwareConcurrency} cores`);
+    /* THE COST MODEL: ms per byte per unit kind, learned from this machine's
+       own units (an EWMA). Only units of WARM_LEARN_BYTES or more teach it:
+       below that a unit's fixed cost (a render call, a bind) dominates and
+       would read as a huge per-byte price. The priors are pessimistic, so
+       the first units are small; a re-cut draw never goes below
+       WARM_LEARN_BYTES / 2, where splitting further buys nothing. */
+    const WARM_LEARN_BYTES = 512 << 10;
+    const msPerByte = { texture: 4 / (1 << 20), draw: 6 / (1 << 20) };
+    const learn = (kind, bytes, ms) => {
+      if (!(bytes >= WARM_LEARN_BYTES) || !(kind in msPerByte)) return;
+      msPerByte[kind] = msPerByte[kind] * 0.6 + (ms / bytes) * 0.4;
+    };
+    /* THE VISITOR'S HAND, as a bare timestamp for this queue alone: when
+       did any input last arrive? Passive, capture-phase and page-lifetime
+       like the queue; it decides nothing about the input itself (the
+       manual-input claim, journey/claim.js, owns that question). */
+    let inputAt = -Infinity;
+    if (typeof window.addEventListener === 'function') {
+      const onInput = () => { inputAt = performance.now(); };
+      for (const type of ['pointerdown', 'pointermove', 'wheel', 'touchstart', 'keydown']) {
+        window.addEventListener(type, onInput, { capture: true, passive: true });
+      }
+    }
+    const inputAgo = () => performance.now() - inputAt;
+    let firstRest = true;          // the first rest after the intro waits WARM_START_MS
+    let homeId = null;             // where the visitor was when warming began
+    let moved = false;
+    let lastLargeAt = -Infinity;
+    let rescanMs = WARM_RESCAN_MS;
+    let backoffFrom = 0;           // when the last slow slice ended
     /* CARD MEDIA warming (fonts, posters, preview clips: ~6 MB) rides this
        queue: one job per rest slice, fetched at priority 'low'. Cards fetch
        their own media on demand when built, so never resting costs nothing. */
@@ -2291,19 +2387,27 @@ export function boot(opts = {}) {
       if (tried.get(t) === t.version) return false;               // tried once per version
       return !props || !(props.has ? props.has(t) : true) || props.get(t).__version !== t.version;
     }
-    function staleTexture(group) {
+    const large = (t) => textureBytes(t) > WARM_LARGE_BYTES;
+    function staleTexture(group, largeOk = true) {
       let found = null;
       walk(group, (o) => {
         for (const m of [].concat(o.material || [])) {
           if (!m) continue;
-          for (const t of texturesOf(m, [])) if (stale(t)) { found = t; return true; }
+          for (const t of texturesOf(m, [])) {
+            if (!stale(t)) continue;
+            // a software rasteriser can block indefinitely inside one large
+            // upload (portrait-remix.js): such a texture waits for first sight
+            if (softwareGl && large(t)) { tried.set(t, t.version); continue; }
+            if (!largeOk && large(t)) continue;
+            found = t; return true;
+          }
         }
         return false;
       });
       return found;
     }
     /** The next ~WARM_DRAW_BYTES of geometry under `group` the GPU lacks. */
-    function drawBatch(group) {
+    function drawBatch(group, cap = WARM_DRAW_BYTES) {
       const batch = [];
       let bytes = 0;
       const seen = new Set();
@@ -2313,10 +2417,10 @@ export function boot(opts = {}) {
         seen.add(g);
         const b = bytesOf(g);
         // an object over budget on its own is a unit of its own
-        if (batch.length && bytes + b > WARM_DRAW_BYTES) return true;
+        if (batch.length && bytes + b > cap) return true;
         batch.push(o);
         bytes += b;
-        return bytes >= WARM_DRAW_BYTES || batch.length >= WARM_DRAW_OBJECTS;
+        return bytes >= cap || batch.length >= WARM_DRAW_OBJECTS;
       });
       return batch.length ? { batch, bytes } : null;
     }
@@ -2361,13 +2465,15 @@ export function boot(opts = {}) {
     }
 
     /** The next unit chapter `ch` really needs, or null once it lacks nothing. */
-    function nextUnit(ch) {
+    function nextUnit(ch, { drawCap = P.drawBytes, largeOk = true } = {}) {
       if (!ch.compiled) return { kind: 'compile' };
       if (!ch.dirty) return null;
-      const t = staleTexture(ch.group);
-      if (t) return { kind: 'texture', t };
-      const b = drawBatch(ch.group);
+      const t = staleTexture(ch.group, largeOk);
+      if (t) return { kind: 'texture', t, bytes: textureBytes(t) };
+      const b = drawBatch(ch.group, drawCap);
       if (b) return { kind: 'draw', ...b };
+      // a large texture held back for later is still missing: stay dirty
+      if (!largeOk && staleTexture(ch.group, true)) return null;
       ch.dirty = false;
       return null;
     }
@@ -2424,6 +2530,8 @@ export function boot(opts = {}) {
       return {
         atRest: isAtRest(), restMs: restSince === null ? 0 : Math.round(performance.now() - restSince),
         warmDraws: !softwareGl,
+        profile: { ...profile, msPerMB: Object.fromEntries(Object.entries(msPerByte).map(([k, v]) => [k, +(v * (1 << 20)).toFixed(2)])) },
+        rescanMs, started: !firstRest,
         slices: report.slices, units: report.units, longestUnit: report.longestUnit,
         warmed: { draws: report.draws, bytes: report.drawBytes, textures: report.textures, textureBytes: report.textureBytes },
         chapters: chaptersOut,
@@ -2433,14 +2541,32 @@ export function boot(opts = {}) {
     };
 
     /** The most urgent work from `hereId`: a chapter's unit, or a task. */
-    function pick(hereId) {
+    /** Which chapters this rest may touch (see A GOOD CITIZEN above). */
+    function eligible(id, hereId, restMs) {
+      const d = Math.abs(pos(id) - pos(hereId));
+      if (d <= 1) return true;
+      return P.far && (moved || restMs >= WARM_FAR_IDLE_MS);
+    }
+    /** The most urgent work from `hereId`, within `room` (checked between
+     *  chapter walks: a rescan's walk is time-sliced at chapter grain).
+     *  `{ defer: true }` when the budget ran out mid-scan. */
+    function pick(hereId, room = () => true, restMs = Infinity) {
       const here = pos(hereId);
+      const nowMs = performance.now();
       let best = null;
+      let walked = 0;
+      // large textures: not at the Intro, only next to their chapter, and
+      // never within WARM_LARGE_GAP_MS of the last one
+      const largeGapOk = nowMs - lastLargeAt >= WARM_LARGE_GAP_MS;
       for (const [id, ch] of work) {
         if (ch.compiled && !ch.dirty) continue;
+        if (!eligible(id, hereId, restMs)) continue;
         const rank = rankOf(id, here);
         if (best && best.rank <= rank) continue;
-        const unit = nextUnit(ch);       // a clean scan drops out here
+        if (walked > 0 && ch.compiled && !room()) return best || { defer: true };
+        const largeOk = largeGapOk && hereId !== 'mission' && Math.abs(pos(id) - here) <= 1;
+        const unit = nextUnit(ch, { largeOk });       // a clean scan drops out here
+        if (ch.compiled || unit) walked++;
         if (unit) best = { rank, id, ch, unit };
       }
       for (const task of restWarmTasks) {
@@ -2457,25 +2583,60 @@ export function boot(opts = {}) {
     const later = (ms) => setTimeout(() => idle(slice), ms);
     const markAllDirty = () => { for (const ch of work.values()) ch.dirty = true; };
 
+    /** Estimated ms for a unit on this machine (Infinity: unknown, unsplittable). */
+    const estimate = (unit) => (unit.kind === 'compile' ? Infinity
+      : (unit.bytes || 0) * (msPerByte[unit.kind] || 0));
+    const report1 = (what, error) => reportPageError(`[journey-v6] rest-time GPU warming: ${what}`, error);
+
     function slice(deadline) {
       if (startupFailed) return;
       const now = performance.now();
       if (busy() || lost()) { skip(lost() ? 'context lost' : restBlocker()); restSince = null; later(WARM_POLL_MS); return; }
+      // the visitor is doing something: wait (the rest itself goes on)
+      if (inputAgo() < WARM_INPUT_QUIET_MS) { skip('input'); later(WARM_INPUT_QUIET_MS - inputAgo()); return; }
       if (restSince === null) {
         restSince = now;
+        rescanMs = WARM_RESCAN_MS;
         // A new rest: anything created or swapped in since is looked for again.
         markAllDirty();
         for (const t of restWarmTasks) if (t.repeat) t.done = false;
       }
-      if (now - restSince < WARM_REST_MS) { skip('settling'); later(WARM_REST_MS - (now - restSince)); return; }
+      const settleMs = firstRest ? WARM_START_MS : WARM_REST_MS;
+      if (now - restSince < settleMs) { skip(firstRest ? 'starting' : 'settling'); later(settleMs - (now - restSince)); return; }
+      if (profile.backoffMs > 0 && now - backoffFrom < profile.backoffMs) { skip('backing off'); later(profile.backoffMs - (now - backoffFrom)); return; }
       const hereId = chapterAt(journey.progress).id;
-      const starved = deadline.didTimeout || now - lastSliceAt >= WARM_STARVE_MS;
+      if (firstRest) { firstRest = false; homeId = hereId; }
+      if (hereId !== homeId) moved = true;
+      const starved = deadline.didTimeout || now - lastSliceAt >= P.starveMs;
       if (!starved && deadline.timeRemaining() < WARM_SLICE_MIN_MS) { skip('idle period spent'); idle(slice); return; }
+      // the conservative profile's slower cadence: a timed-out idle callback
+      // is not by itself a licence to run
+      if (deadline.didTimeout && now - lastSliceAt < P.starveMs) { later(P.starveMs - (now - lastSliceAt)); return; }
       report.slices++;
       lastSliceAt = now;
-      let pending = null, ran = 0, next = null;
-      const room = () => (starved ? performance.now() - now < WARM_STARVE_BUDGET_MS : deadline.timeRemaining() >= WARM_SLICE_MIN_MS);
-      while (!pending && (ran === 0 || room()) && (next = pick(hereId))) {
+      let pending = null, ran = 0, next = null, solo = false, slow = false;
+      const budget = starved ? P.starveBudgetMs : Infinity;
+      const left = () => (starved ? budget - (performance.now() - now) : deadline.timeRemaining() - 1);
+      const room = () => (starved ? performance.now() - now < budget : deadline.timeRemaining() >= WARM_SLICE_MIN_MS);
+      const restMs = now - restSince;
+      while (!pending && !solo && (ran === 0 || room()) && (next = pick(hereId, room, restMs)) && !next.defer) {
+        if (next.unit) {
+          // THE BUDGET, first unit included: a slice's first draw is re-cut
+          // to fit it; a later unit that will not fit waits for the next
+          // slice; a unit that cannot be cut runs only as a slice of its own
+          let est = estimate(next.unit);
+          if (ran === 0 && next.unit.kind === 'draw' && est > left() && msPerByte.draw > 0) {
+            const cap = Math.max(WARM_LEARN_BYTES / 2, Math.floor(Math.max(0, left()) / msPerByte.draw));
+            const b = drawBatch(next.ch.group, Math.min(P.drawBytes, cap));
+            if (b) { next.unit = { kind: 'draw', ...b }; est = estimate(next.unit); }
+          }
+          const isLarge = next.unit.kind === 'texture' && next.unit.bytes > WARM_LARGE_BYTES;
+          if (est > left() || isLarge) {
+            if (ran > 0) break;     // its own slice, next time
+            solo = true;
+          }
+          if (isLarge) lastLargeAt = performance.now();
+        }
         const t0 = performance.now();
         let what;
         if (next.task) {
@@ -2487,39 +2648,62 @@ export function boot(opts = {}) {
             if (result === true) pending = new Promise((res) => setTimeout(res, WARM_POLL_MS));
             else if (result && typeof result.then === 'function') { task.done = true; pending = result; }
             else task.done = true;
-          } catch (error) { task.done = true; console.warn('[journey-v6] rest warm task failed', error); }
+          } catch (error) { task.done = true; console.warn('[journey-v6] rest warm task failed', error); report1('a rest task failed', error); }
         } else {
           what = `${next.unit.kind}:${next.id}`;
           try { pending = runUnit(next.ch, next.unit); } catch (error) {
             next.ch.compiled = true; next.ch.dirty = false;
             console.warn('[journey-v6] rest-time GPU warming skipped a chapter', error);
+            report1(`skipped ${next.id}`, error);
           }
         }
         const ms = +(performance.now() - t0).toFixed(1);
         ran++; report.units++;
+        if (next.unit) learn(next.unit.kind, next.unit.bytes, ms);
+        if (ms > WARM_SLOW_UNIT_MS) slow = true;
         if (!report.longestUnit || ms > report.longestUnit.ms) report.longestUnit = { what, ms };
-        note({ at: Math.round(t0), here: hereId, what, ms, starved, ...(next.unit && next.unit.bytes ? { bytes: next.unit.bytes } : {}) });
+        note({ at: Math.round(t0), here: hereId, what, ms, starved, ...(solo ? { solo } : {}), ...(next.unit && next.unit.bytes ? { bytes: next.unit.bytes } : {}) });
       }
-      if (!next && !pending) {
-        // Nothing missing from here. Look again after WARM_RESCAN_MS of rest
-        // (a photo atlas lands, a remix bakes) or after the next flight.
+      /* THE BACK-OFF: a unit far over budget means this machine is paying
+         more than the queue can see; the next slice waits, doubling, and
+         the profile turns conservative. In-budget slices halve it again. */
+      if (slow) {
+        profile.slowUnits++;
+        profile.backoffMs = Math.min(WARM_BACKOFF_MAX_MS, Math.max(1000, profile.backoffMs * 2));
+        backoffFrom = performance.now();
+        conservative(`slow unit (${report.longestUnit && report.longestUnit.what})`);
+      } else if (ran > 0 && profile.backoffMs > 0) {
+        profile.backoffMs = profile.backoffMs <= 1000 ? 0 : profile.backoffMs / 2;
+      }
+      if (next && next.defer) { idle(slice); return; }
+      if (!next && !pending && !solo) {
+        // Nothing missing from here. Look again at the next rest after a
+        // flight, or after rescanMs of this one — doubling while nothing
+        // turns up (a photo atlas lands, a remix bakes: found at the next).
         skip('nothing missing');
+        if (ran > 0) rescanMs = WARM_RESCAN_MS;
+        const wait = rescanMs;
+        rescanMs = Math.min(WARM_RESCAN_MAX_MS, rescanMs * 2);
         markAllDirty();
-        waitAtRest(performance.now());
+        waitAtRest(performance.now(), wait);
         return;
       }
       report.lastSkip = null;
-      if (pending) Promise.resolve(pending).catch(() => {}).then(() => idle(slice));
+      if (pending) {
+        Promise.resolve(pending)
+          .catch((error) => report1('a compile or task promise rejected', error))
+          .then(() => idle(slice));
+      }
       else idle(slice);
     }
     // Drained: a cheap timer watches for a flight (which starts a new rest)
-    // and, failing one, rescans after WARM_RESCAN_MS.
-    function waitAtRest(since) {
+    // and, failing one, rescans after `wait`.
+    function waitAtRest(since, wait = WARM_RESCAN_MS) {
       setTimeout(() => {
         if (startupFailed) return;
         if (busy()) { restSince = null; skip(restBlocker()); later(WARM_POLL_MS); }
-        else if (performance.now() - since >= WARM_RESCAN_MS) idle(slice);
-        else waitAtRest(since);
+        else if (performance.now() - since >= wait) idle(slice);
+        else waitAtRest(since, wait);
       }, 250);
     }
     idle(slice);
