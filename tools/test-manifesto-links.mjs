@@ -11,7 +11,7 @@ try {
   await page.goto(`${url}/?nointro=1`);
   await page.waitForFunction(() => window.journey, null, { timeout: 60000 });
   await page.evaluate(() => window.journey.flyTo('manifesto'));
-  assert.deepEqual(await page.locator('.j-manifesto-line').evaluateAll(lines => lines.map(line => line.textContent.trim().replace(/\s+/g, ' '))), CONTENT.manifesto.lines);
+  assert.deepEqual(await page.locator('.j-manifesto-line').evaluateAll(lines => lines.map(line => line.textContent.trim().replace(/\s+/g, ' '))), CONTENT.manifesto.lines.map(stanza => stanza.replace(/\s+/g, ' ')));
 
   const tools = page.locator('.j-manifesto .manifesto-chapter-link').filter({ hasText: /^nourishing$/ });
   if (!settled) {

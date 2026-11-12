@@ -9,6 +9,7 @@ import { applyCameraRoll } from '../camera-roll.js';
 import { attachManifestoNote } from '../../manifesto-note.js';
 import { CONTENT } from '../../content/content.js';
 import { manifestoConcepts } from '../../content/manifesto-concepts.js';
+import { manifestoVerse } from '../../content/manifesto-verse.js';
 import { manifestoPose, mobileFieldCenter, isMobileManifesto, smoother, ascentAt, lineSecondsFor, mobileReadingSchedule, CAMERA_SECONDS, TITLE_SECONDS, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, WORD_VISIBLE_SECONDS } from './pose.js';
 
 // The opening beat the navigation rides when the camera starts on Purpose's
@@ -83,10 +84,14 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     if (!inkWord(glyph, '', [ch], /\S/.test(ch) ? ch : '')) glyph.textContent = ch;
     title.appendChild(glyph);
   }
-  // The approved body is five paragraph beats, with its animated words
+  // The approved body is four stanzas of verse, with its animated words
   // in the accessibility tree so the inline note is keyboard accessible.
-  // One line per entry of CONTENT.manifesto.lines (a line may hold two
-  // sentences); falls back to one line per sentence of the body.
+  // One paragraph per entry of CONTENT.manifesto.lines; falls back to one
+  // per sentence of the body.
+  // 2026-11-12: each verse line of a stanza (`\n` in the content) is its own
+  // block, .j-manifesto-verse, so it starts on a new line on every viewport
+  // and wraps with a hanging indent; its words take their beats, held breath
+  // included, from content/manifesto-verse.js, like every clock below.
   const sentences = CONTENT.manifesto.lines
     || CONTENT.manifesto.body.match(/[^.!?]+[.!?]+/g) || [CONTENT.manifesto.body];
   const lineEls = [];
@@ -96,28 +101,44 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
   const chapterLinks = [];
   let note = null;
   for (const sentence of sentences) {
+    const stanza = lineEls.length;
     const line = document.createElement('p');
     line.className = 'j-manifesto-line';
     // Keep the inline citation before the first paragraph's closing punctuation.
-    const closingPunctuation = lineEls.length === 0 && CONTENT.manifesto.note ? sentence.match(/[.!?]+$/)?.[0] || '' : '';
-    const words = (closingPunctuation ? sentence.slice(0, -closingPunctuation.length) : sentence).trim().split(/\s+/);
-    const concepts = manifestoConcepts(words);
-    const destinations = lineEls.length === sentences.length - 1 ? manifestoLinks(words) : new Map();
+    const closingPunctuation = stanza === 0 && CONTENT.manifesto.note ? sentence.match(/[.!?]+$/)?.[0] || '' : '';
+    const { words, beats, lineStarts } = manifestoVerse(closingPunctuation ? sentence.slice(0, -closingPunctuation.length) : sentence);
+    const concepts = manifestoConcepts(words, stanza);
+    const destinations = stanza === sentences.length - 1 ? manifestoLinks(words) : new Map();
     // Highlight the brand name within the manifesto.
     const isName = (i) => /^Mycelial\b/.test(words[i] || '');
-    let phraseThread = null, chapterLink = null;
+    // Multiword names share their first word’s warm reveal beat.
+    const beatOf = (i) => isName(i) && i > 0 && isName(i - 1) ? beatOf(i - 1) : beats[i];
+    let phraseThread = null, phraseBeat = 0, chapterLink = null, verse = line;
     let lastWordBeat = 0;
     const inkList = [];   // this line's layered words, in reveal order (see inkTick)
     words.forEach((word, i) => {
+      if (lineStarts.includes(i)) {
+        verse = document.createElement('span');
+        verse.className = 'j-manifesto-verse';
+        line.appendChild(verse);
+        // A dormant phrase thread never crosses a verse break unbroken.
+        if (phraseThread) {
+          phraseThread = document.createElement('span');
+          phraseThread.className = 'manifesto-phrase-thread';
+          phraseThread.style.setProperty('--phrase-beat', phraseBeat);
+          verse.appendChild(phraseThread);
+        }
+      }
       const span = document.createElement('span');
       span.className = isName(i) ? 'j-manifesto-word is-name' : 'j-manifesto-word';
-      // Multiword names share their first word’s warm reveal beat.
-      const beat = isName(i) && i > 0 && isName(i - 1) ? i - 1 : i;
+      const beat = beatOf(i);
       span.setAttribute('style', `--w:${beat}`);
       lastWordBeat = Math.max(lastWordBeat, beat);
       // The space rides inside an (inline) span, so wrapping is unchanged —
       // on the word BEFORE it normally, but after the name it opens the next
-      // word instead, keeping the name grouped through its reveal.
+      // word instead, keeping the name grouped through its reveal. The space
+      // closing a verse line collapses at its end but keeps the copied text
+      // and the accessible name reading as prose.
       const lead = i > 0 && isName(i - 1) && !isName(i) ? ' ' : '';
       const concept = concepts.get(i);
       const destination = destinations.get(i);
@@ -149,7 +170,9 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       } else if (destination) {
         if (i === destination.start) {
           const link = document.createElement('a');
-          link.className = 'manifesto-chapter-link is-phrase' + (destination.end > destination.start ? ' is-connected' : '');
+          // 2026-11-12: tinted by its strand (.is-tinted, mycelial.css).
+          link.className = 'manifesto-chapter-link is-phrase' + (destination.end > destination.start ? ' is-connected' : '')
+            + (destination.concept ? ` is-tinted concept-${destination.concept}` : '');
           link.href = `#/${destination.chapter}`;
           link.setAttribute('aria-disabled', 'true');
           link.tabIndex = -1;
@@ -159,12 +182,13 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
             event.preventDefault();
             if (link.getAttribute('aria-disabled') !== 'true') onNavigate(destination.chapter);
           });
-          chapterLinks.push({ link, hint, paragraph: lineEls.length, beat: destination.end });
+          chapterLinks.push({ link, hint, paragraph: stanza, beat: beatOf(destination.end) });
           chapterLink = link;
-          line.appendChild(link);
+          verse.appendChild(link);
         }
         const ink = document.createElement('span');
-        ink.className = 'manifesto-link-ink';
+        // The strand's swell starts on the link word's own beat, like a concept's.
+        ink.className = 'manifesto-link-ink' + (destination.concept ? ` manifesto-concept concept-${destination.concept} concept-organism` : '');
         const text = word.match(/^[A-Za-z]+/)?.[0] || word;
         ink.textContent = text;
         if (inkWord(span, lead + (i > destination.start ? ' ' : ''), [ink], text)) inkList.push({ el: span, w: beat });
@@ -177,10 +201,11 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       if (concept?.id === 'kinship' && i === concept.start) {
         phraseThread = document.createElement('span');
         phraseThread.className = 'manifesto-phrase-thread';
-        phraseThread.style.setProperty('--phrase-beat', concept.start);
-        line.appendChild(phraseThread);
+        phraseBeat = beat;
+        phraseThread.style.setProperty('--phrase-beat', beat);
+        verse.appendChild(phraseThread);
       }
-      (phraseThread || chapterLink || line).appendChild(span);
+      (phraseThread || chapterLink || verse).appendChild(span);
       if (destination && i === destination.end) {
         chapterLink = null;
         // Punctuation follows the same word clock, outside the decorated link.
@@ -190,10 +215,10 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
           punctuation.className = 'j-manifesto-word';
           punctuation.style.setProperty('--w', beat);
           if (inkWord(punctuation, '', [suffix], suffix)) inkList.push({ el: punctuation, w: beat });
-          line.appendChild(punctuation);
+          verse.appendChild(punctuation);
         }
         // The inter-word space belongs to the link; the following space does not.
-        if (trail) line.append(trail);
+        if (trail) verse.append(trail);
       }
       if (endsThread) {
         phraseThread = null;
@@ -202,24 +227,24 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
           punctuation.className = 'j-manifesto-word';
           punctuation.style.setProperty('--w', beat);
           if (inkWord(punctuation, '', [concept.suffix], concept.suffix)) inkList.push({ el: punctuation, w: beat });
-          line.appendChild(punctuation);
+          verse.appendChild(punctuation);
         }
         // Keep punctuation and the following separator outside the decorated phrase.
-        if (trail) line.append(trail);
+        if (trail) verse.append(trail);
       }
     });
-    if (lineEls.length === 0 && CONTENT.manifesto.note) {
+    if (stanza === 0 && CONTENT.manifesto.note) {
       const marker = document.createElement('span');
       marker.className = 'j-manifesto-word manifesto-note-marker';
-      marker.style.setProperty('--w', words.length);
-      lastWordBeat = words.length;
+      marker.style.setProperty('--w', lastWordBeat + 1);
+      lastWordBeat += 1;
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'manifesto-note-trigger';
       button.textContent = '1';
       button.setAttribute('aria-label', 'Read note 1 about fungi');
       marker.append(button, closingPunctuation);
-      line.appendChild(marker);
+      verse.appendChild(marker);
       note = attachManifestoNote(button, CONTENT.manifesto.note);
     }
     lines.appendChild(line);
@@ -261,8 +286,8 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     Promise.allSettled([...fonts].map(font => document.fonts.load(font, lines.textContent)))
       .then(releaseFontPending);
   }
-  const wordCounts = sentences.map(s => s.trim().split(/\s+/).length);
-  const lineSeconds = lineSecondsFor(wordCounts);
+  // Stanzas are priced by their beats, verse-line breaths included (pose.js).
+  const lineSeconds = lineSecondsFor(sentences.map(s => manifestoVerse(s).span));
   const mobileSchedule = mobileReadingSchedule(lineSeconds, lastWordBeats);
   let readingStarts = lineSeconds, readingAdmissions = lineSeconds;
   let cameraSeconds = CAMERA_SECONDS;

@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CONTENT } from '../content/content.js';
+import { manifestoVerse } from '../content/manifesto-verse.js';
 import { manifestoPose, mobileReadingSchedule, lineSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, WORD_VISIBLE_SECONDS, WORD_VISIBLE_FRACTION, ascentAt, CAMERA_SECONDS, aerialPlacements, planAerialReveals } from '../journey/manifesto/pose.js';
 const makeRng = seed => () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
 const groundY = () => 0;
 const from = { position: { x: 8, y: 3, z: 9 }, target: { x: 0, y: 2, z: 0 }, fov: 46 };
 const aspect = 390 / 844;
-const counts = CONTENT.manifesto.lines.map(line => line.trim().split(/\s+/).length);
+// Stanzas in reveal beats, verse-line breaths included (content/manifesto-verse.js).
+const counts = CONTENT.manifesto.lines.map(stanza => manifestoVerse(stanza).span);
 const beats = counts.map((count, i) => i === 0 && CONTENT.manifesto.note ? count : count - 1);
 const reading = mobileReadingSchedule(lineSecondsFor(counts), beats);
 for (let i = 1; i < counts.length; i++) {

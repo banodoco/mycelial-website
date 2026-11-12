@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { CONTENT } from '../content/content.js';
 import { manifestoLinks } from '../content/manifesto-links.js';
 import { manifestoConcepts } from '../content/manifesto-concepts.js';
+import { manifestoVerse } from '../content/manifesto-verse.js';
 import { JOURNEY_CHAPTER_IDS } from '../journey/structure.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -59,23 +60,27 @@ function derive(source) {
       return `${open}${escapeText(heading.slice(0, start))}<span class="mycelial-renaissance-accent">${escapeText(heading.slice(start))}</span>${close}`;
     },
   );
-  // Manifesto keeps its five paragraphs and its inline note in the fallback.
+  // Manifesto keeps its stanzas and its inline note in the fallback; each
+  // verse line (`\n` in the content) is its own .manifesto-verse block, the
+  // same verse lines and tints as the animated page (2026-11-12).
   output = output.replace(
     /(<div\b[^>]*\bdata-src="manifesto\.body"[^>]*>)[\s\S]*?(<\/div>)/gi,
     (_match, open, close) => {
       textCount += 1;
       const note = CONTENT.manifesto.note ? `<button type="button" class="manifesto-note-trigger" aria-label="Read note 1 about fungi" title="${escapeAttribute(CONTENT.manifesto.note)}" data-manifesto-note="${escapeAttribute(CONTENT.manifesto.note)}">[1]</button>` : '';
       return `${open}${CONTENT.manifesto.lines.map((line, i) => {
-        const words = line.split(/\s+/);
-        const concepts = manifestoConcepts(words);
+        const { words, lineStarts } = manifestoVerse(line);
+        const concepts = manifestoConcepts(words, i);
         const destinations = i === CONTENT.manifesto.lines.length - 1 ? manifestoLinks(words) : new Map();
         const rendered = words.map((word, index) => {
           const destination = destinations.get(index);
           if (destination) {
             const text = word.match(/^[A-Za-z]+/)?.[0] || word;
-            const open = index === destination.start ? `<a class="manifesto-chapter-link is-phrase${destination.end > destination.start ? ' is-connected' : ''}" href="#/${destination.chapter}" data-manifesto-link="${destination.label}">` : '';
+            const tint = destination.concept ? ` is-tinted concept-${destination.concept}` : '';
+            const inkTint = destination.concept ? ` manifesto-concept concept-${destination.concept}` : '';
+            const open = index === destination.start ? `<a class="manifesto-chapter-link is-phrase${destination.end > destination.start ? ' is-connected' : ''}${tint}" href="#/${destination.chapter}" data-manifesto-link="${destination.label}">` : '';
             const close = index === destination.end ? '</a>' : '';
-            return `${open}<span class="manifesto-link-ink">${index > destination.start ? ' ' : ''}${escapeText(text)}</span>${close}${escapeText(word.slice(text.length))}`;
+            return `${open}<span class="manifesto-link-ink${inkTint}">${index > destination.start ? ' ' : ''}${escapeText(text)}</span>${close}${escapeText(word.slice(text.length))}`;
           }
           const concept = concepts.get(index);
           if (!concept) return escapeText(word);
@@ -90,11 +95,15 @@ function derive(source) {
           const closeThread = concept.id === 'kinship' && index === concept.end ? '</span>' : '';
           return `${openThread}<span class="manifesto-concept concept-${concept.id}" style="--concept-index:${concept.offset || 0}">${ink}</span>${closeThread}${escapeText(concept.suffix || '')}`;
         });
+        // A verse line closes on its separating space, as on the live page,
+        // so the copied text still reads as prose.
         const body = rendered.map((html, index) => {
           const destination = destinations.get(index);
-          return `${index && !(destination && index > destination.start) ? ' ' : ''}${html}`;
+          const verse = lineStarts.indexOf(index);
+          const space = index && !(destination && index > destination.start) ? ' ' : '';
+          return verse < 0 ? `${space}${html}` : `${verse > 0 ? `${space}</span>` : ''}<span class="manifesto-verse">${html}`;
         }).join('');
-        return `<p>${body}${i === 0 && note ? ` ${note}` : ''}</p>`;
+        return `<p>${body}</span>${i === 0 && note ? ` ${note}` : ''}</p>`;
       }).join('')}${close}`;
     },
   );

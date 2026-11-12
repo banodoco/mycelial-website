@@ -31,6 +31,10 @@ nothing structural:
 - card `title`/`body`/`claim`, action `label`/`href`
 - contributor `name`/`role`/`blurb`
 - `site.links` / `site.social` `label`/`href`, `site.legal`
+- `manifesto.lines`: one entry per stanza; `\n` inside an entry breaks a
+  verse line (its own line on every viewport, plus a short held pause in the
+  reveal). Accented words are matched by `content/manifesto-concepts.js` and
+  `content/manifesto-links.js`; renaming one of those words drops its accent.
 
 Pass condition: `node tools/build-static-content.mjs --check` exits zero. A
 browser load also retains the existing green diagnostic:

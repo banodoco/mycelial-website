@@ -42,6 +42,7 @@
     {"hash": "84bebd5c51b9faea9e3ce3832b2da1eff6e3c85c884db7c641e1e5d39ea76a57", "date": "2026-11-12T04:12:31Z", "release": false, "label": "unreleased: one-glide return, first build"},
     {"hash": "266e397abef74f0ae531c48b7d88a62cac3191a081a90147c5174761f712dd4f", "date": "2026-11-12T04:21:52Z", "release": true, "label": "one-glide manifesto return"},
     {"hash": "0f33d86011dac53bab9af1791960316fee8a5344ddb3c58ab3f565b629b9f557", "date": "2026-11-12T14:27:03Z", "release": true, "label": ""},
-    {"hash": "ece39aba5c4b34f236195db9e78be294a46122309f2aff6c52170323ade2bd88", "date": "2026-11-12T17:12:42Z", "release": true, "label": ""}
+    {"hash": "ece39aba5c4b34f236195db9e78be294a46122309f2aff6c52170323ade2bd88", "date": "2026-11-12T17:12:42Z", "release": true, "label": ""},
+    {"hash": "a8b09f092137d9ec85afc212303f1c4994f1e7bedf0fb6525c6b0d81ab6f41f7", "date": "2026-11-12T20:50:11Z", "release": true, "label": ""}
   ]
 }

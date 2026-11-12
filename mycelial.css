@@ -198,6 +198,24 @@ body, button, input, select, textarea { font-family: var(--mycelial-body); }
   letter-spacing: .015em;
   text-transform: none;
 }
+/* EACH VERSE LINE STARTS ITS OWN LINE (2026-11-12). A stanza's verse lines
+   (branch.js .j-manifesto-verse, the static page's .manifesto-verse) are
+   blocks; one too long for the column wraps under a small hanging indent,
+   so a wrap never reads as a new verse line. Descendants that are block
+   containers (the inking layers, the quivering glyphs) must not inherit
+   the negative indent. Stanza spacing stays the paragraphs' own. */
+.j-manifesto-verse,
+.manifesto-static .manifesto-verse {
+  display: block;
+  padding-left: 1.4em;
+  text-indent: -1.4em;
+}
+.j-manifesto-verse *,
+.manifesto-static .manifesto-verse * { text-indent: 0; }
+@media (max-width: 720px) {
+  .j-manifesto-verse + .j-manifesto-verse,
+  .manifesto-static .manifesto-verse + .manifesto-verse { margin-top: .2em; }
+}
 .j-menu-panel { background-color: #100b06; }
 /* The crawler/reduced-motion page shares the identity without inheriting
    the live scene's fixed composition. */
@@ -556,25 +574,31 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
 }
 
 /* Related words share a colour, but each slow swell starts on its own reveal beat. */
-.manifesto-concept.concept-sun {
+.manifesto-concept.concept-sun,
+.manifesto-chapter-link.concept-sun {
   --concept-rest: var(--palette-sun);
   --concept-lit: #c1d0b4;
   --concept-glow: 180, 197, 165;
 }
-.manifesto-concept.concept-soil {
+.manifesto-concept.concept-soil,
+.manifesto-chapter-link.concept-soil {
   --concept-rest: var(--palette-soil);
   --concept-lit: #e2bbb2;
   --concept-glow: 215, 170, 160;
 }
-.manifesto-concept.concept-passage {
+.manifesto-concept.concept-passage,
+.manifesto-chapter-link.concept-passage {
   --concept-rest: var(--palette-passage);
   --concept-lit: #bcd0da;
   --concept-glow: 169, 191, 206;
 }
-.manifesto-concept {
+.manifesto-concept,
+.manifesto-chapter-link.is-tinted {
   --palette-sun: #b4c5a5;
   --palette-soil: #d7aaa0;
   --palette-passage: #a9bfce;
+}
+.manifesto-concept {
   color: var(--concept-rest);
   text-shadow: 0 0 5px rgba(var(--concept-glow), .24), 0 1px 12px rgba(0, 0, 0, .62);
 }
@@ -719,12 +743,21 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
   animation: manifesto-iridescence 7s ease-in-out forwards;
   animation-delay: calc(var(--w) * var(--stagger) + var(--glyph-delay));
 }
-/* One continuous pastel palette travels through both words: sage, dusty rose, blue.
-   Each sampled glyph remains inside its word's original reveal envelope. */
-.manifesto-concept.concept-synthesis { color: transparent; text-shadow: none; }
+/* One continuous pastel palette travels through the phrase's words.
+   Each sampled glyph remains inside its word's original reveal envelope.
+   2026-11-12: "thick, unruly strokes" runs blue, rose, green (passage, soil,
+   sun), the order its strands are handed on in; the stops are named here so
+   the order is one decision. */
+.manifesto-concept.concept-synthesis {
+  --synthesis-from: var(--palette-passage);
+  --synthesis-via: var(--palette-soil);
+  --synthesis-to: var(--palette-sun);
+  color: transparent;
+  text-shadow: none;
+}
 .manifesto-synthesis-glyph {
-  background-image: linear-gradient(90deg, var(--palette-sun) 0%, var(--palette-sun) 15%,
-    var(--palette-soil) 50%, var(--palette-passage) 85%, var(--palette-passage) 100%);
+  background-image: linear-gradient(90deg, var(--synthesis-from) 0%, var(--synthesis-from) 15%,
+    var(--synthesis-via) 50%, var(--synthesis-to) 85%, var(--synthesis-to) 100%);
   background-size: 2200% 100%;
   background-position: var(--synthesis-position) 0;
   background-clip: text;
@@ -947,12 +980,27 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
   text-decoration-color: color-mix(in srgb, currentColor 70%, transparent);
 }
 .manifesto-chapter-link:focus-visible { outline: 1px solid #d7ad6980; outline-offset: 4px; border-radius: 2px; }
+/* A LINK ON A STRAND (2026-11-12). seeding, nourishing and connecting rest
+   in their strand's colour (dots included, through currentColor) and light
+   to its brighter tone on hover or focus. Their ink carries the strand's
+   swell, whose fill would hold the resting colour against the hover, so the
+   lit state is asserted over it. */
+.manifesto-chapter-link.is-tinted { color: var(--concept-rest); }
+.manifesto-chapter-link.is-tinted:hover,
+.manifesto-chapter-link.is-tinted:focus-visible { color: var(--concept-lit); }
+.manifesto-chapter-link.is-tinted .manifesto-concept { transition: color .2s ease, opacity .2s ease, text-shadow .2s ease; }
+.manifesto-chapter-link.is-tinted:is(:hover, :focus-visible) .manifesto-concept {
+  color: var(--concept-lit) !important;
+  opacity: 1 !important;
+  text-shadow: 0 0 10px rgba(var(--concept-glow), .42), 0 0 3px rgba(var(--concept-glow), .18), 0 1px 12px rgba(0, 0, 0, .62) !important;
+}
 .manifesto-chapter-link[aria-disabled="true"] {
   pointer-events: none;
   text-decoration-color: transparent;
 }
 @media (prefers-reduced-motion: reduce) {
-  .manifesto-chapter-link { transition: none; }
+  .manifesto-chapter-link,
+  .manifesto-chapter-link.is-tinted .manifesto-concept { transition: none; }
 }
 .manifesto-link-tooltip {
   position: fixed;
@@ -983,6 +1031,14 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
     mask-image: none;
     -webkit-mask-image: none;
   }
+}
+
+/* SHORT DESKTOPS SET THE VERSE A LITTLE TIGHTER (2026-11-12). Seventeen
+   verse lines at the paragraphs' double leading fitted 1280x720 at under
+   11px; at 1.7 the same box fits it at about 12.5px. Taller desktops keep
+   the approved leading. */
+@media (min-width: 721px) and (max-height: 800px) {
+  .j-manifesto .j-manifesto-line { line-height: 1.7; }
 }
 
 /* AN AHEAD-OF-PRESS MEASURE (branch.js prewarm): the manuscript is laid out

@@ -1,36 +1,41 @@
-// Match authored phrases, not fixed word offsets, so copy edits keep their pairs.
-const PAIRS = [
-  { id: 'sun', organism: 'plants', contribution: 'energy from the sun' },
-  { id: 'soil', organism: 'fungi', contribution: 'nutrients from the soil' },
-  { id: 'passage', organism: 'animals', contribution: 'passage to new ground' },
+// Match authored words and phrases, not fixed word offsets, so copy edits keep their accents.
+// THREE STRANDS, ONE WORD EACH (2026-11-12, the verse text). The opening
+// stanza's spores, threads and food, and the story's LoRA and tool, share
+// the three pastel palettes; the closing links carry the same strands
+// (content/manifesto-links.js). Each word is matched in its own stanza only,
+// so "the threads beneath it all" in the last stanza stays plain. Every one
+// takes the slow organism swell on its own reveal beat.
+const STRANDS = [
+  { id: 'passage', word: 'spores', stanza: 0 },
+  { id: 'soil', word: 'threads', stanza: 0 },
+  { id: 'sun', word: 'food', stanza: 0 },
+  { id: 'passage', word: 'lora', stanza: 1 },
+  { id: 'sun', word: 'tool', stanza: 1 },
 ];
+// The kinship thread (and the imagination spectrum in branch.js) are dormant
+// treatments: no phrase of the current text selects them.
 const PHRASES = [
-  { id: 'synthesis', phrase: 'garden you can walk through' },
+  { id: 'synthesis', phrase: 'thick unruly strokes' },
   { id: 'kinship', phrase: 'open models and open tools' },
   { id: 'vitality', phrase: 'bustles with this kind of creative life' },
 ];
 // The authored em dash joins life—with; only 'life' carries the accent.
-const normalized = word => word.split('—')[0].toLowerCase().replace(/^[^a-z]+|[^a-z]+$/g, '');
+const normalized = word => word.split('—')[0].toLowerCase().replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
+const split = word => {
+  const ink = word.match(/^[A-Za-z0-9']+/)?.[0] || word;
+  return { ink, suffix: word.slice(ink.length) };
+};
 
-export function manifestoConcepts(words) {
+/** The accents of one stanza: `words` are its words in reading order,
+ *  `stanza` its index in CONTENT.manifesto.lines. */
+export function manifestoConcepts(words, stanza) {
   const tokens = words.map(normalized);
   const matches = new Map();
-  for (const { id, organism, contribution } of PAIRS) {
-    const phrase = contribution.split(' ');
-    const start = tokens.findIndex((_, i) => phrase.every((word, j) => tokens[i + j] === word));
-    const noun = tokens.indexOf(organism);
-    if (start < 0 || noun < 0) continue;
-    matches.set(noun, { id, role: 'organism', pairBeat: start });
-    phrase.forEach((_, i) => matches.set(start + i, { id, role: 'contribution', pairBeat: start }));
-  }
-  // The example echoes the first paragraph's three partners, one noun each.
-  if (tokens.includes('painter') && tokens.includes('engineer')) {
-    for (const [noun, id] of [['painter', 'sun'], ['model', 'soil'], ['engineer', 'passage']]) {
-      const index = tokens.indexOf(noun);
-      if (index < 0) continue;
-      const word = words[index], ink = word.match(/^[A-Za-z]+/)?.[0] || word;
-      matches.set(index, { id, role: 'organism', ink, suffix: word.slice(ink.length) });
-    }
+  for (const { id, word, stanza: only } of STRANDS) {
+    if (only !== stanza) continue;
+    const index = tokens.indexOf(word);
+    if (index < 0 || matches.has(index)) continue;
+    matches.set(index, { id, role: 'organism', ...split(words[index]) });
   }
   for (const { id, phrase } of PHRASES) {
     const phraseWords = phrase.toLowerCase().split(' ');
@@ -38,10 +43,9 @@ export function manifestoConcepts(words) {
     if (start < 0) continue;
     let characterOffset = 0;
     phraseWords.forEach((_, offset) => {
-      const word = words[start + offset];
-      const ink = word.match(/^[A-Za-z]+/)?.[0] || word;
+      const { ink, suffix } = split(words[start + offset]);
       matches.set(start + offset, {
-        id, role: 'phrase', offset, ink, suffix: word.slice(ink.length),
+        id, role: 'phrase', offset, ink, suffix,
         start, end: start + phraseWords.length - 1, characterOffset, characterTotal: phrase.length,
       });
       characterOffset += ink.length + 1;

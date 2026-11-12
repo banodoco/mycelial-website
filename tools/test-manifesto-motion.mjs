@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { CONTENT } from '../content/content.js';
-import { manifestoPose, mobileFieldCenter, frameShiftAt, aerialPlacements, planAerialReveals, aerialRevealJob, aerialRevealAt, AERIAL_BODY_COUNT, AERIAL_SCALE_MIN, AERIAL_SCALE_MAX, CAMERA_SECONDS, SPIRAL_START_SECONDS, MOBILE_LIFT_SECONDS, MOBILE_OVERHEAD_TURN, lineSecondsFor, mobileReadingSchedule, revealSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, FIRST_LINE_SECONDS, LINE_BREATH_SECONDS, LINE_SECONDS_PER_WORD, TITLE_SECONDS } from '../journey/manifesto/pose.js';
+import { manifestoPose, mobileFieldCenter, frameShiftAt, aerialPlacements, planAerialReveals, aerialRevealJob, aerialRevealAt, AERIAL_BODY_COUNT, AERIAL_SCALE_MIN, AERIAL_SCALE_MAX, CAMERA_SECONDS, SPIRAL_START_SECONDS, MOBILE_LIFT_SECONDS, MOBILE_OVERHEAD_TURN, lineSecondsFor, mobileReadingSchedule, revealSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, FIRST_LINE_SECONDS, LINE_BREATH_SECONDS, LINE_SECONDS_PER_WORD, TITLE_SECONDS, MANIFESTO_BEAT_COUNTS } from '../journey/manifesto/pose.js';
+import { manifestoVerse } from '../content/manifesto-verse.js';
 import { createGlide, sampleGlide } from '../journey/manifesto/glide.js';
 
 const from = { position: { x: 8, y: 3, z: 9 }, target: { x: 0, y: 2, z: 0 }, fov: 46 };
@@ -190,9 +191,13 @@ assert.equal(branch.shownLines, 0);
 assert.equal(document.activeElement, root.querySelector('.j-manifesto-panel'), 'focus rests on the reading region, not a control');
 // Camera motion lasts through the last word's complete fade, not merely the
 // paragraph's entrance. Copy edits and changes to reveal speed stay in sync.
-const liveCounts = CONTENT.manifesto.lines.map(line => line.trim().split(/\s+/).length);
+// 2026-11-12: stanzas are counted in reveal beats (verse-line breaths
+// included), the same numbering the live word spans carry.
+const liveVerse = CONTENT.manifesto.lines.map(stanza => manifestoVerse(stanza));
+const liveCounts = liveVerse.map(verse => verse.span);
+assert.deepEqual(MANIFESTO_BEAT_COUNTS, liveCounts, 'the camera prices the stanzas by the same beats');
 const lastReadingBeat = lineSecondsFor(liveCounts).at(-1);
-const lastWordFinish = lastReadingBeat + (liveCounts.at(-1) - 1) * WORD_STAGGER_SECONDS + WORD_REVEAL_SECONDS;
+const lastWordFinish = lastReadingBeat + liveVerse.at(-1).beats.at(-1) * WORD_STAGGER_SECONDS + WORD_REVEAL_SECONDS;
 assert.equal(CAMERA_SECONDS, lastWordFinish);
 assert.equal(revealSecondsFor([10, 20]), lineSecondsFor([10, 20]).at(-1) + 19 * WORD_STAGGER_SECONDS + WORD_REVEAL_SECONDS);
 assert.equal(root.style['--stagger'], `${WORD_STAGGER_SECONDS}s`);
@@ -428,7 +433,10 @@ assert.ok(readingAdvance() > 0 && readingAdvance() < 25, 'the scroll is already 
 advanceMobileTo(secondStart - 0.025);
 // The halved sentence pause (about 1 s from readable to the next ink) leaves
 // the lead a second, not two, so it has covered less of its way by then.
-assert.ok(readingAdvance() > 30, 'the lead visibly advances before incoming ink starts');
+// 2026-11-12: the verse text opens on a three-line stanza of 13 words, so
+// that slack is about 0.7 s and the lead has covered ~16 of its 164 px (36
+// with the old 26-word opening): smaller, still under way before the ink.
+assert.ok(readingAdvance() > 10, 'the lead visibly advances before incoming ink starts');
 assert.equal(mobile.shownLines, 1);
 advanceMobileTo(secondStart + 0.05);
 assert.equal(mobile.shownLines, 2, 'new paragraph starts after a clear pre-ink scroll lead');
@@ -464,9 +472,12 @@ assert.equal(mobileBox.scrollTop, 75, 'idle delay remains three seconds');
 for (let i = 0; i < 18; i++) mobile.update(1 / 60);
 assert.ok(mobileBox.scrollTop > 75 && mobileBox.scrollTop < 100, 'expired reveal deadline cannot snap manual catch-up');
 for (let i = 0; i < 72; i++) mobile.update(1 / 60);
-assert.ok(mobileBox.scrollTop > 200 && mobileBox.scrollTop < 800, 'manual catch-up spends its own full duration');
+// the last paragraph's bottom target in this fixture (240 px apart, 200 tall,
+// a 400 px box, 24 px margin): 784 with five paragraphs, 544 with four
+const lastBottomTarget = (CONTENT.manifesto.lines.length - 1) * 240 + 200 - 400 + 24;
+assert.ok(mobileBox.scrollTop > 200 && mobileBox.scrollTop < lastBottomTarget, 'manual catch-up spends its own full duration');
 for (let i = 0; i < 90; i++) mobile.update(1 / 60);
-assert.ok(Math.abs(mobileBox.scrollTop - 784) < .01, 'manual catch-up reaches the last bottom target');
+assert.ok(Math.abs(mobileBox.scrollTop - lastBottomTarget) < .01, 'manual catch-up reaches the last bottom target');
 mobilePanel.listeners.touchstart({ type: 'touchstart' });
 mobileBox.scrollTop = 0;
 mobileBox.listeners.scroll();

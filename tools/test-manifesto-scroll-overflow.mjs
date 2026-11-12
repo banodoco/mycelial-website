@@ -21,7 +21,8 @@ try {
       window.journey.scrollTo(restProgress('final'));
       window.__readingStep(0,0);
       window.journey.flyTo('manifesto');
-      const counts=CONTENT.manifesto.lines.map(line=>line.trim().split(/\s+/).length);
+      const {manifestoVerse}=await import('/content/manifesto-verse.js');
+      const counts=CONTENT.manifesto.lines.map(stanza=>manifestoVerse(stanza).span);
       const box=document.querySelector('.j-manifesto-lines');
       const beats=[...box.children].map(line=>Math.max(...[...line.querySelectorAll('[style]')].map(e=>parseFloat(e.style.getPropertyValue('--w')) || 0)));
       window.readingSchedule=mobileReadingSchedule(lineSecondsFor(counts),beats);

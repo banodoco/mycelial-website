@@ -1,4 +1,5 @@
 import { CONTENT } from '../../content/content.js';
+import { manifestoVerse } from '../../content/manifesto-verse.js';
 
 // The CSS reveal and camera finish share these durations. Paragraph pauses
 // retain their own reading rhythm; the flight follows the finished last word.
@@ -47,24 +48,31 @@ export const TITLE_SECONDS = 0;
 // sentences is too long, maybe half"): the dead gap between one sentence
 // being readable and the next one starting halves (about 1.8-2.4 s ->
 // 0.9-1.2 s), and the flight shortens with it (37.6 -> 33.3 s).
+/* PRICED BY BEATS, NOT WORDS (2026-11-12, the verse text). Each stanza is
+   now counted in reveal beats (content/manifesto-verse.js `span`): its words
+   plus the held breath at the end of each verse line. With no breaks the two
+   are the same number, so the authored rhythm is unchanged; with them the
+   reading allowance includes the pauses. Priced per word, a stanza of eight
+   verse lines would hand on before its own last word had begun. */
 export const FIRST_LINE_SECONDS = 2.0;
 export const LINE_BREATH_SECONDS = 1.2;
 export const LINE_SECONDS_PER_WORD = 0.125;
-export function lineSecondsFor(wordCounts) {
+export function lineSecondsFor(beatCounts) {
   const out = [];
   let t = FIRST_LINE_SECONDS;
-  wordCounts.forEach((words, i) => {
-    if (i > 0) t += LINE_BREATH_SECONDS + LINE_SECONDS_PER_WORD * wordCounts[i - 1];
+  beatCounts.forEach((beats, i) => {
+    if (i > 0) t += LINE_BREATH_SECONDS + LINE_SECONDS_PER_WORD * beatCounts[i - 1];
     out.push(+t.toFixed(2));
   });
   return out;
 }
-export function revealSecondsFor(wordCounts) {
-  const starts = lineSecondsFor(wordCounts);
-  return Math.max(0, ...wordCounts.map((words, i) =>
-    starts[i] + Math.max(0, words - 1) * WORD_STAGGER_SECONDS + WORD_REVEAL_SECONDS));
+export function revealSecondsFor(beatCounts) {
+  const starts = lineSecondsFor(beatCounts);
+  return Math.max(0, ...beatCounts.map((beats, i) =>
+    starts[i] + Math.max(0, beats - 1) * WORD_STAGGER_SECONDS + WORD_REVEAL_SECONDS));
 }
-export const CAMERA_SECONDS = revealSecondsFor(CONTENT.manifesto.lines.map(line => line.trim().split(/\s+/).length));
+export const MANIFESTO_BEAT_COUNTS = CONTENT.manifesto.lines.map(stanza => manifestoVerse(stanza).span);
+export const CAMERA_SECONDS = revealSecondsFor(MANIFESTO_BEAT_COUNTS);
 // Lead the next ink by up to two seconds, once the preceding paragraph is
 // fully readable. Ink beats and the camera endpoint stay exactly as authored.
 export function mobileReadingSchedule(starts, lastWordBeats) {
