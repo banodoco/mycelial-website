@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createPixelRatioPolicy } from './performance.js';
+import { visibleSize } from '../visible-viewport.js';
 
 export function createRendererSetup({ panX, container, camY, camZ, targetY, camAzimuth, bg, fov, pinPr }) {
   const scene = new THREE.Scene();
@@ -8,7 +9,10 @@ export function createRendererSetup({ panX, container, camY, camZ, targetY, camA
   const FOG_NEAR = 7.0, FOG_FAR = 20;
   scene.fog = new THREE.Fog(bg, FOG_NEAR, FOG_FAR);
 
-  const camera = new THREE.PerspectiveCamera(fov, innerWidth / innerHeight, 0.1, 100);
+  // Sized to the VISIBLE viewport (../visible-viewport.js), never innerHeight:
+  // on iOS that can report the large viewport, 142 px taller than the screen.
+  const view = visibleSize();
+  const camera = new THREE.PerspectiveCamera(fov, view.width / view.height, 0.1, 100);
   const az = camAzimuth * Math.PI / 180;
   camera.position.set(0.15 + panX + Math.sin(az) * camZ, camY, Math.cos(az) * camZ);
 
@@ -21,7 +25,7 @@ export function createRendererSetup({ panX, container, camY, camZ, targetY, camA
      plus a 4x depth buffer the size of the screen (~40 MB at a phone's 2x
      DPR) and a resolve every frame, for nothing. */
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-  renderer.setSize(innerWidth, innerHeight);
+  renderer.setSize(view.width, view.height);
   const pixelRatioPolicy = createPixelRatioPolicy(pinPr);
   renderer.setPixelRatio(pixelRatioPolicy.initial);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -103,8 +107,9 @@ export function createRendererSetup({ panX, container, camY, camZ, targetY, camA
  * window, the renderer, and every size-dependent consumer agree, in that
  * order, on every event that can move any of them.
  *
- * TWO SIZE SPACES, AND MIXING THEM IS THE HAZARD. `innerWidth/innerHeight`
- * are CSS pixels; the drawing buffer is those times the pixel ratio. A
+ * TWO SIZE SPACES, AND MIXING THEM IS THE HAZARD. The visible viewport
+ * (../visible-viewport.js — the one definition; innerWidth/innerHeight
+ * wherever the screen and the layout viewport agree) is in CSS pixels; the drawing buffer is those times the pixel ratio. A
  * consumer tuned in CSS pixels (a bloom radius is a perceived glow width)
  * must be given the CSS size, and a consumer indexing real texels (a render
  * target, a TAA history, a shader's `uRes`) must be given the buffer size.
@@ -137,11 +142,13 @@ export function createRendererSetup({ panX, container, camY, camZ, targetY, camA
  */
 export function createViewportSync({ renderer, camera, onSize }) {
   function sync() {
-    renderer.setSize(innerWidth, innerHeight);
-    onSize(renderer.getDrawingBufferSize(new THREE.Vector2()), innerWidth, innerHeight);
+    const { width, height } = visibleSize();
+    renderer.setSize(width, height);
+    onSize(renderer.getDrawingBufferSize(new THREE.Vector2()), width, height);
   }
   function resize() {
-    camera.aspect = innerWidth / innerHeight;
+    const { width, height } = visibleSize();
+    camera.aspect = width / height;
     camera.updateProjectionMatrix();
     sync();
   }

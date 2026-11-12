@@ -127,6 +127,7 @@
 // into two buffers on the chapter's own two shared materials, which means the
 // canopy costs the frame two draws however many thousand segments it holds.
 
+import { visibleSize } from '../../../visible-viewport.js';
 import * as THREE from 'three';
 import {
   TAU, RING_C, arcOf, cutVal,
@@ -704,8 +705,7 @@ export function createFinalCanopy(uniforms, seats) {
    *  above, so the resting composition is the shipped one exactly. */
   function setPresence(v) {
     const dpr = window.devicePixelRatio || 1;
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    const { width, height } = visibleSize();
     const pocket = purposeNavPocket({ width, height });
     uniforms.uNavPocketPx.value.set(
       pocket.x * dpr,

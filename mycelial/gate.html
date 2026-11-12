@@ -479,8 +479,7 @@
           revealDuration = 0,
           revealFar = 0,
           revealAt = null,
-          settleFrom = 0,
-          settleTo = 0,
+          settleFrom = [0, 0, 0], // y, size and gap the glide sets off from
           settleElapsed = 0,
           settleDuration = 0,
           revealDelay = 0;
@@ -492,6 +491,52 @@
           handoffElapsed = 0,
           requestThreads = false,
           resizePending = false;
+        // The visible middle as the opening and the hand-off follow it (visibleMiddle), and as last seen once settled.
+        let middle = null,
+          seenY = null,
+          seatedGap = 0;
+        /* visible-view:begin. One definition of the visible screen for the gate and the deck's opening.
+           gate.html and index.html carry this same text; tests/visible-view.test.mjs holds the two equal. */
+        // What is on screen is the visual viewport, not innerHeight (nor a fixed inset: 0 box, nor 100vh): Chrome on an
+        // iPhone can report its large viewport there while a page loads, the bottom toolbar over its lower ~140 px, so a
+        // middle taken from it sits ~70 px low. Under pinch zoom the visual viewport is a window onto the page; not used then.
+        const visibleView = () => {
+          const vv = window.visualViewport,
+            w = innerWidth,
+            h = innerHeight,
+            on = !!vv && vv.width > 0 && vv.height > 0 && Math.abs((vv.scale || 1) - 1) < 0.01,
+            vw = on ? Math.min(w, vv.width) : w,
+            vh = on ? Math.min(h, vv.height) : h,
+            left = on ? Math.max(0, vv.offsetLeft) : 0,
+            top = on ? Math.max(0, vv.offsetTop) : 0;
+          return { x: left + vw / 2, y: top + vh / 2, w: vw, h: vh, top, bottom: top + vh };
+        };
+        // That middle's height, re-read on every call, because no first read is to be trusted: iOS can settle its bars
+        // without firing anything. A change glides over `glide` seconds (a smoothstep, so never a hop); sub-pixel noise is
+        // taken as it comes.
+        const visibleMiddle = (glide) => {
+          let at = null,
+            from = 0,
+            to = 0,
+            k = 1;
+          return (dt) => {
+            const want = visibleView().y;
+            if (at === null || (k >= 1 && Math.abs(want - at) <= 0.5)) {
+              at = from = to = want;
+              k = 1;
+              return at;
+            }
+            if (Math.abs(want - to) > 0.5) {
+              from = at;
+              to = want;
+              k = 0;
+            }
+            k = Math.min(1, k + dt / glide);
+            at = from + (to - from) * k * k * (3 - 2 * k);
+            return at;
+          };
+        };
+        /* visible-view:end */
         const seep = (k) => 0.5 - 0.5 * Math.cos(Math.PI * k);
         const easeIn = (k) => k * k * (3 - 2 * k) * k;
         // Passing threads grow, then fade; they never remain in the network.
@@ -679,8 +724,11 @@
         };
         const resizeNet = () => {
           dpr = Math.min(2, devicePixelRatio || 1);
-          net.width = Math.round(innerWidth * dpr);
-          net.height = Math.round(innerHeight * dpr);
+          // The bitmap is the canvas's own box (fixed, inset: 0), read live, never innerWidth x innerHeight, which
+          // Chrome on an iPhone can report at its large viewport: the two never disagree (the mark drawn off the
+          // screen's middle) and the canvas never stands taller than the screen.
+          net.width = Math.round((net.clientWidth || innerWidth) * dpr);
+          net.height = Math.round((net.clientHeight || innerHeight) * dpr);
           draw();
         };
         const wake = () => {
@@ -732,37 +780,63 @@
         // gap is most of a cap height plus a little of the mark, so a phone's small mark still reads as a lockup with its
         // name and a desktop's large one keeps its proportion. The deck's opening uses the same (dot-transitions.js).
         const nameDrop = (size) => size / 2 + (0.8 * 0.7 * 22 + 0.07 * size) + 0.28 * 22;
-        // Layout places the mark, name, and prompt without changing drawing progress.
-        const layout = (settle = true) => {
-          const c = { x: innerWidth / 2, y: innerHeight / 2 },
-            size = Math.min(innerWidth, innerHeight) * 0.2;
-          const gap = Math.min(34, Math.max(22, innerHeight * 0.034));
+        // How far the lockup (the mark with its name beneath) rises from the mark's own middle to be centred as one
+        // shape: half of what the name adds below the ring. The deck's opening uses the same (dot-transitions.js).
+        const liftOf = (size) => (nameDrop(size) + 0.35 * 22 - size / 2) / 2;
+        // Where the mark sits with the prompt beneath it, on the visible screen (visibleView, shared with the deck).
+        const place = (settle = true) => {
+          const view = visibleView(),
+            c = { x: view.x, y: view.y },
+            size = Math.min(view.w, view.h) * 0.2;
+          const gap = Math.min(34, Math.max(22, view.h * 0.034));
           const blockH = form.getBoundingClientRect().height;
-          let sy = c.y;
+          // Where room allows, the lockup stays centred as the opening left it, the prompt hanging beneath.
+          let sy = settle ? c.y - liftOf(size) : c.y;
           const nameCentreOffset = nameDrop(size);
           const top = (y) => y + nameCentreOffset + 11 + gap;
           const bottomNeed = top(sy) + blockH;
-          if (settle && bottomNeed > innerHeight - 24) sy -= bottomNeed - (innerHeight - 24);
-          if (settle && coarse.matches && innerHeight > innerWidth) {
+          if (settle && bottomNeed > view.bottom - 24) sy -= bottomNeed - (view.bottom - 24);
+          if (settle && coarse.matches && view.h > view.w) {
             const fieldBottomOffset = field.getBoundingClientRect().bottom - prompt.getBoundingClientRect().top;
             const fieldBottom = top(sy) + fieldBottomOffset;
             // Just under half the height: clear of a phone's keyboard even where the keyboard shrinks the page.
-            const keyboardLine = innerHeight * 0.48;
+            const keyboardLine = view.top + view.h * 0.48;
             if (fieldBottom > keyboardLine) sy -= fieldBottom - keyboardLine;
           }
           const safeTop = Math.max(
             12,
             parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--safe-top")) || 0,
           );
-          if (settle) sy = Math.max(sy, safeTop + size * 0.667);
+          if (settle) sy = Math.max(sy, view.top + safeTop + size * 0.667);
+          return { c, size, sy, gap };
+        };
+        // Puts the mark at y with its name beneath it and the prompt below that.
+        const seatAt = (x, y, size, gap) => {
+          seatedGap = gap;
           if (mark) {
-            mark.x = c.x;
-            mark.y = sy;
+            mark.x = x;
+            mark.y = y;
             mark.size = size;
           }
-          name.style.transform = nameAt(c.x - name.offsetWidth / 2, sy + nameCentreOffset);
-          prompt.style.transform = `translateY(${(sy + nameCentreOffset + 11 + gap).toFixed(1)}px)`;
-          return { c, size, sy };
+          name.style.transform = nameAt(x - name.offsetWidth / 2, y + nameDrop(size));
+          prompt.style.transform = `translateY(${(y + nameDrop(size) + 11 + gap).toFixed(1)}px)`;
+        };
+        // Layout places the mark, name, and prompt without changing drawing progress.
+        const layout = (settle = true) => {
+          const p = place(settle);
+          seatAt(p.c.x, p.sy, p.size, p.gap);
+          return p;
+        };
+        // Once settled, a change of the visible screen glides the mark, name and prompt to their new place (tick),
+        // never while a touch keyboard is up: the prompt holds still under the thumb.
+        const reseat = () => {
+          if (!settled || handoff || settleDuration || !mark) return;
+          if (coarse.matches && field === document.activeElement) return;
+          if (Math.abs(place().sy - mark.y) <= 1) return;
+          settleFrom = [mark.y, mark.size, seatedGap];
+          settleElapsed = 0;
+          settleDuration = 0.6;
+          wake();
         };
         // The radial reveal uncovers the prompt and sends seven passing threads into it.
         const startReveal = () => {
@@ -832,35 +906,50 @@
           if (opening) {
             elapsed += dt;
             if (mark) mark.t = Math.min(1.6, mark.t + dt);
+            if (mark && middle && elapsed < 1.7 && !settleDuration) {
+              // Alone, the mark keeps to the visible middle, re-read every frame (the screen may still be settling);
+              // as its name fades in beneath it (from .35 s, over .7 s) it rises so the lockup is centred as one shape.
+              const k = clamp((elapsed - 0.35) / 0.7),
+                x = visibleView().x,
+                y = middle(dt) - liftOf(mark.size) * k * k * (3 - 2 * k);
+              mark.x = x;
+              mark.y = y;
+              name.style.transform = nameAt(x - name.offsetWidth / 2, y + nameDrop(mark.size));
+            }
             if (elapsed >= 1.7 && !settleDuration) {
-              const { c, size, sy } = layout();
-              if (Math.abs(sy - c.y) > 1) {
-                settleFrom = c.y;
-                settleTo = sy;
+              const p = place();
+              if (Math.abs(p.sy - mark.y) > 1) {
+                settleFrom = [mark.y, mark.size, p.gap];
                 settleDuration = 1.1;
                 settleElapsed = 0;
-                mark.y = c.y;
-                name.style.transform = nameAt(c.x - name.offsetWidth / 2, c.y + nameDrop(size));
               } else {
-                mark.y = sy;
+                seatAt(p.c.x, p.sy, p.size, p.gap);
                 settled = true;
                 opening = false;
                 revealDelay = 0.06;
               }
             }
-            if (settleDuration) {
-              settleElapsed += dt;
-              const k = clamp(settleElapsed / settleDuration),
-                y = settleFrom + (settleTo - settleFrom) * seep(k);
-              mark.y = y;
-              name.style.transform = nameAt(mark.x - name.offsetWidth / 2, y + nameDrop(mark.size));
-              if (k >= 1) {
-                settleDuration = 0;
+          }
+          // The glide up to make room for the prompt, and any later re-seat (reseat): towards a place read afresh
+          // every frame, so a screen that changes size meanwhile is followed rather than overshot.
+          if (settleDuration) {
+            settleElapsed += dt;
+            const p = place(),
+              k = seep(clamp(settleElapsed / settleDuration)),
+              [y0, size0, gap0] = settleFrom;
+            seatAt(p.c.x, y0 + (p.sy - y0) * k, size0 + (p.size - size0) * k, gap0 + (p.gap - gap0) * k);
+            if (k >= 1) {
+              settleDuration = 0;
+              if (opening) {
                 settled = true;
                 opening = false;
                 revealDelay = 0.06;
               }
             }
+          } else if (settled && !handoff) {
+            const y = visibleView().y;
+            if (seenY !== null && Math.abs(y - seenY) > 0.5) reseat();
+            seenY = y;
           }
           if (revealDelay > 0) {
             revealDelay = Math.max(0, revealDelay - dt);
@@ -896,10 +985,19 @@
             handoffElapsed += dt;
             if (!still && handoffElapsed <= 0.4)
               mask(form, revealAt, (1 - easeIn(clamp(handoffElapsed / 0.4))) * revealFar);
+            if (!still && mark && middle) {
+              const k = seep(clamp(handoffElapsed / 0.9)),
+                x = visibleView().x,
+                y = handoffFrom + (middle(dt) - liftOf(mark.size) - handoffFrom) * k;
+              mark.x = x;
+              mark.y = y;
+              name.style.transform = nameAt(x - name.offsetWidth / 2, y + nameDrop(mark.size));
+            }
             // Leave the last 50 ms with only the mark and the wordmark on screen.
             if (handoffElapsed >= 0.95) hyphae = [];
             if (handoffElapsed >= 1) {
               draw();
+              savePoster();
               location.replace("./" + location.hash);
               return;
             }
@@ -974,11 +1072,8 @@
           }
           return { src: cv.toDataURL("image/png"), x: left, y: top, w, h };
         };
-        // After 204, save the poster, gather threads, wait one second, then replace the page.
-        const handOff = () => {
-          field.blur();
-          form.inert = true;
-          note.classList.remove("is-on");
+        // The deck takes over from the mark where it is left: its poster and place, saved for the next page.
+        const savePoster = () => {
           const poster = makePoster();
           try {
             sessionStorage.setItem(
@@ -989,11 +1084,24 @@
           try {
             sessionStorage.setItem("deck-gate-opened", "1");
           } catch (e) {}
+        };
+        // After 204, gather threads, and as the prompt goes, glide the lockup back to the visible middle for the
+        // deck to load under; then save the poster and replace the page.
+        let handoffFrom = 0;
+        const handOff = () => {
+          field.blur();
+          form.inert = true;
+          note.classList.remove("is-on");
           handoff = true;
           handoffElapsed = 0;
+          settleDuration = 0;
           if (!still) {
+            handoffFrom = mark.y;
+            middle = visibleMiddle(0.6);
+            const view = visibleView(),
+              home = { x: view.x, y: view.y - liftOf(mark.size) };
             for (const p of spots(form, 6)) {
-              hypha(wander(p, { x: mark.x, y: mark.y }), {
+              hypha(wander(p, home), {
                 width: 0.6,
                 alpha: 0.3,
                 depth: 1,
@@ -1005,7 +1113,10 @@
             revealFar = reach(form, revealAt);
             mask(form, revealAt, revealFar);
             wake();
-          } else location.replace("./" + location.hash);
+          } else {
+            savePoster();
+            location.replace("./" + location.hash);
+          }
         };
         // The prompt accepts a key or invitation URL and reports the server result.
         form.addEventListener("submit", async (e) => {
@@ -1103,6 +1214,7 @@
             document.documentElement.classList.remove("g-wait");
             const { c, size } = layout(false);
             mark = { x: c.x, y: c.y, t: 0, size, shrink: 0 };
+            middle = visibleMiddle(0.6);
             name.style.transform = nameAt(c.x - name.offsetWidth / 2, c.y + nameDrop(size));
             name.style.transitionDelay = ".35s";
             name.classList.add("is-on");
@@ -1129,7 +1241,9 @@
         };
         let prevW = innerWidth,
           prevH = innerHeight;
-        // Resize finishes any choreography, except for a touch keyboard changing height.
+        // A change of width finishes any choreography. A change of height alone (a phone's toolbar settling or
+        // sliding) does not: the opening and the hand-off follow the visible middle frame by frame, and a settled
+        // gate glides to its new place (reseat). A touch keyboard changing the height moves nothing.
         addEventListener("resize", () => {
           if (innerWidth === layoutW && innerHeight === layoutH) return;
           if (!motionLaunched && !still) {
@@ -1142,9 +1256,20 @@
             prevH = innerHeight;
             return;
           }
+          if (!still && innerWidth === layoutW) {
+            layoutH = prevH = innerHeight;
+            resizeNet();
+            reseat();
+            return;
+          }
           resizePending = true;
           wake();
         });
+        // iOS can settle its bars with no window resize at all; the visual viewport (or a page shown again) says so.
+        window.visualViewport?.addEventListener("resize", reseat);
+        window.visualViewport?.addEventListener("scroll", reseat);
+        addEventListener("pageshow", reseat);
+        addEventListener("load", reseat);
         addEventListener(
           "keydown",
           () => {

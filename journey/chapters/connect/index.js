@@ -1,3 +1,4 @@
+import { ndcToClientX, ndcToClientY, visibleSize } from '../../../visible-viewport.js';
 import { createHeroBodyFogClaim } from '../hero-body-fog.js';
 // journey-v6 — CONNECT chapter, GROUND RESTAGE (16-connect-ground-restage.md).
 //
@@ -722,8 +723,8 @@ export function createConnect(sceneApi) {
 
   function toScreen(world, out, camera = _placementCamera) {
     out.copy(world).project(camera);
-    out.x = (out.x * 0.5 + 0.5) * innerWidth;
-    out.y = (-out.y * 0.5 + 0.5) * innerHeight;
+    out.x = ndcToClientX(out.x);
+    out.y = ndcToClientY(out.y);
     return out;
   }
 
@@ -758,8 +759,8 @@ export function createConnect(sceneApi) {
     _placementPose.target.copy(rest.tgt);
     _placementPose.fov = rest.fov;
     applyPortrait(_placementPose, restProgress('connect'),
-      innerWidth / innerHeight, innerWidth);
-    _placementCamera.aspect = innerWidth / innerHeight;
+      visibleSize().width / visibleSize().height, visibleSize().width);
+    _placementCamera.aspect = visibleSize().width / visibleSize().height;
     _placementCamera.fov = _placementPose.fov;
     _placementCamera.position.copy(_placementPose.pos);
     _placementCamera.lookAt(_placementPose.target);

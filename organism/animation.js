@@ -1,7 +1,13 @@
 import * as THREE from 'three';
 
 /** Own the named animator registry and the single shared-clock render loop. */
-export function createAnimationLifecycle({ beforeRender, render }) {
+/* `viewSize` is the visible viewport (../visible-viewport.js visibleSize,
+   passed in by organism.js); the default reads the window globals, which is
+   what the node suites stub. A change of it lets a frame through both the
+   hold and the rest cadence, whether or not the browser fired `resize`. */
+const windowSize = () => ({ width: globalThis.innerWidth, height: globalThis.innerHeight });
+
+export function createAnimationLifecycle({ beforeRender, render, viewSize = windowSize }) {
   const animators = new Map();
   let frozenT = null;
   let renderEnabled = true;
@@ -109,9 +115,10 @@ export function createAnimationLifecycle({ beforeRender, render }) {
          keeps dt honest. */
       // a resize reallocates (and clears) the canvas: let a finished frame
       // through at the new size before holding again
-      if (held && typeof innerWidth === 'number'
-          && (innerWidth !== heldW || innerHeight !== heldH)) {
-        heldW = innerWidth; heldH = innerHeight;
+      const view = viewSize();
+      const sized = typeof view.width === 'number';
+      if (held && sized && (view.width !== heldW || view.height !== heldH)) {
+        heldW = view.width; heldH = view.height;
         heldFramesLeft = Math.max(heldFramesLeft, 3);
       }
       const holdPasses = !held || heldFramesLeft > 0;
@@ -119,9 +126,8 @@ export function createAnimationLifecycle({ beforeRender, render }) {
       let cadencePasses = true;
       if (cadenceSource) {
         const every = cadenceSource();
-        const resized = typeof innerWidth === 'number'
-          && (innerWidth !== cadenceW || innerHeight !== cadenceH);
-        if (resized) { cadenceW = innerWidth; cadenceH = innerHeight; }
+        const resized = sized && (view.width !== cadenceW || view.height !== cadenceH);
+        if (resized) { cadenceW = view.width; cadenceH = view.height; }
         cadencePasses = resized || every === 1 || (every > 1 && (++cadenceIx % every) === 0);
         if (every === 1) cadenceIx = 0;
       }
@@ -185,7 +191,8 @@ export function createAnimationLifecycle({ beforeRender, render }) {
     holdRender(on, settle = 3) {
       held = !!on;
       heldFramesLeft = held ? Math.max(0, settle | 0) : 0;
-      if (typeof innerWidth === 'number') { heldW = innerWidth; heldH = innerHeight; }
+      const view = viewSize();
+      if (typeof view.width === 'number') { heldW = view.width; heldH = view.height; }
     },
   };
 }

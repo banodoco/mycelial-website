@@ -105,7 +105,7 @@ export function createFocusReturn() {
      *  where they came from. */
     remember(next) { trigger = next || trigger; },
     restore() {
-      if (trigger && document.contains(trigger)) trigger.focus();
+      if (trigger && document.contains(trigger)) trigger.focus({ preventScroll: true });
       trigger = null;
     },
   };

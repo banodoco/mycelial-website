@@ -9,6 +9,7 @@
 // exception by design - its copy is the hero's OWN DOM (06-mission-
 // preservation.md), so this module fades that block rather than duplicating it.
 
+import { visibleSize } from '../visible-viewport.js';
 import { CONTENT } from '../content/content.js';
 import { CARD_ICONS } from './cards/index.js';
 import { createRail } from './rail.js';
@@ -850,7 +851,8 @@ export function createUI({ onNav, onOpen, onClose, isDetailOpen, project,
    *  keeps the pre-2026-08-13 flank position as its honest fallback. */
   function placeCard(cardAnchor) {
     if (card.classList.contains('sheet')) return;
-    const view = { w: window.innerWidth, h: window.innerHeight };
+    const vp = visibleSize();
+    const view = { w: vp.width, h: vp.height };
     const a = anchorPoint(cardAnchor, projection.snapshot(), view);
     if (!a || a.behind) {
       // No direction to point in. Sit on the flank exactly where the card sat

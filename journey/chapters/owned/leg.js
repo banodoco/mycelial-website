@@ -14,6 +14,7 @@
 // stipe-side crawl, so everything this file derives for p < 0.725 regrew
 // around the new corridor in that commit; samples at p >= 0.725 were
 // bit-exact by the rest key's hold.)
+import { visibleSize } from '../../../visible-viewport.js';
 import * as THREE from 'three';
 import { poseAt } from '../../director.js';
 import { portraitWeight } from '../../portrait.js';
@@ -152,7 +153,7 @@ export function buildLeg() {
     };
   }
   const buildAspect = ASPECT
-    ?? (typeof window !== 'undefined' ? window.innerWidth / Math.max(1, window.innerHeight) : 1.6);
+    ?? (typeof window !== 'undefined' ? visibleSize().width / Math.max(1, visibleSize().height) : 1.6);
   const { portraitField, portraitAspect, restFramePortrait } = fieldFor(buildAspect);
 
   /** NDC-space projection into an authored frame (aspect = design 1.55). */

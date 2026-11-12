@@ -119,6 +119,7 @@
 // on screen by the time it is focused (23-side-navigator.md §9), and
 // `expanded()` covers that focus in the release rule too.
 
+import { visibleViewport, visibleSize } from '../visible-viewport.js';
 import { CONTENT } from '../content/content.js';
 import { CHAPTERS, chapterAt, restProgress, HERO_END_P } from './route.js';
 import { buildSymbol } from './symbols.js';
@@ -1556,7 +1557,7 @@ export function createRail({ onNav, ready = true } = {}) {
     // and out of the a11y tree from the first frame of the fade.
     menu.inert = true;
     root.inert = false;
-    if (focusBack && menuReturn && document.contains(menuReturn)) menuReturn.focus();
+    if (focusBack && menuReturn && document.contains(menuReturn)) menuReturn.focus({ preventScroll: true });
     menuReturn = null;
     // Let the fade play, then leave the box tree. Reduced motion has no fade
     // to protect (the stylesheet drops the transition), so it goes on the tick.
@@ -1670,8 +1671,8 @@ export function createRail({ onNav, ready = true } = {}) {
     const first = items[0], last = items[items.length - 1];
     const at = document.activeElement;
     const atControl = items.includes(at);
-    if (e.shiftKey && (at === first || !atControl)) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && (at === last || !atControl)) { e.preventDefault(); first.focus(); }
+    if (e.shiftKey && (at === first || !atControl)) { e.preventDefault(); last.focus({ preventScroll: true }); }
+    else if (!e.shiftKey && (at === last || !atControl)) { e.preventDefault(); first.focus({ preventScroll: true }); }
   });
 
   /* Escape, in priority order: the menu first (it is modal and it is the thing
@@ -2073,11 +2074,14 @@ export function createRail({ onNav, ready = true } = {}) {
   // layout on every return-flight frame. This rail is document-owned.
   const invalidateRowFrame = () => { rowPx = null; };
   window.addEventListener('resize', invalidateRowFrame);
-  window.visualViewport?.addEventListener('resize', invalidateRowFrame);
+  visibleViewport.subscribe(invalidateRowFrame);
   function rowFrame() {
     if (rowPx) return rowPx;
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    // The row sits on the visible box's bottom (site.css's --visible-bottom
+    // lifts it there whenever the fixed box is the taller, large viewport).
+    const vp = visibleSize();
+    const w = vp.width;
+    const h = vp.top + vp.height;
     const L = rowLayout(w, h);
     // Chapter anchors: centre-x and diameter per chapter index.
     const chX = new Array(N);

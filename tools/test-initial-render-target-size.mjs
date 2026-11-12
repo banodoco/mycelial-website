@@ -61,7 +61,9 @@ assert.match(organismSource,
   /createAdaptiveResolution\(\{[\s\S]*?syncSizes: viewport\.sync,/,
   'adaptive pixel-ratio changes must route through viewport.sync');
 assert.match(rendererSource,
-  /function sync\(\) \{\s*renderer\.setSize\(innerWidth, innerHeight\);\s*onSize\(renderer\.getDrawingBufferSize\(new THREE\.Vector2\(\)\), innerWidth, innerHeight\);\s*\}/,
+  // fix/visible-canvas: the CSS size is the visible viewport's (one read,
+  // ../visible-viewport.js), no longer innerWidth/innerHeight directly.
+  /function sync\(\) \{\s*const \{ width, height \} = visibleSize\(\);\s*renderer\.setSize\(width, height\);\s*onSize\(renderer\.getDrawingBufferSize\(new THREE\.Vector2\(\)\), width, height\);\s*\}/,
   'viewport sync must read authoritative drawing-buffer dimensions after renderer.setSize');
 assert.match(rendererSource,
   /function resize\(\) \{[\s\S]*?camera\.updateProjectionMatrix\(\);\s*sync\(\);\s*\}/,
@@ -76,7 +78,10 @@ const executableRendererSource = rendererSource
   .replace("import { OrbitControls } from 'three/addons/controls/OrbitControls.js';",
     'class OrbitControls {}')
   .replace("import { createPixelRatioPolicy } from './performance.js';",
-    'function createPixelRatioPolicy() { throw new Error("not used by viewport contract"); }');
+    'function createPixelRatioPolicy() { throw new Error("not used by viewport contract"); }')
+  // the module's node behaviour: the stubbed window globals, read live
+  .replace("import { visibleSize } from '../visible-viewport.js';",
+    'const visibleSize = () => ({ width: globalThis.innerWidth, height: globalThis.innerHeight });');
 const rendererModuleUrl = `data:text/javascript;base64,${Buffer.from(executableRendererSource).toString('base64')}`;
 const { createViewportSync } = await import(rendererModuleUrl);
 

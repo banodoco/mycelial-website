@@ -220,7 +220,7 @@ body:has(.manifesto-static) .manifesto-static .sub { font-size: 17px; line-heigh
   .ui #site-nav { --header-left: 6vw; padding: 2.1rem var(--header-left); }
   .ui .logo { --brand-width: 180px; }
   .ui .logo .wordmark { font-size: 16px; }
-  .ui .hero { padding: 3.5vh 6vw 0; text-align: center;
+  .ui .hero { padding: calc(var(--visible-h, 100vh) * 0.035) 6vw 0; text-align: center;
     --hero-h1-size: clamp(2.65rem, 10.8vw, 4rem); --hero-h1-leading: .97; --hero-copy-gap: 1.3rem; }
   .ui .hero h1 { width: calc(100% + 6vw); margin: 0 -3vw var(--hero-copy-gap); text-wrap: balance; }
   .ui .hero h1 .hl { display: inline; white-space: normal; }
@@ -770,9 +770,22 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
 
 /* Mobile copy begins in the clear space between the header and the rail.
    Its measured offset yields to the actual mushroom growth, not a timer. */
+/* index.html writes the centred top and the copy's own top separately: the
+   own top follows layout in the same frame, the centred one eases once the
+   copy is on screen, so a late viewport settle glides instead of hopping
+   (fix/load-polish). Registered so that it can transition at all. */
+@property --hero-lift-target {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
 @media (max-width: 600px) and (prefers-reduced-motion: no-preference) {
   body.hero-growth-lift .ui .hero {
-    translate: 0 calc(var(--hero-growth-offset, 0px) * (1 - var(--hero-growth-progress, 0)));
+    translate: 0 calc(max(0px, var(--hero-lift-target, 0px) - var(--hero-lift-normal, 0px))
+      * (1 - var(--hero-growth-progress, 0)));
+  }
+  body.hero-growth-lift.hero-entry-ready .ui .hero {
+    transition: --hero-lift-target .6s cubic-bezier(.22, 1, .36, 1);
   }
 }
 

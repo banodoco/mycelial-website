@@ -46,6 +46,7 @@
 // reconstructed it, each with its own copy of the table and its own
 // `getBoundingClientRect()` on the same element.
 
+import { visibleSize } from '../../visible-viewport.js';
 import { CONTENT } from '../../content/content.js';
 import { PHONE_FINAL_COMPOSITION_LIFT_PX } from './final-composition.js';
 
@@ -233,7 +234,7 @@ export function bandOf(w, h) {
  *  @param {Function} [io.view]  the viewport, as `{ w, h }`.
  */
 export function createRailDock({
-  view = () => ({ w: window.innerWidth, h: window.innerHeight }),
+  view = () => ({ w: visibleSize().width, h: visibleSize().top + visibleSize().height }),
 } = {}) {
   let latest = null;
   let revision = 0;
@@ -307,7 +308,7 @@ export function createRailExclusion({ root }) {
     const rect = measure();
     latest = Object.freeze({
       revision,
-      viewport: Object.freeze({ w: window.innerWidth, h: window.innerHeight }),
+      viewport: Object.freeze({ w: visibleSize().width, h: visibleSize().top + visibleSize().height }),
       rect,
       halo: rect ? measureHalo() : null,
     });

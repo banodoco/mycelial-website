@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { createCapFlow } from './spore-cap-flow.js';
 import { TKDBG } from '../flags.js';
+import { visibleSize } from '../visible-viewport.js';
 import { sporeBoundaryDistance, sporeLifetimeOpacity } from './spore-lifetime.js';
 import { EXITS as INSPIRE_EXITS, EXIT_SLOT } from '../inspire-exits.js';
 
@@ -454,8 +455,9 @@ export function createSpores(ctx) {
     const onPointerMove = (e) => {
       if (e.pointerType && e.pointerType !== 'mouse') return;
       if (e.buttons !== 0) { mw.on = false; return; } // dragging = orbiting, not hovering
-      mw.x = (e.clientX / innerWidth) * 2 - 1;
-      mw.y = -(e.clientY / innerHeight) * 2 + 1;
+      const vp = visibleSize();
+      mw.x = ((e.clientX - vp.left) / vp.width) * 2 - 1;
+      mw.y = -((e.clientY - vp.top) / vp.height) * 2 + 1;
       mw.on = true;
     };
     addEventListener('pointermove', onPointerMove);

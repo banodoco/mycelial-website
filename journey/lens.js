@@ -55,6 +55,7 @@
 //     kept), aberration and halation dropped (streak-class effects are
 //     Tier-1 only, per the donor tier model and the LA-7 proposal).
 import * as THREE from 'three';
+import { visibleViewport } from '../visible-viewport.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { startOf, endOf, restProgress } from './route.js';
 import { SEAM_FOG_DIPS } from './constants.js';
@@ -325,7 +326,9 @@ export function createLens(sceneApi) {
   const outIdx = composer.passes.length - 1;
   composer.insertPass(pass, outIdx);
 
-  addEventListener('resize', () => {
+  // After the scene's own resize (it subscribed first): every change of the
+  // visible viewport, with or without a window `resize` event.
+  visibleViewport.subscribe(() => {
     const d = renderer.getDrawingBufferSize(new THREE.Vector2());
     pass.uniforms.uResolution.value.set(d.width, d.height);
   });

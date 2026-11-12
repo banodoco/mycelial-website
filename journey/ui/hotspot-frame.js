@@ -76,6 +76,7 @@
  * it either way. Recorded here rather than left implicit.
  * ==================================================================== */
 
+import { ndcToClientX, ndcToClientY, visibleSize } from '../../visible-viewport.js';
 import { bandOpacity, clamp01, smoothA } from './bands.js';
 import {
   HOTSPOT_STAGGER_MS, HOTSPOT_IN_K, HOTSPOT_OUT_K, HOTSPOT_HOLD_HOME_K,
@@ -292,8 +293,8 @@ export function createHotspotFrame({ hotspots, blocks, sheetQuery }) {
     h.hitRaw = 0;
     if (w) {
       const v = geom.project(w.clone());
-      sx = (v.x * 0.5 + 0.5) * window.innerWidth;
-      sy = (-v.y * 0.5 + 0.5) * window.innerHeight;
+      sx = ndcToClientX(v.x);
+      sy = ndcToClientY(v.y);
       // Admission protects readable, interactive labels at rest. An outgoing
       // label is already noninteractive and owned by the copy fade: rejecting
       // it at the copy rectangle or viewport margin used to stop transform
@@ -513,7 +514,7 @@ export function createHotspotFrame({ hotspots, blocks, sheetQuery }) {
     } else {
       // Edge flip: the ordinary pill runs RIGHT of its dot, so a node near
       // the right edge mirrors the label while leaving the dot on the node.
-      const over = sx + h.pillW - 11 - (window.innerWidth - 12);
+      const over = sx + h.pillW - 11 - (visibleSize().width - 12);
       const flip = (h.flipped ? over > -14 : over > 0) && sx - h.pillW + 21 > 0;
       if (flip !== h.flipped) { h.flipped = flip; h.btn.classList.toggle('flip', flip); }
       tx = flip ? sx + 21 - h.pillW : sx;
@@ -522,7 +523,7 @@ export function createHotspotFrame({ hotspots, blocks, sheetQuery }) {
     // 232px label anchored at x 160 of 375). Nudge it in, but never far:
     // past ~26px the dot stops reading as sitting on its node, and a
     // truthful dot with a clipped tail beats a chip pointing at nothing.
-    const lo = 15, hi = window.innerWidth - 4 - h.pillW + 11;
+    const lo = 15, hi = visibleSize().width - 4 - h.pillW + 11;
     const want2 = hi >= lo ? Math.min(Math.max(tx, lo), hi) : tx;
     tx += Math.max(-26, Math.min(26, want2 - tx));
     return tx;
@@ -766,7 +767,7 @@ export function createHotspotFrame({ hotspots, blocks, sheetQuery }) {
          faded at y 356 while the heading it sat above had moved up to 296, so
          for the fade it read as sitting BELOW the heading. Its old position
          is not a truthful place for it any more, so it leaves at once. */
-      const viewKey = window.innerWidth * 100000 + window.innerHeight;
+      const viewKey = visibleSize().width * 100000 + visibleSize().height;
       if (h.layoutPlaceable) h.placedView = viewKey;
       else if (departureOpacity === null && h.a > 0 && h.placedView !== undefined
         && h.placedView !== viewKey) h.a = 0;
@@ -784,7 +785,7 @@ export function createHotspotFrame({ hotspots, blocks, sheetQuery }) {
           const worldR = h.radius() || 0;
           if (worldR > 0) {
             const d = Math.max(0.05, viewDepth(w));
-            h.hitRaw = worldR * (window.innerHeight * 0.5) / (d * tanHalf);
+            h.hitRaw = worldR * (visibleSize().height * 0.5) / (d * tanHalf);
           }
           setVar(h.hitEl, '--j-hit-x', `${(sx - tx + 11).toFixed(1)}px`);
         }

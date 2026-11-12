@@ -39,6 +39,7 @@ import { CAMERA as FINAL_CAM } from './chapters/final/camera.js';
 import { makeRng } from './anatomy.js';
 import { smooth01 } from './lib/ease.js';
 import { ASPECT } from '../flags.js';
+import { visibleSize } from '../visible-viewport.js';
 
 const DEG = Math.PI / 180;
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -224,8 +225,8 @@ export function createDirector(sceneApi, { steady = false } = {}) {
   sceneApi.setView = (v, secs) => {
     if (owned || transitioning) {
       // A deferred view kept the stale aspect: the skipped rawSetView is what
-      // refreshed it (camera.aspect = innerWidth/innerHeight). Replay exactly that.
-      camera.aspect = innerWidth / innerHeight;
+      // refreshed it (camera.aspect from the visible viewport). Replay exactly that.
+      { const vp = visibleSize(); camera.aspect = vp.width / vp.height; }
       camera.updateProjectionMatrix();
       pendingView = v; captureHero(v); return;
     }
@@ -350,7 +351,7 @@ export function createDirector(sceneApi, { steady = false } = {}) {
    *  animator, so a direct write wins; there is never a frame in which
    *  OrbitControls and the director disagree. */
   function apply(p, dt = 0) {
-    poseAt(p, pose, hero, forcedAspect ?? camera.aspect, innerWidth);
+    poseAt(p, pose, hero, forcedAspect ?? camera.aspect, visibleSize().width);
     applyHandheld(pose, p, dt);
     camera.position.copy(pose.pos);
     controls.target.copy(pose.target);
