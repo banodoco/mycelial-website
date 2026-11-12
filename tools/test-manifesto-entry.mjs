@@ -6,7 +6,11 @@ const { poseAt } = await import('../journey/director.js');
 const { restProgress } = await import('../journey/route.js');
 const { manifestoPose } = await import('../journey/manifesto/pose.js');
 const { createEntryFlight, sampleEntryFlight } = await import('../journey/manifesto/entry-flight.js');
-const { returnVelocity, createReturnFlight, sampleReturnFlight } = await import('../journey/manifesto/return-flight.js');
+const { returnVelocity } = await import('../journey/manifesto/return-flight.js');
+const { createGlide, sampleGlide, glideVelocity } = await import('../journey/manifesto/glide.js');
+// a presented frame as the branch reads it: forward from the aim, the flight's own up
+const view = p => { const d = { x: p.target.x - p.position.x, y: p.target.y - p.position.y, z: p.target.z - p.position.z }, n = Math.hypot(d.x, d.y, d.z);
+  return { ...p, forward: { x: d.x / n, y: d.y / n, z: d.z / n } }; };
 for (const [aspect,width] of [[390/844,390],[1.6,1280]]) {
   const rest = id => { const p=poseAt(restProgress(id), {pos:new THREE.Vector3(),target:new THREE.Vector3()},undefined,aspect,width);
     return {position:{...p.pos},target:{...p.target},fov:p.fov,roll:p.roll||0}; };
@@ -26,19 +30,20 @@ for (const [aspect,width] of [[390/844,390],[1.6,1280]]) {
       previous=camera.quaternion.clone();
     }
     for(const t of [.1,2,5,8]) {
-      const p=sampleEntryFlight(flight,t), v=returnVelocity(sampleEntryFlight(flight,t-dt),p,dt);
-      const exit=createReturnFlight(p,anchor,4,v);
-      assert.deepEqual(sampleReturnFlight(exit,0).position,p.position);
+      // a Return pressed during the entry is the same glide, from the frame on screen
+      const p=view(sampleEntryFlight(flight,t)), v=glideVelocity(view(sampleEntryFlight(flight,t-dt)),p,dt,aspect);
+      const exit=createGlide(p,anchor,aspect,{velocity:v}), q=sampleGlide(exit,0).position;
+      assert.ok(Math.hypot(q.x-p.position.x,q.y-p.position.y,q.z-p.position.z)<1e-9, `${width} ${id} Return from the entry starts on screen`);
     }
   }
   const top=manifestoPose(anchor,30,aspect), land=rest('owned');
-  const flight=createReturnFlight(top,land,7.48,{}, {rootApproach:true});
-  assert.deepEqual(sampleReturnFlight(flight,1).position,land.position);
+  const flight=createGlide(top,land,aspect), end=sampleGlide(flight,1).position;
+  assert.ok(Math.hypot(end.x-land.position.x,end.y-land.position.y,end.z-land.position.z)<1e-9,'the glide into the ground lands exactly');
   let previous;
   for(let i=0;i<=1000;i++) {
-    const p=sampleReturnFlight(flight,i/1000);camera.position.set(p.position.x,p.position.y,p.position.z);camera.up.set(p.up.x,p.up.y,p.up.z);camera.lookAt(new THREE.Vector3(p.target.x,p.target.y,p.target.z));
-    if(previous)assert.ok(camera.quaternion.angleTo(previous)/(7.48/1000)<2.2,`${width} root approach no close-range flip`);
+    const p=sampleGlide(flight,i/1000);camera.position.set(p.position.x,p.position.y,p.position.z);camera.up.set(p.up.x,p.up.y,p.up.z);camera.lookAt(new THREE.Vector3(p.target.x,p.target.y,p.target.z));
+    if(previous)assert.ok(camera.quaternion.angleTo(previous)/(flight.seconds/1000)<2.2,`${width} root approach no close-range flip`);
     previous=camera.quaternion.clone();
   }
 }
-console.log('PASS all non-Purpose entries: moving join, continuous orientation, interrupt; root approach exact landing and continuous orientation');
+console.log('PASS all non-Purpose entries: moving join, continuous orientation, interrupt glide; glide into the ground: exact landing and continuous orientation');

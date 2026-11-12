@@ -1,270 +1,213 @@
 import assert from 'node:assert/strict';
-import { manifestoPose, descentU, descentPose, CAMERA_SECONDS } from '../journey/manifesto/pose.js';
-const from = { position: { x: -15.4864, y: 5.2453, z: 3.4893 },
-  target: { x: -3.023, y: 1.3933, z: -1.8471 }, fov: 53.5004, roll: -5 * Math.PI / 180 };
-for (const aspect of [390 / 844, 430 / 932]) {
-  for (const start of [0.06, 0.5, 1]) {
-    const top = manifestoPose(from, start * CAMERA_SECONDS, aspect);
-    let previousY = top.position.y;
-    for (let i = 0; i <= 120; i++) {
-      const k = i / 120;
-      const { pose } = descentPose(from, start, k, aspect);
-      assert.ok(pose.position.y <= previousY + 1e-6, 'return descends monotonically');
-      previousY = pose.position.y;
-      if (k >= 0.9) {
-        assert.ok((pose.position.y - from.position.y) / (top.position.y - from.position.y) < 0.015,
-          'final tenth is a settle, not a second downward flight');
-        assert.ok(Math.abs(pose.fov - from.fov) < 0.8, 'lens has substantially reached Purpose before the final settle');
-        assert.ok(Math.abs(pose.roll - from.roll) < 0.009, 'five-degree bank returns with the flight');
-      }
-    }
-    const landing = descentPose(from, start, 1, aspect).pose;
-    assert.deepEqual(landing.position, from.position);
-    assert.deepEqual(landing.target, from.target);
-    assert.equal(landing.fov, from.fov);
-    assert.equal(landing.roll, from.roll);
-  }
-}
-// Desktop and phone returns are one eased glide from any height (2026-11:
-// desktop's height-only key crossed the climb's sideways frame shift in
-// 0.2 s, a 126 u/s whip, then re-accelerated and pitched in its last second).
-// Step the real clock at 60 Hz from the authored Purpose rests.
-const { returnSecondsFrom } = await import('../journey/manifesto/pose.js');
-const deskRest = { position: { x: -14.72, y: 2.73, z: 2.70 }, target: { x: -3.06, y: 0.83, z: -1.94 }, fov: 45.5, roll: 0 };
-const phoneRest = { ...from, fieldCenter: { x: .251658, z: -1.823989 } };
-const gaze = p => { const d = ['x', 'y', 'z'].map(c => p.target[c] - p.position[c]); const n = Math.hypot(...d); return d.map(v => v / n); };
-for (const [rest, aspect, maxSpeed, maxAccel] of [[deskRest, 1.6, 100, 1000], [phoneRest, 390 / 844, 25, 600]]) {
-  for (const start of [0.1, 0.36, 0.5, 0.75, 1]) {
-    const seconds = returnSecondsFrom(start);
-    let previous = manifestoPose(rest, start * CAMERA_SECONDS, aspect), velocity = null, k = 0;
-    const rows = [];
-    while (k < 1) {
-      k = Math.min(1, k + 1 / seconds / 60);
-      const { pose } = descentPose(rest, start, k, aspect);
-      const v = ['x', 'y', 'z'].map(c => (pose.position[c] - previous.position[c]) * 60);
-      const a = gaze(previous), b = gaze(pose);
-      const turn = Math.acos(Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])) * 60;
-      if (velocity) assert.ok(Math.hypot(...v.map((c, i) => (c - velocity[i]) * 60)) < maxAccel,
-        `${aspect}: return from ${start} has no velocity spike`);
-      rows.push({ speed: Math.hypot(...v), turn });
-      assert.ok(rows.at(-1).speed < maxSpeed, `${aspect}: return from ${start} stays under ${maxSpeed} u/s`);
-      velocity = v; previous = pose;
-    }
-    const last = rows.slice(-60);
-    for (let i = 1; i < last.length; i++) {
-      assert.ok(last[i].speed <= last[i - 1].speed + 1e-6, `${aspect}: return from ${start} decelerates through its last second`);
-      if (i > 6) assert.ok(last[i].turn <= last[i - 1].turn + 0.002, `${aspect}: return from ${start} stops turning as it lands`);
-    }
-    assert.deepEqual(previous.position, rest.position);
-    assert.deepEqual(previous.target, rest.target);
-  }
-}
-console.log('PASS early/late returns: monotone descent, no final dip, lens/bank settle, exact landing; desktop/phone single glide without spikes');
+import { readFileSync } from 'node:fs';
+import { manifestoPose, CAMERA_SECONDS } from '../journey/manifesto/pose.js';
+import { createGlide, sampleGlide, glideChannels, glideVelocity, glidePose, GLIDE_HERO, GLIDE_MIN_SECONDS, GLIDE_MAX_SECONDS } from '../journey/manifesto/glide.js';
+import { installVendorResolver } from './render-report-lib.mjs';
 
-/* WHAT A VIEWER SEES: THE HERO'S PATH ON SCREEN (2026-11 — "the camera pans
-   to the right weirdly as it's descending", mostly from near the top). World
-   speeds above passed while the picture whipped: replayed through descentU,
-   the desktop climb's 8-unit frame shift was crossed in ~0.25 s and the hero
-   slid ~95 px left in 15 frames (10.6 px in one, at 640 wide), and the orbit
-   unwinding swung it back and forth (~106 px left, ~50 px right) at up to
-   84 deg/s of heading. Project the hero's cap through a real camera at 62.5
-   Hz (the page's 16 ms frames) and hold the glide to: no lateral step over
-   1.5 px, the lateral drift never reversing, heading monotone and under
-   60 deg/s, no step at the click, and the exact rest at landing. The old law
-   (manifestoPose at descentU) is run through the same meter and must fail. */
-{
-  const THREE = await import('../vendor/three/three.module.js');
-  const { applyCameraRoll } = await import('../journey/camera-roll.js');
-  const { returnSecondsFrom: secondsFrom } = await import('../journey/manifesto/pose.js');
-  const HERO = new THREE.Vector3(0, 2, 0);
-  const meter = (rest, aspect, width, start, poseAt) => {
-    const camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 4000), aim = new THREE.Vector3(), v = new THREE.Vector3();
-    const shot = pose => {
-      camera.position.set(pose.position.x, pose.position.y, pose.position.z); camera.fov = pose.fov; camera.updateProjectionMatrix();
-      applyCameraRoll(camera, aim.set(pose.target.x, pose.target.y, pose.target.z), pose.roll || 0); camera.updateMatrixWorld();
-      v.copy(HERO).project(camera);
-      const d = aim.clone().sub(camera.position);
-      return { x: (v.x + 1) / 2 * width, heading: Math.atan2(d.z, d.x) };
-    };
-    const seconds = secondsFrom(start), frame = 0.016;
-    let previous = shot(manifestoPose(rest, start * CAMERA_SECONDS, aspect)), k = 0, sign = 0;
-    const out = { step: 0, clickStep: null, reversals: 0, turn: 0, last: null, turns: [] };
-    while (k < 1) {
-      k = Math.min(1, k + frame / seconds);
-      const pose = poseAt(k), now = shot(pose);
-      const dx = now.x - previous.x;
-      if (out.clickStep === null) out.clickStep = Math.abs(dx);
-      out.step = Math.max(out.step, Math.abs(dx));
-      if (Math.abs(dx) > 0.02) { if (sign && Math.sign(dx) !== sign) out.reversals++; sign = Math.sign(dx); }
-      const dh = Math.atan2(Math.sin(now.heading - previous.heading), Math.cos(now.heading - previous.heading));
-      out.turn = Math.max(out.turn, Math.abs(dh) / frame * 180 / Math.PI);
-      out.turns.push(dh);
-      previous = now; out.last = pose;
-    }
-    const net = out.turns.reduce((a, b) => a + b, 0);
-    // heading turned against its own net direction, in degrees
-    out.backtrack = out.turns.reduce((a, d) => a + (Math.sign(d) === -Math.sign(net) ? Math.abs(d) : 0), 0) * 180 / Math.PI;
-    return out;
-  };
-  const { installVendorResolver } = await import('./render-report-lib.mjs');
-  installVendorResolver();
-  const { poseAt: directorPose } = await import('../journey/director.js');
-  const { restProgress } = await import('../journey/route.js');
-  const restOf = (aspect, width) => {
-    const p = directorPose(restProgress('final'), { pos: new THREE.Vector3(), target: new THREE.Vector3() }, undefined, aspect, width);
-    return { position: { ...p.pos }, target: { ...p.target }, fov: p.fov, roll: p.roll || 0 };
-  };
-  let oldWorst = 0;
-  for (const [aspect, width, rest] of [[1.6, 640, deskRest], [1440 / 900, 1440, restOf(1440 / 900, 1440)], [1280 / 720, 1280, restOf(1280 / 720, 1280)]]) {
-    for (const start of [0.1, 0.36, 0.5, 0.75, 0.8, 0.9, 1]) {
-      const m = meter(rest, aspect, width, start, k => descentPose(rest, start, k, aspect).pose);
-      const scale = 640 / width;   // judge at 640 px wide, the brief's frame
-      assert.ok(m.step * scale <= 1.5, `${width}w return from ${start}: largest lateral step ${(m.step * scale).toFixed(2)} px`);
-      assert.ok(m.clickStep * scale < 0.1, `${width}w return from ${start}: no jump on the click frame`);
-      assert.equal(m.reversals, 0, `${width}w return from ${start}: the hero's sideways drift never reverses`);
-      assert.ok(m.backtrack < 1, `${width}w return from ${start}: heading turns one way (backtracks ${m.backtrack.toFixed(2)} deg)`);
-      assert.ok(m.turn < 60, `${width}w return from ${start}: heading turns under 60 deg/s (${m.turn.toFixed(1)})`);
-      assert.deepEqual(m.last.position, rest.position);
-      assert.deepEqual(m.last.target, rest.target);
-      const old = meter(rest, aspect, width, start, k => manifestoPose(rest, descentU(start, k, aspect, rest.position.y) * CAMERA_SECONDS, aspect));
-      if (start >= 0.5) oldWorst = Math.max(oldWorst, old.step * scale);
-    }
-  }
-  assert.ok(oldWorst > 5, `the meter still catches the old replayed descent (${oldWorst.toFixed(1)} px)`);
-  // phones keep their own descent (it starts overhead); hold its lateral step too
-  for (const start of [0.1, 0.5, 1]) {
-    const m = meter(phoneRest, 390 / 844, 390, start, k => descentPose(phoneRest, start, k, 390 / 844).pose);
-    assert.ok(m.step <= 1.5, `phone return from ${start}: largest lateral step ${m.step.toFixed(2)} px`);
-    assert.deepEqual(m.last.position, phoneRest.position);
-  }
-  // the branch flies exactly this law
-  const branchSource = (await import('node:fs')).readFileSync(new URL('../journey/manifesto/branch.js', import.meta.url), 'utf8');
-  assert.match(branchSource, /descentPose\(rest, returnStart, returnK, camera\.aspect\)\.pose/, 'branch poses its descent with descentPose');
-  assert.match(branchSource, /u = reduceMotion\.matches \? 0 : descentPose\(from, returnStart, k, camera\.aspect\)\.u;/, 'branch reads u from the same law');
-  console.log(`PASS on-screen return glide: lateral step <= 1.5 px at 640, no reversal, heading backtrack < 1 deg and < 60 deg/s; old replay worst ${oldWorst.toFixed(1)} px`);
-}
-
-// Real camera quaternions catch a smooth-position/abrupt-heading return.
-const THREE = await import('../vendor/three/three.module.js');
-const { applyCameraRoll } = await import('../journey/camera-roll.js');
-const { awaySecondsFrom } = await import('../journey/manifesto/pose.js');
-const { createReturnFlight, sampleReturnFlight, returnVelocity, returnChannels } =
-  await import('../journey/manifesto/return-flight.js');
-const origin = { ...from, fieldCenter: { x: .251658, z: -1.823989 } };
-const home = { position: { x: -.10953, y: 3.575, z: 11.67944 },
-  target: { x: -.25953, y: 3.655816, z: 0 }, fov: 46, roll: 0 };
-const camera = new THREE.PerspectiveCamera(), target = new THREE.Vector3();
-let fullPeak = 0;
-for (const seconds of [.2, 1, 2, 3, 4, 4.5, 5, 15, CAMERA_SECONDS]) {
-  const start = manifestoPose(origin, seconds, .462);
-  const velocity = returnVelocity(manifestoPose(origin, Math.max(0, seconds - 1/60), .462), start, 1/60);
-  const duration = awaySecondsFrom(seconds / CAMERA_SECONDS);
-  const flight = createReturnFlight(start, home, duration, velocity);
-  const first = sampleReturnFlight(flight, 0), last = sampleReturnFlight(flight, 1);
-  assert.deepEqual(first.position, start.position); assert.deepEqual(first.target, start.target);
-  assert.deepEqual(last.position, home.position); assert.deepEqual(last.target, home.target);
-  const epsilon = .00001;
-  const actualVelocity = returnVelocity(first, sampleReturnFlight(flight, epsilon/duration), epsilon);
-  for (const key of Object.keys(velocity)) assert.ok(Math.abs(actualVelocity[key] - velocity[key]) < .001,
-    `return preserves presented ${key} velocity at ${seconds}s`);
-  let previous = null, priorSpeed = null, peak = 0;
-  const step = 1/240;
-  for (let time = 0; time <= duration; time += step) {
-    const pose = sampleReturnFlight(flight, time/duration);
-    camera.position.set(pose.position.x, pose.position.y, pose.position.z);
-    camera.up.set(pose.up.x, pose.up.y, pose.up.z);
-    camera.lookAt(target.set(pose.target.x, pose.target.y, pose.target.z));
-    assert.ok(camera.quaternion.toArray().every(Number.isFinite));
-    if (previous) {
-      const speed = camera.quaternion.angleTo(previous) / step;
-      peak = Math.max(peak, speed);
-      if (priorSpeed !== null) assert.ok(Math.abs(speed-priorSpeed) < .025,
-        `angular velocity changes continuously, including the straight-down pole (${seconds}s at ${time}s: ${priorSpeed} -> ${speed})`);
-      priorSpeed = speed;
-    }
-    previous = camera.quaternion.clone();
-  }
-  assert.ok(peak < 1.2, `no mid-flight yaw spike at ${seconds}s (${peak}rad/s)`);
-  if (seconds === CAMERA_SECONDS) fullPeak = peak;
-  const endCamera = new THREE.PerspectiveCamera();
-  endCamera.position.set(home.position.x,home.position.y,home.position.z);
-  applyCameraRoll(endCamera,target.set(home.target.x,home.target.y,home.target.z),home.roll);
-  camera.position.copy(endCamera.position); camera.up.set(last.up.x,last.up.y,last.up.z);camera.lookAt(target);
-  assert.ok(camera.quaternion.angleTo(endCamera.quaternion)<1e-6,'exact landing orientation survives handoff');
-
-  const middle = sampleReturnFlight(flight,.43);
-  const middleVelocity = returnVelocity(sampleReturnFlight(flight,.43-epsilon/duration),middle,epsilon);
-  const changed = createReturnFlight(middle,origin,2.2,middleVelocity);
-  assert.deepEqual(returnChannels(sampleReturnFlight(changed,0)),returnChannels(middle),'retarget starts on the displayed pose');
-  const changedVelocity = returnVelocity(sampleReturnFlight(changed,0),sampleReturnFlight(changed,epsilon/2.2),epsilon);
-  for(const key of Object.keys(middleVelocity)) assert.ok(Math.abs(changedVelocity[key]-middleVelocity[key])<.001,
-    'retarget preserves the displayed velocity');
-}
-console.log(`PASS continuous mobile away flight: early/late/retarget velocity, pole-safe orientation, exact landing; full-return peak ${(fullPeak*180/Math.PI).toFixed(1)}°/s`);
-
-// Inspire lies across the overhead heading from Purpose. The old desktop
-// blend of independently rewound targets nearly cancelled its horizontal
-// direction and spun >1000 degrees/s. Use the authored rests on both sizes.
-const { installVendorResolver } = await import('./render-report-lib.mjs');
+/* THE RETURN IS ONE GLIDE (2026-11, v3 — "the transition from the manifesto
+   to purpose is still very janky ... make it smooth like the others").
+   Every other hop is one blend on one quintic phase. The Return used to
+   replay the climb backwards, with per-device curves and three stacked
+   corrections; measured in the browser from the top, the phone's picture
+   moved in three separate surges, up to 15 px a frame (at 640) and 131 deg/s.
+   These oracles pin what a viewer sees, through a real THREE camera at the
+   page's 62.5 Hz: one surge of motion (rising once, falling once) in the
+   camera's speed, its turn rate and the picture's flow; the hero's screen
+   x and y, the heading and the hero's apparent size each moving one way;
+   velocity carried across the click; the exact rest at landing; and the same
+   law on a phone and a desktop. A replay of the climb is run through the
+   same meter and must fail it. */
 installVendorResolver();
+const THREE = await import('../vendor/three/three.module.js');
+const { applyCameraRoll } = await import('./../journey/camera-roll.js');
 const { poseAt } = await import('../journey/director.js');
 const { restProgress } = await import('../journey/route.js');
-for (const [aspect, width] of [[390/844, 390], [1.6, 1280]]) {
-  const rest = id => {
-    const p = poseAt(restProgress(id), { pos: new THREE.Vector3(), target: new THREE.Vector3() }, undefined, aspect, width);
-    return { position: { ...p.pos }, target: { ...p.target }, fov: p.fov, roll: p.roll || 0 };
-  };
-  const purpose = rest('final'), inspire = rest('inspire');
-  for (const seconds of [.3, 1, 2, 4, 12, CAMERA_SECONDS]) {
-    const start = manifestoPose(purpose, seconds, aspect);
-    const velocity = returnVelocity(manifestoPose(purpose, seconds - 1/240, aspect), start, 1/240);
-    const duration = awaySecondsFrom(seconds / CAMERA_SECONDS);
-    const flight = createReturnFlight(start, inspire, duration, velocity);
-    let previous = null;
-    for (let i = 0; i <= 1000; i++) {
-      const pose = sampleReturnFlight(flight, i/1000);
-      camera.position.set(pose.position.x, pose.position.y, pose.position.z);
-      camera.up.set(pose.up.x, pose.up.y, pose.up.z);
-      camera.lookAt(target.set(pose.target.x, pose.target.y, pose.target.z));
-      if (previous) assert.ok(camera.quaternion.angleTo(previous) / (duration/1000) < 1.6,
-        `Inspire return has no pole flip (${width}px, ${seconds}s departure)`);
-      previous = camera.quaternion.clone();
-    }
-    const end = new THREE.PerspectiveCamera();
-    end.position.set(inspire.position.x, inspire.position.y, inspire.position.z);
-    applyCameraRoll(end, target, inspire.roll);
-    assert.ok(camera.quaternion.angleTo(end.quaternion) < 1e-6, 'Inspire handoff keeps exact rest orientation');
-  }
-}
-console.log('PASS authored desktop/mobile Inspire returns: early/late heading continuity and exact landing');
+const FRAME = 0.016;
+const HERO = new THREE.Vector3(GLIDE_HERO.x, GLIDE_HERO.y, GLIDE_HERO.z);
+const smoother = v => { v = Math.max(0, Math.min(1, v)); return v * v * v * (v * (v * 6 - 15) + 10); };
 
-// A settled departure introduces its destination during the descent. Project
-// the actual authored landing aim through the sampled camera, rather than
-// checking only mathematical pose continuity or the final frame.
-for (const [aspect, width] of [[390/844, 390], [1.6, 1280]]) {
-  const rest = id => {
-    const p = poseAt(restProgress(id), { pos: new THREE.Vector3(), target: new THREE.Vector3() }, undefined, aspect, width);
-    return { position: { ...p.pos }, target: { ...p.target }, fov: p.fov, roll: p.roll || 0 };
+function restOf(aspect, width) {
+  globalThis.window = { innerWidth: width, innerHeight: Math.round(width / aspect) };
+  const p = poseAt(restProgress('final'), { pos: new THREE.Vector3(), target: new THREE.Vector3() }, undefined, aspect, width);
+  return { position: { ...p.pos }, target: { ...p.target }, fov: p.fov, roll: p.roll || 0, fieldCenter: { x: .251658, z: -1.823989 } };
+}
+const VIEWS = [
+  { name: 'desktop 1440x900', aspect: 1440 / 900, width: 1440 },
+  { name: 'desktop 1280x720', aspect: 1280 / 720, width: 1280 },
+  { name: 'desktop 800x500', aspect: 1.6, width: 800 },
+  { name: 'phone 390x844', aspect: 390 / 844, width: 390 },
+  { name: 'phone 430x932', aspect: 430 / 932, width: 430 },
+];
+
+// One camera, the way the page applies a pose: an explicit up, or the site's bank.
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 4000), aim = new THREE.Vector3();
+function shoot(pose, aspect) {
+  camera.aspect = aspect; camera.fov = pose.fov; camera.updateProjectionMatrix();
+  camera.position.set(pose.position.x, pose.position.y, pose.position.z);
+  aim.set(pose.target.x, pose.target.y, pose.target.z);
+  if (pose.up) { camera.up.set(pose.up.x, pose.up.y, pose.up.z); camera.lookAt(aim); }
+  else applyCameraRoll(camera, aim, pose.roll || 0);
+  camera.updateMatrixWorld();
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+  return { q: camera.quaternion.clone(), position: camera.position.clone(), forward, up, fov: pose.fov, matrix: camera.matrixWorldInverse.clone(), projection: camera.projectionMatrix.clone() };
+}
+const SCREEN = [];
+for (let i = 0; i < 9; i++) for (let j = 0; j < 7; j++) SCREEN.push([-0.9 + 1.8 * i / 8, -0.9 + 1.8 * j / 6]);
+/** Measure a run of poses (the first is the last frame before the click). */
+function meter(poses, aspect, width) {
+  const height = width / aspect, shots = poses.map(p => shoot(p, aspect));
+  const px = (shot, v) => {
+    const c = v.clone().applyMatrix4(shot.matrix);
+    const T = Math.tan(shot.fov * Math.PI / 360);
+    return { x: (c.x / (-c.z * T * aspect) + 1) / 2 * width, y: (1 - c.y / (-c.z * T)) / 2 * height, depth: -c.z };
   };
-  const start = manifestoPose(rest('final'), CAMERA_SECONDS, aspect);
-  for (const id of ['mission', 'inspire', 'equip', 'connect', 'owned']) {
-    const landing = rest(id), flight = createReturnFlight(start, landing, awaySecondsFrom(1));
-    let previous = null;
-    for (let i = 0; i <= 1000; i++) {
-      const k = i / 1000, pose = sampleReturnFlight(flight, k);
-      camera.aspect = aspect; camera.fov = pose.fov; camera.updateProjectionMatrix();
-      camera.position.set(pose.position.x, pose.position.y, pose.position.z);
-      camera.up.set(pose.up.x, pose.up.y, pose.up.z);
-      camera.lookAt(target.set(pose.target.x, pose.target.y, pose.target.z)); camera.updateMatrixWorld();
-      if (previous) assert.ok(camera.quaternion.angleTo(previous) / (flight.seconds / 1000) < 2.2,
-        `${id} approach remains continuous on ${width}px at ${k}: ${camera.quaternion.angleTo(previous) / (flight.seconds / 1000)}`);
-      previous = camera.quaternion.clone();
-      if (k >= .7 && k < 1) {
-        const projected = new THREE.Vector3(landing.target.x, landing.target.y, landing.target.z).project(camera);
-        assert.ok(Math.abs(projected.x) < .001 && Math.abs(projected.y) < .001,
-          `${id} remains framed through the final descent on ${width}px`);
-      }
+  const rows = shots.map(shot => {
+    const hero = px(shot, HERO);
+    return { hero, size: 1 / (hero.depth * Math.tan(shot.fov * Math.PI / 360)), heading: Math.atan2(shot.forward.z, shot.forward.x) };
+  });
+  const out = { flow: [], speed: [], turn: [], dx: [], dy: [], dsize: [], dheading: [], step: [] };
+  for (let i = 1; i < shots.length; i++) {
+    const a = shots[i - 1], b = shots[i];
+    // the picture's flow: a fixed screen grid cast onto the ground, re-projected
+    let sum = 0;
+    const T = Math.tan(a.fov * Math.PI / 360);
+    for (const [nx, ny] of SCREEN) {
+      const d = new THREE.Vector3(nx * T * aspect, ny * T, -1).applyQuaternion(a.q);
+      let t = 300 / d.length();
+      if (d.y < 0) t = Math.min(t, -a.position.y / d.y);
+      const p = a.position.clone().addScaledVector(d, t), q = px(b, p);
+      sum += Math.hypot(q.x - (nx + 1) / 2 * width, q.y - (1 - ny) / 2 * height);
     }
+    out.flow.push(sum / SCREEN.length);
+    out.speed.push(b.position.distanceTo(a.position) / FRAME);
+    out.turn.push(b.q.angleTo(a.q) / FRAME);
+    out.dx.push(rows[i].hero.x - rows[i - 1].hero.x);
+    out.dy.push(rows[i].hero.y - rows[i - 1].hero.y);
+    out.step.push(Math.hypot(out.dx.at(-1), out.dy.at(-1)));
+    out.dsize.push(Math.log(rows[i].size / rows[i - 1].size));
+    out.dheading.push(Math.atan2(Math.sin(rows[i].heading - rows[i - 1].heading), Math.cos(rows[i].heading - rows[i - 1].heading)));
+  }
+  return out;
+}
+const reversals = (ds, eps) => { let sign = 0, n = 0; for (const d of ds) { if (Math.abs(d) <= eps) continue; if (sign && Math.sign(d) !== sign) n++; sign = Math.sign(d); } return n; };
+/** Surges of motion: maxima above 10% of the peak separated by a real dip. */
+function lobes(v) {
+  const peak = Math.max(...v), maxima = [];
+  for (let i = 1; i < v.length - 1; i++) if (v[i] >= v[i - 1] && v[i] > v[i + 1] && v[i] > 0.1 * peak) maxima.push(i);
+  let n = maxima.length ? 1 : 0;
+  for (let j = 1; j < maxima.length; j++) {
+    if (Math.min(...v.slice(maxima[j - 1], maxima[j] + 1)) < 0.85 * Math.min(v[maxima[j - 1]], v[maxima[j]])) n++;
+  }
+  return n;
+}
+/** A Return pressed `startU` of the way up, flown by `law(start, rest, aspect, velocity)`. */
+function returnRun(rest, aspect, startU, law) {
+  const S = startU * CAMERA_SECONDS;
+  const before = manifestoPose(rest, S - FRAME, aspect), start = manifestoPose(rest, S, aspect);
+  const view = p => { const s = shoot(p, aspect); return { position: p.position, target: p.target, forward: s.forward, up: s.up, fov: p.fov }; };
+  const a = view(before), b = view(start);
+  const { seconds, poseAt: at } = law(b, rest, aspect, glideVelocity(a, b, FRAME, aspect));
+  const poses = [before, start];
+  // the page's frames: 16 ms each, the last one clamped onto the landing
+  for (let t = FRAME; ; t += FRAME) { poses.push(at(Math.min(1, t / seconds))); if (t >= seconds) break; }
+  return { poses, seconds };
+}
+const GLIDE = (start, rest, aspect, velocity) => {
+  const g = createGlide(start, rest, aspect, { velocity });
+  return { seconds: g.seconds, poseAt: k => sampleGlide(g, k) };
+};
+const report = [];
+for (const view of VIEWS) {
+  const rest = restOf(view.aspect, view.width);
+  const scale = 640 / view.width;   // judged at 640 px wide, the brief's frame
+  for (const startU of [0.05, 0.25, 0.5, 0.8, 1]) {
+    const { poses, seconds } = returnRun(rest, view.aspect, startU, GLIDE);
+    const m = meter(poses, view.aspect, view.width);
+    const at = `${view.name}, Return from ${startU}`;
+    assert.ok(seconds >= GLIDE_MIN_SECONDS && seconds <= GLIDE_MAX_SECONDS, `${at}: bounded like the other hops (${seconds.toFixed(2)} s)`);
+    // continuity at the click: the first glide frame moves the picture as the
+    // climb's last frame did (the quintic's tangent carries every channel)
+    assert.ok(Math.abs(m.flow[1] - m.flow[0]) * scale < 0.12, `${at}: no step in motion at the click (${m.flow[0].toFixed(3)} -> ${m.flow[1].toFixed(3)} px)`);
+    assert.ok(Math.abs(m.step[1] - m.step[0]) * scale < 0.12, `${at}: the hero keeps its pace across the click`);
+    // A press mid-climb has to turn the climb around: let that one smooth
+    // turnaround settle (the glide's tangent decays by a third of its time),
+    // then everything moves one way, in one surge.
+    const from = startU >= 1 ? 1 : Math.ceil(0.33 * m.flow.length);
+    const tail = key => m[key].slice(from);
+    assert.equal(lobes(tail('flow')), 1, `${at}: the picture moves in one surge`);
+    assert.equal(lobes(tail('speed')), 1, `${at}: the camera's speed rises once and falls once`);
+    assert.ok(lobes(tail('turn')) <= 1, `${at}: the view turns in one surge`);
+    assert.equal(reversals(tail('dx'), 0.01), 0, `${at}: the hero's screen x never reverses`);
+    assert.equal(reversals(tail('dy'), 0.01), 0, `${at}: the hero's screen y never reverses`);
+    assert.equal(reversals(tail('dsize'), 1e-6), 0, `${at}: the hero's apparent size changes one way (no lens breathing)`);
+    assert.equal(reversals(tail('dheading'), 1e-6), 0, `${at}: the heading turns one way`);
+    if (startU >= 1) {
+      for (const key of ['dx', 'dy', 'dsize', 'dheading']) assert.equal(reversals(m[key], key[1] === 'x' || key[1] === 'y' ? 0.01 : 1e-6), 0, `${at}: from rest at the top, ${key} is monotone from the first frame`);
+    }
+    // no single-frame jump anywhere, including the click and the landing: a
+    // frame's hero displacement never departs from the mean of its two
+    // neighbours' by more than a fraction of a pixel (a 1.5 px step on top
+    // of the motion is the round-2 jump bound; smooth motion measures ~0.05)
+    let jump = 0;
+    for (let i = 1; i < m.dx.length - 1; i++) {
+      jump = Math.max(jump, Math.hypot(m.dx[i] - (m.dx[i - 1] + m.dx[i + 1]) / 2, m.dy[i] - (m.dy[i - 1] + m.dy[i + 1]) / 2) * scale);
+    }
+    assert.ok(jump <= 0.25, `${at}: no frame jumps off the glide (${jump.toFixed(3)} px at 640)`);
+    const step = Math.max(...m.step) * scale;
+    // landing: rates fall to zero and the pose is the rest
+    assert.ok(m.flow.at(-1) * scale < 0.02 && m.turn.at(-1) < 1e-3, `${at}: the glide stops moving as it lands`);
+    const end = poses.at(-1);
+    assert.ok(Math.hypot(end.position.x - rest.position.x, end.position.y - rest.position.y, end.position.z - rest.position.z) < 1e-9, `${at}: lands on the rest`);
+    assert.ok(shoot(end, view.aspect).q.angleTo(shoot(rest, view.aspect).q) < 1e-6, `${at}: lands in the rest's orientation`);
+    report.push({ view: view.name, startU, seconds: +seconds.toFixed(2), peakFlow640: +(Math.max(...m.flow) * scale).toFixed(2),
+      peakTurn: +(Math.max(...m.turn) * 180 / Math.PI).toFixed(1), heroStep640: +step.toFixed(2) });
+  }
+  // the meter still catches a replay of the climb (the old law's family) on the phone
+  if (view.aspect < 1) {
+    const S = CAMERA_SECONDS;
+    const replay = (start, r, aspect) => ({ seconds: 4.8, poseAt: k => manifestoPose(r, (1 - smoother(k)) * S, aspect) });
+    const m = meter(returnRun(rest, view.aspect, 1, replay).poses, view.aspect, view.width);
+    const failures = [lobes(m.flow) > 1, reversals(m.dx, 0.01) > 0, reversals(m.dsize, 1e-6) > 0].filter(Boolean).length;
+    assert.ok(failures >= 2, `${view.name}: the meter still catches a replayed climb (${failures} failures)`);
   }
 }
-console.log('PASS desktop/mobile destination framing through descent and continuous orientation for every landing');
+console.table(report);
+console.log('PASS Return glide on desktop and phone: one surge, monotone hero/size/heading, continuous click, exact landing; a replayed climb fails the meter');
+
+// The same law on every device: the glide has no viewport branch.
+const glideSource = readFileSync(new URL('../journey/manifesto/glide.js', import.meta.url), 'utf8');
+assert.doesNotMatch(glideSource, /isMobileManifesto|innerWidth|aspect\s*</, 'the glide has no phone/desktop fork');
+const branchSource = readFileSync(new URL('../journey/manifesto/branch.js', import.meta.url), 'utf8');
+assert.doesNotMatch(branchSource, /descentU|descentPose|createReturnFlight/, 'the branch has no replayed descent or second return law');
+assert.match(branchSource, /pose = \{ \.\.\.sampleGlide\(glide, glideK\(\)\)/, 'the branch flies the glide');
+const poseSource = readFileSync(new URL('../journey/manifesto/pose.js', import.meta.url), 'utf8');
+assert.doesNotMatch(poseSource, /export function descent|anchorScreenX|descentSpiral|descentFrameShift/, 'the replayed descent and its corrections are gone');
+console.log('PASS one law: no device fork in the glide; the replayed descent is deleted');
+
+// Pole safety: straight down (the phone's top) has no singular heading. A
+// glide from exactly overhead, turned any way, rotates the picture smoothly.
+{
+  const rest = restOf(390 / 844, 390);
+  for (const heading of [0, 1, 2, 3, -2]) {
+    const overhead = { position: { x: 0.3, y: 38, z: -1.8 }, forward: { x: 0, y: -1, z: 0 },
+      up: { x: Math.cos(heading), y: 0, z: Math.sin(heading) }, fov: 46, target: { x: 0.3, y: 0, z: -1.8 } };
+    const g = createGlide(overhead, rest, 390 / 844);
+    let prior = null, priorRate = null;
+    for (let i = 0; i <= 400; i++) {
+      const q = shoot(sampleGlide(g, i / 400), 390 / 844).q;
+      assert.ok(q.toArray().every(Number.isFinite));
+      if (prior) {
+        const rate = q.angleTo(prior) / (g.seconds / 400);
+        if (priorRate !== null) assert.ok(Math.abs(rate - priorRate) < 0.03, `overhead heading ${heading}: turn rate changes continuously`);
+        priorRate = rate;
+      }
+      prior = q;
+    }
+  }
+  // channels round-trip exactly, including straight down
+  const c = glideChannels({ position: { x: 1, y: 30, z: 2 }, forward: { x: 0, y: -1, z: 0 }, up: { x: 0, y: 0, z: 1 }, fov: 46 }, 0.5);
+  const p = glidePose(c, 0.5);
+  assert.ok(Math.hypot(p.position.x - 1, p.position.y - 30, p.position.z - 2) < 1e-9, 'overhead pose round-trips');
+}
+console.log('PASS pole-safe: a glide from straight overhead turns the picture continuously');

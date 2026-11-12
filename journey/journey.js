@@ -885,8 +885,9 @@ export function boot(opts = {}) {
     const land = restPoseOf(chapterId);
     railManifesto(false, null);
     if (!descending) {
-      placeForPassage(chapterId, 'leave', land.position.x, manifestoBranch.awaySeconds);
-      manifestoPassage.ticket.dur = manifestoBranch.awaySeconds;
+      const seconds = manifestoBranch.secondsTo(land);
+      placeForPassage(chapterId, 'leave', land.position.x, seconds);
+      manifestoPassage.ticket.dur = seconds;
       manifestoBranch.returnTo(landed, { land });
     } else {
       manifestoBranch.retarget(landed, { land, home: toPurpose });
