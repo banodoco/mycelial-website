@@ -78,7 +78,11 @@
     from { opacity: 0; }
     to   { opacity: 1; }
   }
-  #stage canvas { display: block; cursor: grab; }
+  /* The canvas fills the stage whatever its buffers are: a window drag
+     reallocates them once, after it settles (organism.js RESIZE_SETTLE_MS),
+     and until then the old frame is stretched over the new box. At rest
+     this is exactly the size the renderer gave it. */
+  #stage canvas { display: block; cursor: grab; width: 100% !important; height: 100% !important; }
   #stage canvas:active { cursor: grabbing; }
 
   /* --- light spill: the page's one ambient light ---

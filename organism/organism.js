@@ -68,7 +68,7 @@ import { visibleViewport, visibleSize } from '../visible-viewport.js';
      ./spores.js        dispose() — the drift animator and its pointer listeners.
 
    And one registration that is classified PAGE and deliberately has NO
-   disposer: the window `resize` hook this file installs beside
+   disposer: the visible-viewport subscription this file installs beside
    createViewportSync. A page-lifetime listener legitimately never detaches
    (`runtime-design/lifecycle.md` §5.3, and main.js's register says the same of
    its own resize hook); building a remover for it would be insurance for a
@@ -2448,37 +2448,42 @@ const viewport = createViewportSync({
 // PAGE-lifetime, in the sense main.js's register uses: installed once, lives
 // until the document does, never taken back off. See the lifetime
 // classification at the head of createScene.
-/* RESIZE REALLOCATES EVERY TARGET (and flushes TAA), so a burst of resize
-   events — a window drag, a phone toolbar or visualViewport settling — must
-   not pay for it per event. The first event applies at once (nothing looks
-   stretched); the rest of a burst collapse into one trailing apply
-   RESIZE_SETTLE_MS after it. An event that changes nothing is dropped. */
+/* RESIZE REALLOCATES EVERY TARGET (and flushes TAA), so it happens ONCE per
+   burst: RESIZE_SETTLE_MS after the last change of a window drag, a
+   rotation or a visualViewport settling. Until then the canvas keeps its
+   buffers and CSS stretches them over the new box (hero.css: the canvas
+   fills #stage), which on a live drag is invisible and costs nothing. A
+   change that settles to the size already applied reallocates nothing.
+   The one change applied AT ONCE is a phone toolbar settling (height
+   only, small, coarse pointer): it is eased (VIEW_EASE_S), and the ease
+   must start from the frame on screen. */
 const RESIZE_SETTLE_MS = 150;
 // What the canvas actually HAS, not what the box is now: the renderer was
 // sized when it was constructed, and the box may have settled since.
 const _builtSize = renderer.getSize(new THREE.Vector2());
-// Set for one apply: the size change it carries was never on screen (the
-// boot reconcile below), so there is no old picture to ease away from.
-let resizeSnapNext = false;
+let applySettledResize;
 {
   const applyResize = viewport.resize;
-  let timer = null, pending = false, lastKey = null;
+  let timer = null, lastKey = null;
   let applied = { ...visibleSize(), width: _builtSize.x, height: _builtSize.y };
   const sizeKey = () => { const v = visibleSize(); return `${v.width}x${v.height}+${v.top}@${devicePixelRatio}`; };
-  const apply = () => {
+  const eases = (prev, next) => !heroSpores.ownsFrame && !CAPTURE && coarsePointer && coarsePointer.matches
+    && Math.abs(next.width - prev.width) < 1 && Math.abs(next.height - prev.height) >= 1
+    && Math.abs(next.height - prev.height) <= VIEW_EASE_MAX_DH;
+  // `snap`: the size change was never on screen (the boot reconcile below),
+  // so there is no old picture to ease away from.
+  const apply = (snap = false) => {
+    const key = sizeKey();
+    if (key === lastKey) return;
+    lastKey = key;
     const prev = applied, next = visibleSize();
     applied = next;
     // The frame currently on screen, in the coordinates of the new canvas.
     const live = viewEase ? viewEaseState(viewEase, viewEase.u) : { H: prev.height, Y: 0 };
-    const dh = next.height - prev.height;
-    const snap = resizeSnapNext;
-    resizeSnapNext = false;
     // While the spore prelude still draws through its own projection it
     // re-frames in one step on this same change; the scene steps with it, or
     // the falling spore and the ground it lands on disagree for the ease.
-    const ease = !snap && !heroSpores.ownsFrame && !CAPTURE && coarsePointer && coarsePointer.matches
-      && Math.abs(next.width - prev.width) < 1 && Math.abs(dh) >= 1
-      && Math.abs(dh) <= VIEW_EASE_MAX_DH;
+    const ease = !snap && eases(prev, next);
     applyResize();
     if (ease) {
       viewEase = { w: next.width, h: next.height, H0: live.H, Y0: live.Y + (next.top - prev.top), u: 0, last: performance.now() };
@@ -2489,21 +2494,18 @@ let resizeSnapNext = false;
       camera.clearViewOffset();
     }
   };
+  applySettledResize = apply;
   viewport.resize = () => {
-    if (timer !== null) { pending = true; return; }
-    const key = sizeKey();
-    if (key !== lastKey) { lastKey = key; apply(); }
-    timer = setTimeout(() => {
-      timer = null;
-      if (pending) { pending = false; viewport.resize(); }
-    }, RESIZE_SETTLE_MS);
+    if (timer === null && sizeKey() === lastKey) return;
+    if (timer === null && eases(applied, visibleSize())) apply();
+    clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; apply(); }, RESIZE_SETTLE_MS);
   };
 }
 // The visible viewport publishes every change of the screen box, whether or
-// not the browser fired `resize` for it (../visible-viewport.js); the window
-// event stays as a second door, and the size key makes the pair one apply.
+// not the browser fired `resize` for it (../visible-viewport.js), and it
+// listens to window `resize` itself, so that is the only door.
 visibleViewport.subscribe(viewport.resize);
-addEventListener('resize', viewport.resize);
 /* A SETTLE THAT LANDED BEFORE THIS LINE WAS HEARD BY NOBODY (fix/visible-
    canvas, owner on Chrome iOS: from the deck, in a new tab, "the spore falls
    WAY lower"). The renderer is sized near the top of createScene, and this
@@ -2519,8 +2521,7 @@ addEventListener('resize', viewport.resize);
   if (Math.abs(_builtSize.x - now.width) >= 1 || Math.abs(_builtSize.y - now.height) >= 1) {
     // The scene has not been on screen at the built size (the frame loop
     // started in this same task), so this re-frame snaps; it does not ease.
-    resizeSnapNext = true;
-    viewport.resize();
+    applySettledResize(true);
   }
 }
 

@@ -178,22 +178,15 @@ export function createVisibleViewport({ read, now, raf = null, publish = null,
     polling = true;
     raf(frame);
   }
-  /** An event that can move the box: read now, and keep reading a while. */
+  /** An event that can move the box: read on the next frame, and keep
+   *  reading a while. NOTHING IS READ IN THE EVENT ITSELF (2026-11-12): the
+   *  read is a forced layout and a published change runs every subscriber,
+   *  the scene's resize included, so doing it inside a `resize` handler cost
+   *  293 ms in one event on a Retina Mac. Events in one frame are one read.
+   *  On a fine pointer a frame that finds nothing changed ends the poll at
+   *  once (see frame()); an observed change earns the full window. */
   function poke() {
-    if (quick()) {
-      // read once; only an observed change (or reads still in flux) earns
-      // the per-frame phase, and then the full window
-      const before = revision;
-      const agree = refresh();
-      if (agree && revision === before) return;
-      quickArmed = false;
-      agreeRun = 0;
-      pollUntil = Math.max(pollUntil, now() + SETTLE_MS);
-      schedule();
-      return;
-    }
-    pollUntil = Math.max(pollUntil, now() + SETTLE_MS);
-    refresh();
+    if (!quick()) pollUntil = Math.max(pollUntil, now() + SETTLE_MS);
     schedule();
   }
 

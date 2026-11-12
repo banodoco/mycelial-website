@@ -15,8 +15,11 @@
  *   V4  coalescing: sub-pixel jitter is not a change; >= 1 px is
  *   V5  the poll stops on its own after SETTLE_MS once two reads agree,
  *       keeps going while they do not, and any event re-arms it
- *   V6  subscribers run synchronously, in order, with (next, prev); the
- *       publish hook (CSS custom properties) runs first, and unsubscribe works
+ *   V6  subscribers run synchronously with the READ, in order, with (next,
+ *       prev); the publish hook (CSS custom properties) runs first, and
+ *       unsubscribe works. An event only schedules the read: it happens on
+ *       the next frame, never inside the event (hunt/gpu, 2026-11-12: 293 ms
+ *       of layout and scene resize inside one window `resize` on a Mac)
  *   V7  node (no window): visibleSize() reads the stubbed globals live
  *   V8  the settled tier hears a five-step toolbar settle once, SETTLED_MS
  *       after its last step; a pixel-ratio change alone is a change
@@ -158,12 +161,14 @@ row('V6', 'subscribers: synchronous, ordered, (next, prev); publish first; unsub
   const off = w.vp.subscribe(() => order.push(['b']));
   w.vv = { ...w.vv, height: 600 };
   w.vp.poke();
+  assert.deepEqual(order, [], 'the event itself reads nothing');
+  w.frame();
   assert.deepEqual(order, [['a', 600, 738, 2], ['b']]);
   assert.equal(w.published[1].s.insetBottom, 138, 'the hidden strip under the visible box');
   off();
   w.vv = { ...w.vv, height: 500 };
-  w.vp.poke();
-  assert.deepEqual(order.slice(2), [['a', 500, 600, 3]]);
+  w.vp.poke(); w.vp.poke(); w.frame();
+  assert.deepEqual(order.slice(2), [['a', 500, 600, 3]], 'two events in a frame are one read');
   assert.equal(w.published[0].prev, null, 'the initial publish has no previous box');
 });
 
@@ -185,7 +190,7 @@ row('V8', 'settled tier: one call per burst, SETTLED_MS after the last step; dpr
   assert.deepEqual(settled, [], 'nothing while the bars are still moving');
   w.run(SETTLED_MS + 32);
   assert.deepEqual(settled, [[738, 880]]);
-  w.dpr = 2; w.vp.poke();
+  w.dpr = 2; w.vp.poke(); w.frame();
   assert.equal(fast.length, 6, 'a pixel-ratio change alone is published');
   assert.equal(w.vp.get().dpr, 2);
 });
@@ -210,9 +215,10 @@ row('V10', 'scene and spore layer: same source, same tier, no lost settle, no sp
   const org = src('organism/organism.js'), spores = src('organism/hero-spores.js');
   assert.match(org, /const _builtSize = renderer\.getSize\(/, 'the scene remembers the size it was built at');
   assert.match(org, /visibleViewport\.subscribe\(viewport\.resize\);/, 'the scene resizes on the immediate tier');
-  assert.match(org, /Math\.abs\(_builtSize\.x - now\.width\) >= 1 \|\| Math\.abs\(_builtSize\.y - now\.height\) >= 1\) \{[\s\S]{0,240}viewport\.resize\(\);/,
+  assert.match(org, /Math\.abs\(_builtSize\.x - now\.width\) >= 1 \|\| Math\.abs\(_builtSize\.y - now\.height\) >= 1\) \{[\s\S]{0,240}applySettledResize\(true\);/,
     'and reconciles a settle that landed before it subscribed');
-  assert.match(org, /const ease = !snap && !heroSpores\.ownsFrame/, 'no framing ease while the layer projects on its own');
+  assert.match(org, /const eases = \(prev, next\) => !heroSpores\.ownsFrame/, 'no framing ease while the layer projects on its own');
+  assert.match(org, /const ease = !snap && eases\(prev, next\);/, 'and none for a snapped (never on screen) change');
   assert.match(spores, /offResize = visibleViewport\.subscribe\(onResize, builtFor\);/, 'the layer subscribes with the box it was composed for');
   assert.match(spores, /worker\.postMessage\(\{ type: 'resize', view: state\.view, quiet: measureCopyBox\(\), \.\.\.measureCanvas\(\) \}\);/,
     'every change re-sends the worker its view and canvas size');
@@ -227,16 +233,20 @@ row('V11', 'fine pointer: a short settle unless a change is observed; coarse kee
   const frames = w.run(SETTLE_MS + 200);
   assert.equal(frames, QUICK_FRAMES, `stops after ${QUICK_FRAMES} agreeing frames, not ${Math.round(SETTLE_MS / 16)}`);
   assert.equal(w.vp.polling, false);
-  // load / pageshow with nothing changed: one read, no per-frame phase
+  // load / pageshow with nothing changed: one read, on the next frame, and
+  // no per-frame phase after it
   const reads = w.reads;
   w.vp.poke();
-  assert.equal(w.reads, reads + 1, 'the event is read once');
+  assert.equal(w.reads, reads, 'the event itself reads nothing');
+  w.frame();
+  assert.equal(w.reads, reads + 1, 'the next frame reads once');
   assert.equal(w.frames.length, 0, 'and starts no poll');
   // a real resize: published at once, and the full window follows it
   const seen = [];
   w.vp.subscribe((n) => seen.push(n.width));
   w.lw = 1200; w.vv = { ...desk, width: 1200 };
   w.vp.poke();
+  w.frame();
   assert.deepEqual(seen, [1200]);
   const after = w.run(SETTLE_MS + 200);
   assert(after >= Math.floor(SETTLE_MS / 16) - 2, `an observed change keeps the full window (${after} frames)`);
@@ -282,7 +292,9 @@ row('V12', 'the browser read: a fine pointer measures the probe only when a chea
   assert.equal(fine.rects, 1, 'fine: load with nothing changed measures nothing');
   fine.win.innerWidth = 1280;
   for (const fn of fine.listeners.resize) fn();
-  assert.equal(fine.rects, 2, 'fine: a moved cheap source re-measures');
+  assert.equal(fine.rects, 1, 'fine: the resize EVENT measures nothing');
+  fine.frame();
+  assert.equal(fine.rects, 2, 'fine: a moved cheap source re-measures, on the next frame');
   assert.equal(fine.vp.get().width, 1280);
   const coarse = make(true);
   for (let i = 0; i < 10; i++) coarse.frame();

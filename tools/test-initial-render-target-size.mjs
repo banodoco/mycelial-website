@@ -55,8 +55,8 @@ for (const [pattern, message] of [
 ]) {
   assert.match(viewportBlock, pattern, message);
 }
-assert.match(organismSource, /addEventListener\('resize', viewport\.resize\);/,
-  'window resize must route through viewport.resize');
+assert.match(organismSource, /visibleViewport\.subscribe\(viewport\.resize\);/,
+  'every change of the visible box (window resize included) must route through viewport.resize');
 assert.match(organismSource,
   /createAdaptiveResolution\(\{[\s\S]*?syncSizes: viewport\.sync,/,
   'adaptive pixel-ratio changes must route through viewport.sync');
