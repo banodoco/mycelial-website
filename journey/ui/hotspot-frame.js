@@ -759,6 +759,17 @@ export function createHotspotFrame({ hotspots, blocks, sheetQuery }) {
       h.layoutPlaceable = (want || reserveLayout) && !!w;
 
       advanceReveal(h, { want, gate, departureOpacity, dt, now });
+      /* A REFUSED CHIP WITH STALE COORDINATES DOES NOT LINGER (2026-11). The
+         release above fades a refused chip where it was last placed. After a
+         viewport resize (the iOS toolbar showing at rest) that place belongs
+         to the old layout: measured at 375x667 -> 557, the Equip agent chip
+         faded at y 356 while the heading it sat above had moved up to 296, so
+         for the fade it read as sitting BELOW the heading. Its old position
+         is not a truthful place for it any more, so it leaves at once. */
+      const viewKey = window.innerWidth * 100000 + window.innerHeight;
+      if (h.layoutPlaceable) h.placedView = viewKey;
+      else if (departureOpacity === null && h.a > 0 && h.placedView !== undefined
+        && h.placedView !== viewKey) h.a = 0;
 
       if (h.layoutPlaceable) {
         const tx = h.departureLayout ? sx + h.departureLayout.xOffset : resolveX(h, sx);

@@ -498,6 +498,40 @@ const frontEase = (x) => {
 const LIGHT_RETREAT_WINDOW_S = 1.2;
 const LIGHT_RETREAT_RATE = (LIGHT_HI - LIGHT_LO) / LIGHT_RETREAT_WINDOW_S;
 
+/* THE NETWORK DISSOLVES ON THE FLIGHT, NOT ON THE CLICK (2026-11, owner:
+   "when I click from connect to purpose ... they disappear far too rapidly.
+   It should fade out a little bit slower.")
+
+   Measured (640x400, fake clock), two different cuts:
+     · Connect -> Purpose / -> Intro: a nav click parks p at the destination,
+       the seam disarms on the click tick, and `amount` fell on its 3/s lag
+       — uAmount 90% -> 10% in 0.70 s, done at 15% of the flight while the
+       camera's eased phase was still under 0.03.
+     · Connect -> Equip (2.6 s): the Equip rest sits inside the seam window,
+       so the seam stays armed and the network was cut by the gaze resolve
+       instead — 0.93 -> 0.07 in two frames at 62% of the flight, as the
+       camera pitched up, with a +1.6/255 frame-luma step at the hide.
+
+   So on a governed move AWAY from this chapter the DRAWN amount (what
+   amount * resolve * entryReveal would draw) is a pure function of the
+   flight's own phase: it starts from the amount drawn on the frame before
+   the click, and falls along the camera's published smootherstep `e`,
+   inverted to a time-linear fraction (final/index.js relightOf, same
+   inversion), through a C1 smoothstep that reaches zero at DISSOLVE_SHARE
+   of the flight — never in less than DISSOLVE_MIN_S, so a short hop's
+   90 -> 10% stays >= ~0.9 s (smoothstep spends 61% of its window there).
+   Neither the seam lag nor the gaze can cut it early, and the visibility
+   gate reads the same value, so the hide happens at < 0.003 with nothing
+   left to pop. Measured after: Connect -> Purpose 90 -> 10% 1.38 s, gone by
+   ~44% of the flight; Connect -> Equip ~0.9 s, gone by ~58%. A re-aimed
+   move dissolves from where the last one left it; a cancelled one hands
+   back to the live product (the same hand-back every cancelled jump
+   makes). Arrivals, rests, scrubs and placements never latch a dissolve,
+   so they run the old code. */
+const DISSOLVE_SHARE = 0.45;
+const DISSOLVE_MIN_S = 1.5;
+const DISSOLVE_MAX_SHARE = 0.6;
+
 /* ================================================================
    The camera-pure resolve (Change 1, 2026-08-05)
    ================================================================
@@ -1034,7 +1068,31 @@ export function createConnect(sceneApi) {
   // True between setBlending(true) and setBlending(false): a nav blend owns
   // p, so a fall in the conducted position is the machine's, not a gesture.
   let blendGoverned = false;
-  let resolve = 0;                        // written per frame from the camera
+  // THE NETWORK DISSOLVES ON THE FLIGHT: the governed move's duration, and
+  // the drawn amount the dissolve started from — latched by setBlending on a
+  // move whose destination is not this chapter, null when none is running.
+  let blendDurS = 0;
+  let dissolveFrom = null;
+  let dissolveDrawn = null;               // this frame's dissolved amount, or null
+  /** 1 -> 0 over the departing flight's first DISSOLVE_SHARE, or null when
+   *  the drawn amount is the ordinary amount * resolve * entryReveal. */
+  function dissolveOf() {
+    if (!blendGoverned || dissolveFrom === null || !(blendDurS > 0)) return null;
+    const fr = sceneApi.frame && sceneApi.frame();
+    // No phase yet is the click tick (placeAt publishes before the blend
+    // exists): the flight is at its start, so the network holds.
+    const ph = fr && fr.transitionPhase;
+    const e = ph && ph.e > 0 ? Math.min(1, ph.e) : 0;
+    let lo = 0, hi = 1;   // invert s(f) = f^3 (f (6f - 15) + 10)
+    for (let i = 0; i < 24; i++) {
+      const m = (lo + hi) / 2;
+      if (m * m * m * (m * (m * 6 - 15) + 10) < e) lo = m; else hi = m;
+    }
+    const share = Math.min(DISSOLVE_MAX_SHARE, Math.max(DISSOLVE_SHARE, DISSOLVE_MIN_S / blendDurS));
+    const x = lo / share;
+    return x >= 1 ? 0 : 1 - smooth01(x);
+  }
+  let resolve = 0;                       // written per frame from the camera
   // 1 during ordinary scroll/placements. A nav entry alone pulls this to zero
   // before its first rendered frame, so even a downward-looking SOURCE camera
   // cannot expose an already-resolved bed while the local light clock resets.
@@ -1079,12 +1137,17 @@ export function createConnect(sceneApi) {
     amount += (amountTarget - amount) * k;
     if (amount < 0.004 && amountTarget === 0) amount = 0;
     resolve = amount > 0 ? resolveNow() : 0;
+    // On a departing nav flight the DRAWN amount is the dissolve's, not the
+    // seam lag's or the gaze's (THE NETWORK DISSOLVES ON THE FLIGHT).
+    const dissolve = dissolveOf();
+    dissolveDrawn = dissolve !== null ? dissolveFrom * dissolve : null;
     // Not drawn at all until the camera has resolved something. This is what
     // makes carrying the network outside the old arm window free (the whole
     // Inspire leg costs zero draws) AND what keeps the protected frames
     // byte-identical: at the hero pose the network is not merely dark, it is
     // never submitted.
-    group.visible = amount > 0.003 && resolve > 0.0004 && entryReveal > 0.0004;
+    group.visible = dissolveDrawn !== null ? dissolveDrawn > 0.003
+      : amount > 0.003 && resolve > 0.0004 && entryReveal > 0.0004;
     if (!group.visible) {
       heroGroundDim.clear();
       heroBodyFog.clear();                 // preserves any sibling claim
@@ -1094,7 +1157,8 @@ export function createConnect(sceneApi) {
     // undercoat dim rides the resolve (camera-pure) and deepens as the light
     // lands — so the two webs never sum to double-exposure mush — and hands
     // the hero's own materials back byte-exactly on retire
-    const visualAmount = amount * resolve * entryReveal;
+    const visualAmount = dissolveDrawn !== null ? dissolveDrawn
+      : amount * resolve * entryReveal;
     // The phone camera is about twice as far from the cap as desktop.
     // Preserve the same fine tissue instead of fogging it out before 20 units.
     heroBodyFog.set(phone ? visualAmount : 0, 14, 40);
@@ -1327,10 +1391,14 @@ export function createConnect(sceneApi) {
    *  all. hubIgnite is written by the animator only while the group is
    *  visible, but the product is still safe on every hidden frame — a
    *  frozen hubIgnite is multiplied by an amount/resolve pair that IS
-   *  current, and both are 0 exactly when the scene has nothing up. */
+   *  current, and both are 0 exactly when the scene has nothing up. On a
+   *  departing flight the dissolve's drawn amount stands in for the product
+   *  (THE NETWORK DISSOLVES ON THE FLIGHT), so the chips and cores leave
+   *  with the paths instead of on the seam lag. */
   function nodeReveal(id) {
     const i = HUB_IDS.indexOf(id);
-    return i < 0 ? 0 : amount * resolve * entryReveal * hubIgnite[i];
+    const drawn = dissolveDrawn !== null ? dissolveDrawn : amount * resolve * entryReveal;
+    return i < 0 ? 0 : drawn * hubIgnite[i];
   }
 
   return {
@@ -1493,8 +1561,9 @@ export function createConnect(sceneApi) {
      *  not a gesture to track. `dstCamX`/`durS` are deliberately unused BY
      *  THE LIGHT: the floor is a rate matched to the owner's scroll-backward
      *  reference (see THE DEPARTURE IS PERFORMED TOO), not a schedule
-     *  against the move. Only the plume fade reads `durS`
-     *  (journey/plume-fade.js, THE FADE TAKES THE WHOLE MOVE). The clearing
+     *  against the move. `durS` is read by the plume fade
+     *  (journey/plume-fade.js, THE FADE TAKES THE WHOLE MOVE) and by the seam
+     *  amount's dissolve (THE NETWORK DISSOLVES ON THE FLIGHT). The clearing
      *  call settles any downward residue SYNCHRONOUSLY rather than leaving
      *  it to "the next tick": a blend can end on the
      *  frame loop's last frame before it idles at the landed rest (measured:
@@ -1507,8 +1576,17 @@ export function createConnect(sceneApi) {
      *  protected rests hold resolve at exactly 0), and on a manual-claim
      *  cancel it is the same hard hand-back step every cancelled jump on
      *  this site already makes. */
-    setBlending(on, dstCamX, durS) {
+    setBlending(on, dstCamX, durS, dstId) {
       blendGoverned = !!on;
+      // THE NETWORK DISSOLVES ON THE FLIGHT. A move away from this chapter
+      // latches the amount last DRAWN (the uniform of the frame before the
+      // click: at this call the camera already stands at the destination
+      // pose, so the gaze cannot be re-read), and a re-aimed move dissolves
+      // from wherever the last one left it, never from full again.
+      blendDurS = on && durS > 0 ? durS : 0;
+      dissolveFrom = on && dstId && dstId !== 'connect'
+        ? (group.visible ? U.uAmount.value : 0) : null;
+      if (dissolveFrom === null) dissolveDrawn = null;
       plumeFade.setBlending(on, durS);
       if (!blendGoverned) litShownT = Math.min(litShownT, litTargetT());
     },

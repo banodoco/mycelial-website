@@ -56,6 +56,50 @@
       capture: { get: () => ({ canvas: { ...canvas }, errors: errors.slice(), lifecycle: lifecycle.slice(), watchdogs }) }
     });
   }
+  /* visible-view:begin. One definition of the visible screen for the gate and the deck's opening.
+     gate.html and index.html carry this same text; tests/visible-view.test.mjs holds the two equal. */
+  // What is on screen is the visual viewport, not innerHeight (nor a fixed inset: 0 box, nor 100vh): Chrome on an
+  // iPhone can report its large viewport there while a page loads, the bottom toolbar over its lower ~140 px, so a
+  // middle taken from it sits ~70 px low. Under pinch zoom the visual viewport is a window onto the page; not used then.
+  const visibleView = () => {
+    const vv = window.visualViewport,
+      w = innerWidth,
+      h = innerHeight,
+      on = !!vv && vv.width > 0 && vv.height > 0 && Math.abs((vv.scale || 1) - 1) < 0.01,
+      vw = on ? Math.min(w, vv.width) : w,
+      vh = on ? Math.min(h, vv.height) : h,
+      left = on ? Math.max(0, vv.offsetLeft) : 0,
+      top = on ? Math.max(0, vv.offsetTop) : 0;
+    return { x: left + vw / 2, y: top + vh / 2, w: vw, h: vh, top, bottom: top + vh };
+  };
+  // That middle's height, re-read on every call, because no first read is to be trusted: iOS can settle its bars
+  // without firing anything. A change glides over `glide` seconds (a smoothstep, so never a hop); sub-pixel noise is
+  // taken as it comes.
+  const visibleMiddle = (glide) => {
+    let at = null,
+      from = 0,
+      to = 0,
+      k = 1;
+    return (dt) => {
+      const want = visibleView().y;
+      if (at === null || (k >= 1 && Math.abs(want - at) <= 0.5)) {
+        at = from = to = want;
+        k = 1;
+        return at;
+      }
+      if (Math.abs(want - to) > 0.5) {
+        from = at;
+        to = want;
+        k = 0;
+      }
+      k = Math.min(1, k + dt / glide);
+      at = from + (to - from) * k * k * (3 - 2 * k);
+      return at;
+    };
+  };
+  /* visible-view:end */
+  window.deckView = visibleView;
+  window.deckMiddle = visibleMiddle;
   // Version F opens with the Mycelial mark: hide the slide before first paint (dot-transitions.js takes over).
   const root = document.documentElement;
   let gateOpened, gateMark;

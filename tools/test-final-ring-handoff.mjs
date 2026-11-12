@@ -37,4 +37,17 @@ assert.equal(level(.4, 1, 1), 1, 'away retirement holds old proxies hidden');
 assert.equal(level(.4, 1, .5), .7, 'Purpose retarget releases the hold continuously');
 assert.match(owner, /sky\.setOriginalRingPresence\(mobile \? 0 : 1 - ringSeatLevel\)/,
   'far spores see the actual original ring representation');
+// The landing hand-back (progress null) must not relight the colony's copies
+// of the ring over the returned originals (2026-11 landing flash): on
+// desktop they stay at the 0 the descent faded them to, whatever `seats`
+// defaults to; the branch's last descent frame passes 0 as well.
+{
+  const seatExpr = owner.match(/const seatAmount = ([^;]+);/)[1];
+  const seatAmount = new Function('mobile', 'held', 'progress', 'seats', `return ${seatExpr}`);
+  assert.equal(seatAmount(false, 1, null, 1), 0, 'desktop hand-back retires the colony seat copies');
+  assert.equal(seatAmount(false, 1, 0, 0), 0, 'last descent frame: copies already at 0 (no step at landing)');
+  assert.equal(seatAmount(false, 1, .5, .4), .4, 'ascent/descent keep the branch seat light');
+  assert.equal(seatAmount(true, .7, null, 1), .7, 'phones keep their aerial representation at Purpose');
+  assert.match(owner, /sky\.setAerialSeatAmount\(progress === null \? 0 : seatAmount/, 'sky and colony agree at hand-back');
+}
 console.log('PASS ring handoff: continuous tissue/glow amplitude, zero-light hide, reversible/mobile endpoints, shared ownership preserved.');

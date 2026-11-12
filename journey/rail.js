@@ -1070,7 +1070,21 @@ export function createRail({ onNav, ready = true } = {}) {
     const txt = el('span', 'j-menu-txt');
     if (section.number) txt.appendChild(el('span', 'j-menu-no', `${section.number}.`));
     if (section.heading) txt.appendChild(el('span', 'j-menu-name', section.heading));
-    if (section.thesis) txt.appendChild(el('span', 'j-menu-line j-menu-thesis', section.thesis));
+    if (section.thesis) {
+      const line = el('span', 'j-menu-line j-menu-thesis');
+      // "open-source" is one compound word: desktop CSS keeps a wrap from
+      // splitting it at the hyphen (the text itself is unchanged, so copy and
+      // search are; the phone layout is deliberately left to wrap freely).
+      const parts = section.thesis.split('open-source');
+      parts.forEach((part, i) => {
+        if (i) {
+          const word = el('span', 'j-menu-nobreak', 'open-source');
+          line.appendChild(word);
+        }
+        if (part) line.appendChild(document.createTextNode(part));
+      });
+      txt.appendChild(line);
+    }
     a.appendChild(txt);
     if (section.route) {
       itemsOwner.listen(a, 'click', (e) => {
@@ -1493,6 +1507,10 @@ export function createRail({ onNav, ready = true } = {}) {
     scrim.hidden = false;
     menu.hidden = false;
     menu.inert = false;
+    // Every open starts at the top. Reset here, while the panel is still at
+    // opacity 0, so the jump cannot be seen (finishMenuClose resets it too,
+    // but a reopen mid-fade skips that).
+    menu.scrollTop = 0;
     menuBtn.setAttribute('aria-expanded', 'true');
     // One synchronous style flush so the opacity/transform transition has a
     // rendered start state to run FROM — a panel arriving out of `hidden`
@@ -1550,6 +1568,7 @@ export function createRail({ onNav, ready = true } = {}) {
     if (menuIsOpen) return;                 // reopened mid-fade
     menu.hidden = true;
     scrim.hidden = true;
+    menu.scrollTop = 0;
   }
 
   /* The menu opens on POINTERDOWN, not on click — the way an OS menu bar

@@ -106,6 +106,8 @@
     const n = to || { x: vw / 2, y: vh / 2 };
     net.width = ground.width = Math.round(vw * dpr);
     net.height = ground.height = Math.round(vh * dpr);
+    // The visible box, live: the bitmap and its CSS box agree whatever a phone's toolbar is doing.
+    net.style.width = `${vw}px`; net.style.height = `${vh}px`;
     const w = warp * sx / sy, even = w > 1.25 || w < 0.8;
     if (even) { const k = Math.sqrt(sx * sy); sx = k / Math.sqrt(warp); sy = k * Math.sqrt(warp); warp = 1; } else warp = w;
     if (sx !== 1 || sy !== 1 || even) {
@@ -281,6 +283,7 @@
     // The mark rides the tip of its thread, shrinking, and sheds its nodes along the way.
     if (mark) {
       mark.t += dt;
+      if (opening?.seat && !mark.trail) opening.seat(dt);
       if (mark.folding !== undefined) {
         mark.folding += dt / 0.5;
         mark.shrink = clamp(mark.folding);
@@ -596,7 +599,7 @@
   };
 
   // Runs only while something is growing, glowing or fading.
-  const moving = () => (mark && (mark.trail || mark.folding !== undefined || mark.t < 1.6)) || blooms.length || nodes.some((n) => (n.keep || n.rest ? n.age < 3 : true))
+  const moving = () => (mark && (mark.trail || mark.folding !== undefined || mark.t < 1.6 || opening?.seat)) || blooms.length || nodes.some((n) => (n.keep || n.rest ? n.age < 3 : true))
     || zones.some((z) => Math.abs(z.a - z.to) > 0.01)
     || hyphae.some((h) => h.age < 0 || !h.done || Math.abs(h.glow - target(h)) > 0.004 || !(h.keep || h.rest || h.after >= h.fade));
   const tick = (now) => {
@@ -770,6 +773,31 @@
     } });
   };
   const place = (p) => { dot.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px)`; };
+  // Slide 1's words are let down (--text-shift, collage.js) once its fonts and ring are measured, which can be after the
+  // node was placed over them. The node follows its label: where the label has moved, the anchor, the node, the tuft
+  // and the opening's thread (its last point) move with it, so it is never left standing above where the words went.
+  const refollow = () => {
+    if (!anchor || !current || !active()) return;
+    const now = anchorOf(current);
+    if (!now) return;
+    const dx = now.x - anchor.x, dy = now.y - anchor.y;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    anchor = now;
+    place(anchor);
+    for (const h of hyphae) if (h.keep) for (const p of h.pts) { p[0] += dx; p[1] += dy; }
+    const end = opening?.trail?.pts?.at(-1);
+    if (end) { end[0] += dx; end[1] += dy; }
+    draw();
+  };
+  {
+    let shifted = '';
+    new MutationObserver(() => {
+      const v = slides[0].style.getPropertyValue('--text-shift');
+      if (v === shifted) return;
+      shifted = v;
+      if (current === slides[0]) refollow();
+    }).observe(slides[0], { attributes: true, attributeFilter: ['style'] });
+  }
 
   // Text shows only inside a soft-edged circle around the node; growing the
   // circle reveals it from the node outward, shrinking it draws it back in.
@@ -1426,11 +1454,15 @@
     const intro = window.__deckIntro, gate = intro?.gate;
     const placed = gate && gate.w === innerWidth && gate.h === innerHeight &&
       [gate.x, gate.y, gate.size].every(Number.isFinite) && gate.size > 0;
-    const size = placed ? gate.size : Math.min(innerWidth, innerHeight) * 0.2;
-    // Without a gate to take over from, the lockup (the mark with its name beneath) is centred as one shape: the
-    // mark alone on the middle line leaves the pair sitting low, by half of what the name adds below it.
+    // The visible screen (index.html's visibleView, shared with the gate), not innerHeight: see there.
+    const view = window.deckView?.() || { x: innerWidth / 2, y: innerHeight / 2, w: innerWidth, h: innerHeight };
+    const middle = !placed && window.deckMiddle?.(0.6);
+    const size = placed ? gate.size : Math.min(view.w, view.h) * 0.2;
+    // Without a gate to take over from, the lockup (the mark with its name beneath) is centred as one shape on the
+    // visible middle: the mark sits above it by half of what the name adds below. (The mark is never seen alone here
+    // for long: both wait for the fonts, by when the name's fade is all but due. The gate, where it is, rises it.)
     const lift = (nameDrop(size) + 0.35 * 22 - size / 2) / 2;
-    const c = placed ? { x: gate.x, y: gate.y } : { x: innerWidth / 2, y: innerHeight / 2 - lift };
+    const c = placed ? { x: gate.x, y: gate.y } : { x: view.x, y: view.y - lift };
     html.classList.add('dt-intro');
     dot.classList.add('is-moving');
     copy.hide(current, context, anchor, 5000);
@@ -1439,6 +1471,13 @@
     markCv.getAnimations().forEach((an) => an.cancel());
     wake();
     opening = { context, timers: [], trail: null };
+    // Until it sets off, the mark (and its name with it) keeps to the visible middle as the screen settles, re-read
+    // every frame (step), gliding to any change: a resize is held until the opening's turn ends, too late for this.
+    if (middle) opening.seat = (dt) => {
+      mark.x = (window.deckView?.() || view).x;
+      mark.y = middle(dt) - lift;
+      name.style.transform = nameAt(mark.x - name.offsetWidth / 2, mark.y + nameDrop(size), 1);
+    };
     name.classList.remove('is-home');
     name.tabIndex = -1;
     name.setAttribute('aria-hidden', 'true');
@@ -1485,7 +1524,8 @@
       const glide = name.animate([{ transform: name.style.transform }, { transform: nameCorner() }],
         { duration: 1400, easing: 'cubic-bezier(.6,0,.25,1)', fill: 'forwards' });
       glide.finished.then(() => { if (!opening || opening.trail?.done) nameRest(); }).catch(() => {});
-      const pts = wander(c, anchor);
+      opening.seat = null; // from here it rides its thread
+      const pts = wander({ x: mark.x, y: mark.y }, anchor);
       const total = lengths(pts).at(-1);
       opening.trail = mark.trail = hypha(pts, { width: 1.05, alpha: 0.55, duration: clamp(total / 700, 0.9, 1.5), smooth: true, branches: plan(total, 0), onDone: land });
     }, gate ? 160 : 1700));

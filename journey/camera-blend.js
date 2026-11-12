@@ -53,6 +53,31 @@ export function blendEaseRate(f, slope, k) {
   return slope ? r + slope * Math.pow(1 - f, k - 1) * ((1 - f) - k * f) : r;
 }
 
+/* THE LAP HOME KEEPS ITS EXPOSURE (2026-11, owner on Purpose -> Intro: "a
+   very gentle shift in light"). Measured at 640x400 under a fake clock, mean
+   frame luma ran 59.6 at the Purpose rest, fell to 19.5 at 67% of the 5.33 s
+   lap and climbed back to 34.4 at the Intro rest: 43% darker than either end,
+   then a 15/255 rebound — the lights dimming and coming back. Lighting the
+   Intro web earlier (final/index.js RELIGHT_FROM) lifts the valley to 23.4;
+   the rest is framing, not light — mid-lap the camera has left the colony
+   and the Intro mushroom is still small in frame, over an unlit stretch of
+   field. So, like an eye adapting, the lens's pre-tonemap gain carries a
+   bridge over exactly that stretch: zero to 47% of the lap, up to
+   1 + LAP_HOME_LIFT by 63%, back to zero (with zero slope, C1 at every
+   join) by 86% — so nothing moves after landing and the rest look is
+   untouched. Shaped from the measured deficit: luma then runs ~34 from 48%
+   of the lap to landing (min 33.0, rebound < 1.5). Desktop-measured; on a
+   portrait phone the valley's depth is unmeasured. */
+const LAP_HOME_LIFT = 0.42;
+const LAP_HOME_RISE = [0.47, 0.63];
+const LAP_HOME_FALL = 0.86;
+export function lapHomeBridge(f) {
+  const [a, p] = LAP_HOME_RISE;
+  if (!(f > a) || f >= LAP_HOME_FALL) return 0;
+  if (f < p) return Math.sin(0.5 * Math.PI * (f - a) / (p - a)) ** 2;
+  return Math.cos(0.5 * Math.PI * (f - p) / (LAP_HOME_FALL - p)) ** 2;
+}
+
 /** Shared camera/rail/wordmark phase for a flight. */
 export function blendPhase(blend, f) {
   // One quintic for every hop: the first outward leg used to launch on a
@@ -154,6 +179,11 @@ export function createCameraBlendStepper(sceneApi, director, lens, guarded, onEn
     }
     for (const k in blend.look) {
       blend.look[k] = blend.look0[k] + (blend.look1[k] - blend.look0[k]) * e;
+    }
+    // THE LAP HOME KEEPS ITS EXPOSURE (see LAP_HOME_LIFT). Purpose -> Intro
+    // only: a wrap whose authored target lies behind its start.
+    if (blend.wrapDir && blend.routeTargetP < blend.routeFromP) {
+      blend.look.gain *= 1 + LAP_HOME_LIFT * lapHomeBridge(f);
     }
     guarded('lens', () => lens.setLookOverride(blend.look));
     if (f >= 1) onEnd(true);

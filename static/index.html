@@ -937,6 +937,55 @@
 
   .menu-legal { margin: 1rem 0 0; font-size: 0.7rem; line-height: 1.6; color: rgba(201, 191, 168, 0.6); }
 
+  /* ============================================================
+     DESKTOP PANEL FITS ITS VIEWPORT (no scroll down to 760px tall).
+     The two thesis statements stay the panel's largest type but track
+     the viewport's height instead of holding a fixed 1.65rem, and the
+     rest of the height is recovered from spacing, not from the rows'
+     type. The first block is the COMPACT floor (a 760px-tall window,
+     with ~100px to spare so browser zoom has margin); the min-height
+     steps hand the air back as the window grows, up to the old rhythm.
+     Mirrors journey/site.css (the same block); phones keep their own layout.
+     ============================================================ */
+  @media (min-width: 621px) {
+    .rail-menu-wrap[open] { padding: 0.9rem 2.2rem 1.4rem; }
+    .menu-head { margin-bottom: 0.6rem; }
+    .menu-list > li { padding-block: 0.14rem 0.4rem; }
+    .menu-item { padding-block: 0.52rem 0.4rem; }
+    .menu-list > li:last-child .menu-item { padding-bottom: 0.6rem; }
+    .menu-sub { padding-bottom: 0.3rem; }
+    .menu-row { margin-bottom: 0.2rem; line-height: 1.5; }
+    .menu-row-link { padding-block: 0.08rem; }
+    .menu-thesis {
+      margin: 0.2rem 0 0.15rem;
+      font-size: clamp(1.15rem, calc(1.15rem + (100vh - 760px) * 0.0133), 1.4rem);
+      line-height: 1.16;
+      text-wrap: balance;
+    }
+    .menu-legal { margin-top: 0.9rem; }
+  }
+  @media (min-width: 621px) and (min-height: 840px) {
+    .rail-menu-wrap[open] { padding-top: 1rem; padding-bottom: 1.6rem; }
+    .menu-head { margin-bottom: 0.75rem; }
+    .menu-list > li { padding-block: 0.16rem 0.44rem; }
+    .menu-item { padding-block: 0.58rem 0.48rem; }
+    .menu-list > li:last-child .menu-item { padding-bottom: 0.7rem; }
+    .menu-row { margin-bottom: 0.26rem; }
+    .menu-row-link { padding-block: 0.09rem; }
+    .menu-legal { margin-top: 0.95rem; }
+  }
+  @media (min-width: 621px) and (min-height: 940px) {
+    .rail-menu-wrap[open] { padding-bottom: 1.8rem; }
+    .menu-head { margin-bottom: 0.9rem; }
+    .menu-list > li { padding-block: 0.18rem 0.48rem; }
+    .menu-item { padding-block: 0.62rem 0.55rem; }
+    .menu-list > li:last-child .menu-item { padding-bottom: 0.82rem; }
+    .menu-row { margin-bottom: 0.32rem; }
+    .menu-row-link { padding-block: 0.1rem; }
+    .menu-thesis { margin: 0.3rem 0 0.2rem; }
+    .menu-legal { margin-top: 1rem; }
+  }
+
   @media (max-width: 420px) {
     .rail-menu-wrap[open] { padding: 0.9rem 0.8rem 1.8rem; }
     .rail-menu-wrap[open] .rail-menu { top: 0.9rem; right: 0.8rem; }
