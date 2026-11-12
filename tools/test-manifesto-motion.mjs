@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { CONTENT } from '../content/content.js';
-import { manifestoPose, mobileFieldCenter, frameShiftAt, aerialPlacements, planAerialReveals, aerialRevealJob, aerialRevealAt, AERIAL_BODY_COUNT, AERIAL_SCALE_MIN, AERIAL_SCALE_MAX, CAMERA_SECONDS, SPIRAL_START_SECONDS, MOBILE_LIFT_SECONDS, MOBILE_OVERHEAD_TURN, descentU, lineSecondsFor, mobileReadingSchedule, revealSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, FIRST_LINE_SECONDS, LINE_BREATH_SECONDS, LINE_SECONDS_PER_WORD, TITLE_SECONDS, awaySecondsFrom, returnSecondsFrom } from '../journey/manifesto/pose.js';
+import { manifestoPose, mobileFieldCenter, frameShiftAt, aerialPlacements, planAerialReveals, aerialRevealJob, aerialRevealAt, AERIAL_BODY_COUNT, AERIAL_SCALE_MIN, AERIAL_SCALE_MAX, CAMERA_SECONDS, SPIRAL_START_SECONDS, MOBILE_LIFT_SECONDS, MOBILE_OVERHEAD_TURN, lineSecondsFor, mobileReadingSchedule, revealSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, FIRST_LINE_SECONDS, LINE_BREATH_SECONDS, LINE_SECONDS_PER_WORD, TITLE_SECONDS } from '../journey/manifesto/pose.js';
+import { createGlide, sampleGlide } from '../journey/manifesto/glide.js';
 
 const from = { position: { x: 8, y: 3, z: 9 }, target: { x: 0, y: 2, z: 0 }, fov: 46 };
 for (const t of [0, 0.2, 0.8, SPIRAL_START_SECONDS]) {
@@ -79,14 +80,15 @@ for (let seconds = 0; seconds <= CAMERA_SECONDS; seconds += .02) {
 assert.ok(manifestoPose(phoneFrom, MOBILE_LIFT_SECONDS, .5).position.y >= from.position.y + 16);
 assert.equal(manifestoPose(phoneFrom, CAMERA_SECONDS, .5).position.y, 38);
 for (const startU of [.08, .2, .6, 1]) {
-  const initial = manifestoPose(phoneFrom, startU * CAMERA_SECONDS, .5).position.y - from.position.y;
+  // the Return is one glide: it never climbs again, and its last tenth is a settle
+  const top = manifestoPose(phoneFrom, startU * CAMERA_SECONDS, .5);
+  const initial = top.position.y - from.position.y;
+  const glide = createGlide(top, { ...phoneFrom, roll: phoneFrom.roll || 0 }, .5);
   let previous = initial;
   for (let k = 0; k <= 1; k += 1 / 64) {
-    const seconds = descentU(startU, k, .5, from.position.y) * CAMERA_SECONDS;
-    const height = manifestoPose(phoneFrom, seconds, .5).position.y - from.position.y;
+    const height = sampleGlide(glide, k).position.y - from.position.y;
     assert.ok(height <= previous + 1e-9, 'return descends monotonically');
-    // the return keys on height and tilt together; its final tenth is a settle
-    if (k >= .9) assert.ok(height <= initial * .015, 'returns invert the complete new lift without a second landing move');
+    if (k >= .9) assert.ok(height <= initial * .015, 'the final tenth of the glide is a settle, not a second landing move');
     previous = height;
   }
 }
@@ -230,11 +232,14 @@ assert.equal(fieldFogFar, fog.far, 'field shader handoff sees this frame’s exp
 const settled = snapshot(); tick(20);
 assert.deepEqual(snapshot(), settled, 'the settled camera holds still');
 assert.ok(camera.far > camera.position.y, 'portrait aerial cannot be clipped by the hero far plane');
-window.listeners.keydown({ key: 'Escape', preventDefault() {} }); tick(2.3);
+window.listeners.keydown({ key: 'Escape', preventDefault() {} });
+const glideSeconds = branch.returnSeconds;
+tick(2.3);
 assert.equal(branch.active, true, 'the descent from the settled view is a flight, not a 2 s rewind');
-assert.ok(fieldPresence < .01, 'extra aerial mushrooms and their spores retire while the camera is still descending');
+tick(glideSeconds * 0.6 - 2.3);
+assert.ok(branch.active && fieldPresence < .01, 'extra aerial mushrooms and their spores retire while the camera is still descending');
 assert.equal(fieldStay, 1, 'return to Purpose retains its destination world');
-tick(2.6);
+tick(glideSeconds * 0.4 + 0.1);
 assert.equal(branch.active, false);
 assert.deepEqual(snapshot(), original);
 assert.equal(document.activeElement, focus);
@@ -245,10 +250,10 @@ assert.equal(document.activeElement, focus);
 const equipLanding = { position: vec(-1.024, 0.71, -2.616),
   target: vec(0.049, 3.7, 0.226), fov: 60, fogNear: 7, fogFar: 20 };
 branch.begin(); tick(CAMERA_SECONDS + 1);
-branch.returnTo(null, { land: equipLanding }); tick(branch.awaySeconds * .6);
+branch.returnTo(null, { land: equipLanding }); const equipSeconds = branch.returnSeconds; tick(equipSeconds * .6);
 assert.equal(fieldPresence, 0, 'extra field has gone before a close destination approach');
 assert.equal(fieldStay, 0, 'outgoing Purpose proxies have also gone before a close approach');
-tick(branch.awaySeconds + 0.1);
+tick(equipSeconds + 0.1);
 assert.deepEqual([camera.position.x, camera.position.y, camera.position.z],
   [equipLanding.position.x, equipLanding.position.y, equipLanding.position.z],
   'first released frame is exactly the upward-looking destination pose');
@@ -302,6 +307,33 @@ assert.equal(landedOn, 'B', 'only the new destination is landed on');
 assert.deepEqual([camera.position.x, camera.position.y, camera.position.z, camera.fov, fog.near, fog.far],
   [2, -6, 11, 50, 4, 30], 'it lands exactly on the new rest, in its depth');
 assert.ok(maxStep < 3, `the bend is a glide, not a swing (largest step ${maxStep.toFixed(3)})`);
+
+// v3: every way down is the same glide from wherever the camera is.
+// (a) A Return pressed mid-climb carries the climb's own motion across the
+// press: the first descent frame moves the camera as the last climb frame did.
+// (b) Pressing Return again during the descent is the same glide again, from
+// the frame on screen: no step, and it still lands exactly on the rest.
+{
+  const pos = () => [camera.position.x, camera.position.y, camera.position.z];
+  const delta = (a, b) => a.map((v, i) => b[i] - v);
+  for (const pressAt of [1.5, 9, 20]) {
+    const restPos = pos();
+    branch.begin(); tick(pressAt);
+    const p0 = pos(); branch.update(1 / 60); const p1 = pos();
+    branch.returnTo(null); branch.update(1 / 60); const p2 = pos();
+    const before = delta(p0, p1), after = delta(p1, p2);
+    const change = Math.hypot(...after.map((v, i) => v - before[i])), speed = Math.hypot(...before);
+    assert.ok(change < 0.02 * Math.max(speed, 0.05) + 1e-6, `a Return at ${pressAt}s continues the climb's motion (change ${change.toExponential(2)} of ${speed.toExponential(2)})`);
+    tick(1);
+    const q0 = pos(); branch.update(1 / 60); const q1 = pos();
+    branch.returnTo(null); branch.update(1 / 60); const q2 = pos();
+    const b2 = delta(q0, q1), a2 = delta(q1, q2);
+    assert.ok(Math.hypot(...a2.map((v, i) => v - b2[i])) < 0.02 * Math.hypot(...b2) + 1e-6, `a second Return at ${pressAt}s + 1s continues the glide on screen`);
+    tick(branch.returnSeconds + 0.1);
+    assert.equal(branch.active, false, 'the twice-pressed Return lands');
+    assert.deepEqual(pos(), restPos, 'on the exact rest');
+  }
+}
 branch.destroy();
 // Exercise the actual desktop branch (not just its flight helper): Inspire
 // is across the heading, where the old two-target blend flipped at the pole.
@@ -645,13 +677,21 @@ for (let i = 0; i < sg.count; i++) {
 }
 console.log('Manifesto spores: every colony spore is gated on its own body\'s arrival window.');
 
-// A descent that lands on another section is the longer journey: half as
-// long again plus a second over the plain Return, from any height.
-for (const u of [0, 0.5, 1]) {
-  assert.ok(Math.abs(awaySecondsFrom(u) - (returnSecondsFrom(u) * 1.35 + 1)) < 1e-9);
-  assert.ok(awaySecondsFrom(u) > returnSecondsFrom(u) + 1.5, 'leaving for another section takes clearly longer than a Return');
+// A descent that lands on another section is priced by the same law as the
+// Return — how far the picture travels and how far the view turns — so the
+// farther landing (into the ground, for Ownership) takes longer.
+{
+  const deskRest = { position: vec(-14.72, 2.73, 2.70), target: vec(-3.06, 0.83, -1.94), fov: 45.5, roll: 0 };
+  const owned = { position: vec(2, -6, 11), target: vec(0, -8, 0), fov: 50, roll: 0 };
+  globalThis.window.innerWidth = 1280;
+  for (const u of [0.25, 0.5, 1]) {
+    const top = manifestoPose(deskRest, u * CAMERA_SECONDS, 1.6);
+    const home = createGlide(top, deskRest, 1.6), away = createGlide(top, owned, 1.6);
+    assert.ok(away.seconds > home.seconds, `leaving for Ownership takes longer than a Return (from ${u})`);
+    assert.ok(home.seconds >= 2.6 && away.seconds <= 6, 'every glide is bounded like the other hops');
+  }
+  globalThis.window.innerWidth = 390;
 }
-assert.ok(awaySecondsFrom(1) > 7 && awaySecondsFrom(1) < 8, 'about 7.5 s from the settled view');
 console.log('Manifesto away descent: longer than a Return from every height pass.');
 
 // The phone path excludes distant bodies from real instance submission,

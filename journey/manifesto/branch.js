@@ -3,13 +3,13 @@ import { manifestoLinks } from '../../content/manifesto-links.js';
 import { attachManifestoLinkTooltip } from '../../manifesto-link-tooltip.js';
 import { createHeroBodyFogClaim } from '../chapters/hero-body-fog.js';
 import { claimInput, releaseInput } from '../ownership.js';
-import { createReturnFlight, sampleReturnFlight, returnVelocity } from './return-flight.js';
+import { createGlide, sampleGlide, glideVelocity, glidePhase, glideAnchor, viewOf } from './glide.js';
 import { createEntryFlight, sampleEntryFlight } from './entry-flight.js';
 import { applyCameraRoll } from '../camera-roll.js';
 import { attachManifestoNote } from '../../manifesto-note.js';
 import { CONTENT } from '../../content/content.js';
 import { manifestoConcepts } from '../../content/manifesto-concepts.js';
-import { descentFieldPresence, manifestoPose, descentPose, mobileFieldCenter, isMobileManifesto, smoother, ascentAt, returnSecondsFrom, awaySecondsFrom, lineSecondsFor, mobileReadingSchedule, CAMERA_SECONDS, TITLE_SECONDS, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, WORD_VISIBLE_SECONDS } from './pose.js';
+import { manifestoPose, mobileFieldCenter, isMobileManifesto, smoother, ascentAt, lineSecondsFor, mobileReadingSchedule, CAMERA_SECONDS, TITLE_SECONDS, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, WORD_VISIBLE_SECONDS } from './pose.js';
 
 // The opening beat the navigation rides when the camera starts on Purpose's
 // own rest, and the longer departure when it starts from another section.
@@ -17,14 +17,16 @@ import { descentFieldPresence, manifestoPose, descentPose, mobileFieldCenter, is
 // level with the ~3 s flight down to Ownership.
 const RAIL_OPEN_SECONDS = 3.0;
 const DEPART_SECONDS = 3.2;
-// the least time a descent may take to swing onto a destination pressed late
-const RETARGET_SECONDS = 1.8;
+// the least time a glide may take to swing onto a destination pressed late
+const RETARGET_SECONDS = 2.6;
 // how long the colony's copies of the epilogue's bodies take to rise in
 const SEAT_IN_SECONDS = 3.0;
-// the share of the descent after which the page's copy starts arriving, and
-// how long it takes (keep CHROME_FADE_MS in step with site.css)
-const CHROME_RELEASE = 0.72;
+// how long the page's own copy takes to arrive (keep in step with site.css
+// j-manifesto-reenter); it is released so that it finishes as the glide lands
 const CHROME_FADE_MS = 1600;
+// The surrounding aerial field recedes while the camera is still high, on
+// the glide's own phase; the destination keeps its own presence.
+const fieldPresenceAt = e => 1 - smoother((e - 0.05) / 0.45);
 
 /**
  * Manifesto is a reversible branch of the existing scene. Its single progress
@@ -275,19 +277,18 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
   let u = 0;
   let elapsed = 0;
   let lastWall = null;   // see update(): the flight keeps wall time
-  let returnStart = 0;
-  let returnK = 0;          // the descent's own clock, 0 -> 1
-  let returnFlight = null, flightStartK = 0;
   let entryFlight = null;
-  let presentedPose = null, presentedVelocity = null;
-  let returnRate = 1;       // per second; slowed by a late retarget
-  // A destination pressed mid-descent bends the fall toward it rather than
-  // landing first and flying on: `landPrev` is the landing being left and
-  // `landRe` the blend already spent on it, so the new aim starts from the
-  // pose on screen. `stay` (Purpose's world) blends from `stay0` likewise.
-  let landPrev = null;
-  let landRe = 0;
-  let stay0 = 1, stayTo = 1;
+  // The way down is ONE glide (glide.js) on ONE clock: `glideT` seconds of
+  // `glide.seconds`. Everything else the descent moves — the colony's clock
+  // `u`, the ring copies' light, the field's presence, Purpose's world, the
+  // fog — rides that glide's eased phase from the value on screen when the
+  // glide began, so a new destination pressed mid-descent (a fresh glide
+  // from the pose on screen) continues each of them without a step.
+  let glide = null, glideT = 0;
+  let glideFrom = null;     // { u, seat, presence, stay, fogNear, fogFar } at the glide's start
+  let shown = null, shownBefore = null, shownSeconds = 0;   // the presented frames
+  let fogBase = null;       // the fog range the last frame was composed from
+  let stayTo = 1, lastStay = 1, lastPresence = 1;
   const bodyFog = createHeroBodyFogClaim(sceneApi);
   const fogSlots = [];
   const fogSeen = new Set();
@@ -304,19 +305,16 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
   let finish = null;
   // A Return may land somewhere other than where the branch was opened —
   // the logo's "home" lands on the hero. `landing` is that pose (shaped like
-  // `from`), and landW blends the descent from one destination to the other.
+  // `from`): the rest the current glide lands on.
   let landing = null;
-  let landW = 0;
   // Non-Purpose entries fly from the displayed frame into a future frame
   // of the aerial ascent. Keep the departure's fog during the opening;
   // Purpose remains the colony's spatial anchor, not a camera waypoint.
   let depart = null;
   let departW = 0;
-  let departAtReturn = 0;
   // The colony's copies of the epilogue ring: 1 aloft, fading out through
-  // a Return (finished by 70% of the descent) while the real ring returns.
+  // a Return (finished by 70% of the glide's phase) while the real ring returns.
   let seatLight = 1;
-  let seatAtReturn = 0.999;
   let previousScrollEnabled = true;
   let previousControlsEnabled = true;
   let shownLines = 0, admittedLines = 0;
@@ -327,10 +325,11 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
      Hannah: going home from the Manifesto, "the main text appears all of a
      sudden"). It used to be held hidden until touchdown and then faded in
      over 0.9s on an ease-out — half of it in the first 0.3s, on the very
-     frame the camera stopped. It is now released over the descent's last
-     stretch (CHROME_RELEASE of the fall), into a long ease-in-out
-     (site.css j-manifesto-reenter), so it gathers while the camera settles
-     — the same arrival an ordinary jump gives it. */
+     frame the camera stopped. It is now released CHROME_FADE_MS before the
+     glide lands, into a long ease-in-out (site.css j-manifesto-reenter), so
+     it gathers while the camera settles and is finished as it lands — the
+     same arrival an ordinary jump gives it, and nothing is still fading
+     after touchdown. */
   function releaseChrome() {
     if (chromeReleased) return;
     chromeReleased = true;
@@ -359,46 +358,49 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     pose.fov += (there.fov - pose.fov) * w;
     pose.roll = (pose.roll || 0) + ((there.roll || 0) - (pose.roll || 0)) * w;
   }
+  /** How far the current glide has come: its time fraction and eased phase. */
+  const glideK = () => (glide && glide.seconds > 0 ? Math.min(1, glideT / glide.seconds) : 1);
+  /** The presented camera as a glide reads it: its forward and image up,
+   *  exactly as lookAt builds them from the pose just applied (an explicit
+   *  up, or the site's world-up bank). */
+  function presented(pose) {
+    let view;
+    if (pose.up) {
+      const p = pose.position, t = pose.target;
+      const d = { x: t.x - p.x, y: t.y - p.y, z: t.z - p.z }, n = Math.hypot(d.x, d.y, d.z);
+      const f = { x: d.x / n, y: d.y / n, z: d.z / n };
+      const k = pose.up.x * f.x + pose.up.y * f.y + pose.up.z * f.z;
+      const U = { x: pose.up.x - f.x * k, y: pose.up.y - f.y * k, z: pose.up.z - f.z * k }, m = Math.hypot(U.x, U.y, U.z);
+      view = { f, U: { x: U.x / m, y: U.y / m, z: U.z / m } };
+    } else view = viewOf(pose);
+    return { position: { ...pose.position }, target: { ...pose.target }, forward: view.f, up: view.U, fov: pose.fov };
+  }
   function apply(value, frameSeconds = 0) {
-    // A descent's pose is its own (pose.js descentPose): the climb's place
-    // from descentU, with the orbit and frame shift on the descent clock.
-    const descending = direction < 0 && !reduceMotion.matches;
-    const poseOf = rest => descending ? descentPose(rest, returnStart, returnK, camera.aspect).pose
-      : manifestoPose(rest, value * CAMERA_SECONDS, camera.aspect);
-    const pose = poseOf(from);
+    const descending = direction < 0 && glide;
+    const climb = manifestoPose(from, value * CAMERA_SECONDS, camera.aspect);
+    let pose = climb;
     // the world's depth at the two ends of the flight, blended like the pose
     let fogNear0 = from.fogNear, fogFar0 = from.fogFar;
-    if (landing && landW > 0) {
-      let there = poseOf(landing);
-      let fogN = landing.fogNear, fogF = landing.fogFar;
-      const w = retargetW();
-      if (landPrev && w < 1) {
-        const before = poseOf(landPrev);
-        blendToward(before, there, w);
-        there = before;
-        fogN = landPrev.fogNear + (fogN - landPrev.fogNear) * w;
-        fogF = landPrev.fogFar + (fogF - landPrev.fogFar) * w;
+    let e = 0;
+    if (descending) {
+      e = glidePhase(glideK());
+      // The camera is the glide's; the climb at the colony's clock `u`
+      // supplies only what the field and the air read (field, atmosphere).
+      pose = { ...sampleGlide(glide, glideK()), field: climb.field, atmosphere: climb.atmosphere };
+      fogNear0 = glideFrom.fogNear + (landing.fogNear - glideFrom.fogNear) * e;
+      fogFar0 = glideFrom.fogFar + (landing.fogFar - glideFrom.fogFar) * e;
+    } else {
+      if (depart && departW > 0) {
+        blendToward(pose, depart, departW);
+        fogNear0 += (depart.fogNear - fogNear0) * departW;
+        fogFar0 += (depart.fogFar - fogFar0) * departW;
       }
-      blendToward(pose, there, landW);
-      fogNear0 += (fogN - fogNear0) * landW;
-      fogFar0 += (fogF - fogFar0) * landW;
+      if (entryFlight && elapsed < entryFlight.seconds) {
+        const flight = sampleEntryFlight(entryFlight, elapsed);
+        for (const key of ['position', 'target', 'fov', 'roll', 'up', 'viewAngles']) pose[key] = flight[key];
+      }
     }
-    if (depart && departW > 0) {
-      blendToward(pose, depart, departW);
-      fogNear0 += (depart.fogNear - fogNear0) * departW;
-      fogFar0 += (depart.fogFar - fogFar0) * departW;
-    }
-    if (entryFlight && direction >= 0 && elapsed < entryFlight.seconds) {
-      const flight = sampleEntryFlight(entryFlight, elapsed);
-      for (const key of ['position', 'target', 'fov', 'roll', 'up', 'viewAngles']) pose[key] = flight[key];
-    }
-    if (returnFlight && direction < 0) {
-      const flight = sampleReturnFlight(returnFlight,
-        (returnK - flightStartK) / Math.max(1e-9, 1 - flightStartK));
-      for (const key of ['position', 'target', 'fov', 'roll', 'up', 'viewAngles']) pose[key] = flight[key];
-    }
-    if (presentedPose && frameSeconds > 0) presentedVelocity = returnVelocity(presentedPose, pose, frameSeconds);
-    presentedPose = pose;
+    fogBase = { near: fogNear0, far: fogFar0 };
     camera.position.set(pose.position.x, pose.position.y, pose.position.z);
     controls.target.set(pose.target.x, pose.target.y, pose.target.z);
     camera.fov = pose.fov;
@@ -412,6 +414,8 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       camera.userData.journeyRoll = pose.roll;
       camera.lookAt(controls.target);
     } else applyCameraRoll(camera, controls.target, pose.roll);
+    if (frameSeconds > 0) { shownBefore = shown; shownSeconds = frameSeconds; }
+    shown = presented(pose);
     // Keep the outer field legible through the settled frame. The previous
     // range let the perimeter disappear into fog before its scheduled
     // arrivals could read as a continuous surround.
@@ -432,8 +436,9 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     // Landing elsewhere, Purpose's world recedes while the camera is still
     // high, before its background proxies become close foreground objects.
     // Purpose's own return retains its destination through the field lease.
-    const stay = stay0 + (stayTo - stay0) * smoother(retargetW() / 0.4);
-    const fieldPresence = direction < 0 ? descentFieldPresence(returnK) : 1;
+    const stay = descending ? glideFrom.stay + (stayTo - glideFrom.stay) * smoother(e / 0.4) : 1;
+    const fieldPresence = descending ? glideFrom.presence * fieldPresenceAt(e) : 1;
+    lastStay = stay; lastPresence = fieldPresence;
     if (field) field.setManifesto(pose.field * fieldPresence, value * CAMERA_SECONDS, null, camera.aspect, seatLight, stay, direction < 0, direction < 0 ? 1 - stay : 0);
   }
   /* NOTHING HERE SCROLLS. Every line is laid out from the start (unshown
@@ -757,9 +762,9 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     depart = anchor && !reduceMotion.matches ? here : null;
     departW = depart ? 1 : 0;
     entryFlight = depart ? createEntryFlight(here, from, camera.aspect) : null;
-    landing = null; landW = 0;
-    returnFlight = null; flightStartK = 0;
-    presentedPose = here; presentedVelocity = null;
+    landing = null;
+    glide = null; glideT = 0; glideFrom = null;
+    shown = null; shownBefore = null; shownSeconds = 0;
     finish = null;
     previousFocus = document.activeElement;
     // The menu closes before this branch opens; its former link may still
@@ -793,43 +798,33 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     panel.focus({ preventScroll: true });
     if (reduceMotion.matches) { u = 1; apply(1); }
   }
-  /** The share of the CURRENT aim spent so far: landW renormalised from the
-   *  moment the aim was last set, so a retarget starts at 0 on screen. */
-  function retargetW() {
-    if (landRe <= 0) return landW;
-    return landRe >= 1 ? 1 : Math.max(0, Math.min(1, (landW - landRe) / (1 - landRe)));
-  }
   const landingOf = (land) => land ? { ...from, position: land.position, target: land.target, fov: land.fov, roll: land.roll || 0,
     fogNear: land.fogNear ?? from.fogNear, fogFar: land.fogFar ?? from.fogFar } : { ...from };
+  /** Start ONE glide from the frame on screen to `landing`, carrying the
+   *  presented velocity of every channel and the value on screen of
+   *  everything that rides the glide's phase. */
+  function startGlide(minSeconds) {
+    const now = shown || presented(capture());
+    const anchor = glideAnchor(now, landing, camera.aspect);
+    const velocity = glideVelocity(shownBefore, now, shownSeconds, camera.aspect, anchor);
+    glide = createGlide(now, landing, camera.aspect, { velocity, anchor, min: minSeconds });
+    glideT = 0;
+    const fog = fogBase || { near: from.fogNear, far: from.fogFar };
+    glideFrom = { u, seat: seatLight, presence: lastPresence, stay: lastStay, fogNear: fog.near, fogFar: fog.far };
+  }
   /** Bend a descent already under way toward a new landing (`home` = it is
-   *  the branch's own anchor, Purpose, whose world stays lit). */
+   *  the branch's own anchor, Purpose, whose world stays lit): the same
+   *  glide, from wherever the camera is. */
   function retarget(onFinish, { land = null, home = !land } = {}) {
     if (!active || direction >= 0) return false;
     finish = onFinish;
-    const w = retargetW();
-    if (landPrev && w < 1) {
-      // a second change of mind mid-bend: freeze the bend as the new origin
-      const mixed = { ...landing };
-      for (const k of ['position', 'target']) {
-        mixed[k] = landPrev[k].clone().lerp(landing[k], w);
-      }
-      for (const k of ['fov', 'fogNear', 'fogFar']) mixed[k] = landPrev[k] + (landing[k] - landPrev[k]) * w;
-      landPrev = mixed;
-    } else {
-      landPrev = landing;
-    }
-    stay0 = stay0 + (stayTo - stay0) * smoother(w / 0.4);
+    const remaining = glide ? glide.seconds - glideT : 0;
     stayTo = home ? 1 : 0;
     landing = landingOf(land);
-    landRe = landW;
-    // never swing onto the new aim in a few frames: what is left of the fall
-    // takes at least RETARGET_SECONDS
-    const remaining = (1 - returnK) / returnRate;
-    if (remaining < RETARGET_SECONDS) returnRate = (1 - returnK) / RETARGET_SECONDS;
-    // bent toward another section, the rest of the fall keeps that longer pace
-    if (!home) returnRate = Math.min(returnRate, 1 / awaySecondsFrom(returnStart));
-    const extendedRemaining = (1 - returnK) / returnRate;
-    if (extendedRemaining > remaining) {
+    // never swing onto the new aim in a few frames
+    startGlide(RETARGET_SECONDS);
+    const extendedRemaining = glide.seconds;
+    if (extendedRemaining > remaining && remaining > 0) {
       // Changing transition-duration does not retime an in-flight transition.
       // Retime only the reading shade, preserving its exact painted frame.
       // The words keep their ordinary departure pace even if the flight grows.
@@ -838,11 +833,6 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
         animation.updatePlaybackRate(animation.playbackRate * remaining / extendedRemaining);
       }
     }
-    // Retarget the displayed orientation on every viewport. Blending two
-    // look-at targets can cancel their horizontal directions at the pole.
-    flightStartK = returnK;
-    returnFlight = createReturnFlight(presentedPose || capture(), landing,
-      extendedRemaining, presentedVelocity, { rootApproach: landing.position.y < 0 });
     return true;
   }
   function returnTo(onFinish = null, { land = null } = {}) {
@@ -851,27 +841,19 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     if (!active) { if (onFinish) onFinish(); return; }
     if (direction < 0) { retarget(onFinish, { land }); return; }
     finish = onFinish;
-    seatAtReturn = Math.min(0.999, seatLight);   // the real ring is back from the Return's first frame
-    seatLight = seatAtReturn;
+    // the real ring is back from the Return's first frame
+    seatLight = Math.min(0.999, seatLight);
     landing = landingOf(land);
-    landPrev = null; landRe = 0;
-    stay0 = 1; stayTo = land ? 0 : 1;
-    landW = 0;
-    departAtReturn = departW;
+    stayTo = land ? 0 : 1;
     // the words exhale first — they dissolve upward into the dark while the
     // camera begins to sink (see .is-returning in journey/site.css)
     root.classList.add('is-returning');
-    returnStart = u;
-    returnK = 0;
-    returnRate = 1 / (land ? awaySecondsFrom(returnStart) : returnSecondsFrom(returnStart));
-    returnFlight = land || (entryFlight && elapsed < entryFlight.seconds)
-      ? createReturnFlight(presentedPose || capture(), landing, 1 / returnRate, presentedVelocity, { rootApproach: landing.position.y < 0 }) : null;
-    flightStartK = 0;
-    // The reading shade follows the whole fall; the words have their own
-    // shorter departure in site.css, matching ordinary section copy.
-    root.style.setProperty('--manifesto-return-s', `${(1 / returnRate).toFixed(2)}s`);
     direction = -1;
     paused = false;
+    startGlide();
+    // The reading shade follows the whole glide; the words have their own
+    // shorter departure in site.css, matching ordinary section copy.
+    root.style.setProperty('--manifesto-return-s', `${glide.seconds.toFixed(2)}s`);
   }
   function exit() {
     releaseInput(panel);
@@ -893,9 +875,10 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     camera.position.set(rest.position.x, rest.position.y, rest.position.z);
     controls.target.set(rest.target.x, rest.target.y, rest.target.z);
     camera.fov = rest.fov;
-    landing = null; landW = 0; landPrev = null; landRe = 0; stay0 = 1; stayTo = 1;
-    returnFlight = null; entryFlight = null; presentedPose = null; presentedVelocity = null;
-    depart = null; departW = 0; departAtReturn = 0;
+    landing = null; stayTo = 1; lastStay = 1; lastPresence = 1;
+    glide = null; glideT = 0; glideFrom = null; entryFlight = null;
+    shown = null; shownBefore = null; shownSeconds = 0; fogBase = null;
+    depart = null; departW = 0;
     camera.far = from.far;
     camera.updateProjectionMatrix();
     applyCameraRoll(camera, controls.target, rest.roll);
@@ -969,16 +952,15 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
         updateReadingFollow();
         if (u >= 1) direction = 0;
       } else {
-        returnK = Math.min(1, returnK + step * returnRate);
-        const k = returnK;
-        u = reduceMotion.matches ? 0 : descentPose(from, returnStart, k, camera.aspect).u;
-        landW = reduceMotion.matches ? 1 : smoother(k);
-        // a flight that had not finished leaving its departure pose hands
-        // that remainder back over the same descent
-        departW = departAtReturn * (1 - landW);
-        seatLight = reduceMotion.matches ? 0 : seatAtReturn * (1 - smoother(k / 0.7));
-        if (landW >= CHROME_RELEASE) releaseChrome();
-        if (u <= 0) { apply(0); exit(); return; }
+        if (reduceMotion.matches || !glide) { exit(); return; }
+        glideT = Math.min(glide.seconds, glideT + step);
+        const e = glidePhase(glideK());
+        // the colony's clock and the ring copies' light ride the same phase
+        u = glideFrom.u * (1 - e);
+        seatLight = glideFrom.seat * (1 - smoother(e / 0.7));
+        // the page's own copy arrives so that its fade finishes as we land
+        if (glide.seconds - glideT <= CHROME_FADE_MS / 1000) releaseChrome();
+        if (glideT >= glide.seconds) { exit(); return; }
       }
     }
     apply(u, frameSeconds);
@@ -1011,6 +993,12 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       try { fitDesktop(); } finally { root.hidden = true; root.classList.remove('is-measuring'); }
     }
     return true;
+  }
+  function secondsTo(land) {
+    if (reduceMotion.matches) return 0.05;
+    if (!active || !from) return 0;
+    return createGlide(shown || presented(capture()), landingOf(land), camera.aspect,
+      { min: direction < 0 ? RETARGET_SECONDS : undefined }).seconds;
   }
   function handleKey(event) {
     if (!active || event.key !== 'Escape') return;
@@ -1056,19 +1044,16 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     get returnPhase() {
       if (!active) return 1;
       if (direction >= 0) return 0;
-      return reduceMotion.matches ? 1 : retargetW();
+      return reduceMotion.matches ? 1 : glidePhase(glideK());
     },
     /** How long the descent (started now, or what is left of it) takes —
      *  chapters pace their retires on it. */
     get returnSeconds() {
       if (reduceMotion.matches) return 0.05;
-      return direction < 0 ? (1 - returnK) / returnRate : returnSecondsFrom(u);
+      return direction < 0 && glide ? glide.seconds - glideT : secondsTo(null);
     },
-    /** how long a descent that lands on another section will take */
-    get awaySeconds() {
-      if (reduceMotion.matches) return 0.05;
-      return direction < 0 ? (1 - returnK) / returnRate : awaySecondsFrom(u);
-    },
+    /** how long a glide from the frame on screen to `land` would take */
+    secondsTo,
     get progress() { return u; },
     get shownLines() { return shownLines; },
     destroy() {

@@ -8,29 +8,9 @@ export const WORD_REVEAL_SECONDS = 3;
 // The remaining animation settles colour/glow; it must not delay reading.
 export const WORD_VISIBLE_FRACTION = 0.30;
 export const WORD_VISIBLE_SECONDS = WORD_REVEAL_SECONDS * WORD_VISIBLE_FRACTION;
-// THE DESCENT IS A FLIGHT TOO (2026-10-03 — Hannah: the way back "feels
-// weird and sudden and lacking in drama"). It used to rewind the whole 28s
-// ascent in 2.2s on a LINEAR clock — full speed on the first frame, a dead
-// stop on the last. Now its length scales with how high the camera got
-// (a Return straight after opening is short; one from the settled aerial
-// view takes its time), and the rewind eases in and out (smoother), so the
-// camera gathers itself, sinks through the spiral, and settles at the hero.
-export const RETURN_SECONDS = 4.8;            // from the fully settled view
-// 1.6 -> 2.2 (2026-10-04 — Hannah: turning back partway up "is really fast
-// and snappy ... it should be more like the navigation going the other
-// direction"): never shorter than the navigation's own 2.2 s opening beat
-// (branch.js RAIL_OPEN_SECONDS), which the row's fold home now matches.
-export const RETURN_MIN_SECONDS = 2.2;        // from just after departure
-export const returnSecondsFrom = (u) => RETURN_MIN_SECONDS + (RETURN_SECONDS - RETURN_MIN_SECONDS) * clamp01(u);
-/* A DESCENT THAT LANDS ELSEWHERE IS A LONGER JOURNEY (2026-10-04 — Hannah:
-   "the journey generally from manifesto to ownership is way too fast"). It
-   ran on the Return's clock — 4.8 s from the settled view, 1.6 s early —
-   though it covers the whole fall AND the leg from Purpose to the other
-   section (into the ground, for Ownership). It now takes about half as long
-   again plus a second: 7.5 s from the settled view, 3.2 s early. */
-export const AWAY_SCALE = 1.35;
-export const AWAY_EXTRA_SECONDS = 1.0;
-export const awaySecondsFrom = (u) => returnSecondsFrom(u) * AWAY_SCALE + AWAY_EXTRA_SECONDS;
+// THE WAY DOWN is not authored here: a Return is one glide from the pose on
+// screen to the landing rest (glide.js), priced by how far the picture
+// travels. Only the climb lives in this file.
 export const SPIRAL_START_SECONDS = 1.0;
 /* THE PHONE PULLS BACK FROM THE FIRST MOMENT, AND TURNS AS IT GOES
    (2026-11 — "the camera movement back isn't apparent ... for the first few
@@ -99,10 +79,6 @@ export function mobileReadingSchedule(starts, lastWordBeats) {
 export const AERIAL_BODY_COUNT = 560;
 export const clamp01 = (v) => Math.max(0, Math.min(1, v));
 export const smoother = (v) => { v = clamp01(v); return v * v * v * (v * (v * 6 - 15) + 10); };
-// Let the surrounding aerial field recede while the camera is still high.
-// The actual destination keeps its own presence; these extra mushrooms and
-// their attached ground/spores share this one gentle departure envelope.
-export const descentFieldPresence = k => 1 - smoother((k - .1) / .4);
 const mix = (a, b, t) => a + (b - a) * t;
 // C2 eases for the phone flight. Velocity gathers along a smoothstep over
 // `lead` seconds (no quintic crawl); a swing then peaks a third of the way
@@ -134,23 +110,9 @@ export function frameShiftAmount(seconds, aspect = 1.6) {
   return smoother((u - FRAME_SHIFT_IN) / FRAME_SHIFT_RISE)
     * (1 - smoother((u - FRAME_SHIFT_OUT) / (1 - FRAME_SHIFT_OUT)));
 }
-/* THE DESCENT RELEASES THE SHIFT, IT DOES NOT REPLAY IT (2026-11 — "the
-   camera pans to the right weirdly as it's descending", mostly from near the
-   top). Played backwards through descentU, the shift's 4.4 s window on the
-   climb was crossed in about 0.25 s: projected at 640 px wide, the hero slid
-   ~95 px left in 15 frames, peaking at 10.6 px a frame, after drifting the
-   other way — the 8 units move eye and target together, so the whole picture
-   slides. The words have left by then; the column it made room for is gone.
-   The descent now carries whatever shift was on screen at the click and lets
-   it go on the descent's own eased clock `k` (the clock landW rides), never
-   re-applying it: from the top there is none to release. `startU` is the
-   climb fraction the descent began from. */
-export function descentFrameShift(startU, k, aspect = 1.6) {
-  return frameShiftAmount(clamp01(startU) * CAMERA_SECONDS, aspect) * (1 - smoother(k));
-}
-export function frameShiftAt(seconds, aspect = 1.6, from = { position: { x: -14.72, z: 2.7 } }, shift = null, orbit = null) {
+export function frameShiftAt(seconds, aspect = 1.6, from = { position: { x: -14.72, z: 2.7 } }) {
   if (isMobileManifesto(aspect)) return { x: 0, z: 0 };
-  const spiral = orbit ?? spiralAt(seconds);
+  const spiral = spiralAt(seconds);
   const az = Math.atan2(from.position.z, from.position.x) + spiral * Math.PI * 100 / 180;
   // Keep the growing colony on the image's right while the reading column
   // occupies the left. The middle lift otherwise exposes a broad empty
@@ -158,8 +120,7 @@ export function frameShiftAt(seconds, aspect = 1.6, from = { position: { x: -14.
   // the orbit's heading, and relinquish this framing at the settled view.
   // The window is a fraction of the flight (authored as 8.5/5/19 s of a
   // 37.58 s flight) so it keeps its place when the reading rhythm changes.
-  // `shift` (a descent's, descentFrameShift) replaces the climb's own amount.
-  const middle = shift ?? frameShiftAmount(seconds, aspect);
+  const middle = frameShiftAmount(seconds, aspect);
   const distance = 11 * spiral + 8 * middle;
   return { x: -Math.sin(az) * distance, z: Math.cos(az) * distance };
 }
@@ -175,101 +136,7 @@ export function ascentAt(seconds, aspect = 1.6) {
   return 0.60 * smoother(seconds / 10) + 0.40 * smoother(seconds / CAMERA_SECONDS);
 }
 
-/* THE DESCENT COMES DOWN BY HEIGHT, NOT BY THE CLIMB'S OWN CLOCK
-   (2026-10-04 — Hannah: going from the Manifesto into Ownership "the
-   contents jumps forward and moves back"). A descent used to replay the
-   climb backwards at an eased but even pace through its seconds. The
-   climb gains 60% of its height in its first 10 of 28 s (ascentAt), so
-   played backwards that 60% — and the lift, the target's drop and the
-   46 -> 58 degree lens all keyed to its first 3 s — landed in the last
-   second: measured, the camera fell from 15.8 to 3.5 above the ground
-   in 0.55 s, came 6% closer to its subject than where it lands, and
-   backed off as the lens widened. That is the lurch. Now the HEIGHT
-   eases down evenly (ascentAt inverted), so the plunge is spread over the
-   whole descent; simulated, the peak zoom rate falls 2.0 -> 0.87 and the
-   overshoot is gone. `k` is the descent's eased clock, 0..1; `startU` the
-   climb fraction it began from. */
-export function descentU(startU, k, aspect = 1.6, fromY = 0) {
-  if (!(k < 1)) return 0;
-  const top = Math.max(0, Math.min(1, startU)) * CAMERA_SECONDS;
-  // Phone ascent has a separate opening lift. Rewinding only
-  // ascentAt leaves that lift (and its target/lens/bank) until the last 9%
-  // of a full return, producing a second downward move after the main flight.
-  // Invert the actual authored height so every part of the descent shares
-  // the same eased clock. Neither height alone can key it now (2026-11 — a
-  // "jolty move at the very end" coming back from the top): the desktop
-  // climb barely gains height while its 5 s sideways frame shift plays, so
-  // the height-keyed descent crossed it in 0.2 s (a 126 u/s whip against
-  // ~58), and its 8-unit opening lift, missing from ascentAt, re-accelerated
-  // and pitched the camera in the last second. The phone's tilt overhead
-  // outlasts its rise, so its last part has little height to be keyed by.
-  // Each key is half the actual height and half the climb's own progress
-  // (its clock on desktop, its tilt on phones), so no stretch is skipped.
-  // One law for both devices; only the climb profile differs.
-  const { raised, total, progress } = climbProfile(aspect);
-  const heightAt = seconds => 0.5 * raised(fromY, seconds) / (total - fromY) + 0.5 * progress(seconds);
-  const a = heightAt(top) * (1 - smoother(Math.max(0, k)));
-  if (!(a > 0)) return 0;
-  let lo = 0, hi = top;
-  for (let i = 0; i < 30; i++) {
-    const mid = (lo + hi) / 2;
-    if (heightAt(mid) < a) lo = mid; else hi = mid;
-  }
-  return (lo + hi) / 2 / CAMERA_SECONDS;
-}
-
-/* THE ORBIT UNWINDS ON THE DESCENT'S CLOCK, AND THE HERO GLIDES HOME ON
-   SCREEN (2026-11 — the same report). Keyed to descentU, the 100-degree
-   orbit unwound where the height barely changes: u fell 0.85 -> 0.25 in
-   1.5 s of a 4.8 s Return from the top, the heading turned at 84 deg/s,
-   and the hero swung ~106 px left at 640 wide, then ~50 px back right as
-   the camera pitched up to land — a pan one way and then the other. On
-   desktop the orbit (azimuth, radius, the target's swing) now eases on the
-   descent clock `k` like the frame shift, from the orbit on screen at the
-   click; height, lift, lens and bank keep descentU. That alone halves the
-   turn rate (38 deg/s) but leaves a ~55 px swing, so the descent also aims
-   so the hero's screen x eases straight from where it was at the click to
-   where it rests (smoother(k)), sliding only the look target along the
-   camera's horizontal right — a correction of at most ~40 px. Measured in
-   tools/test-manifesto-return.mjs. Desktop only: a phone's descent starts
-   looking straight down, where any sideways target offset would choose a
-   new heading; its lateral drift is already under a pixel a frame. */
-export const descentSpiral = (startU, k) => spiralAt(clamp01(startU) * CAMERA_SECONDS) * (1 - smoother(k));
-export const DESCENT_ANCHOR = { x: 0, y: 2, z: 0 };   // the hero's cap
-export function anchorScreenX(pose, aspect, point = DESCENT_ANCHOR) {
-  const f = manifestoViewFrame(pose, aspect);
-  const x = point.x - f.p.x, y = point.y - f.p.y, z = point.z - f.p.z;
-  const depth = x * f.fx + y * f.fy + z * f.fz;
-  return (x * f.rx + y * f.ry + z * f.rz) / (depth * f.tangent * aspect);
-}
-/** The plain Return's pose at descent clock `k` (0..1) from climb fraction
- *  `startU`: descentU's place on the climb, the released frame shift, and on
- *  desktop the hero held to its straight screen path. */
-export function descentPose(from, startU, k, aspect = 1.6) {
-  const u = descentU(startU, k, aspect, from.position.y);
-  const phone = isMobileManifesto(aspect);
-  const pose = manifestoPose(from, u * CAMERA_SECONDS, aspect, phone ? undefined : {
-    shift: descentFrameShift(startU, k, aspect), spiral: descentSpiral(startU, k) });
-  if (phone || !(k > 0) || !(k < 1)) return { u, pose };
-  const x0 = anchorScreenX(manifestoPose(from, clamp01(startU) * CAMERA_SECONDS, aspect), aspect);
-  const want = x0 + (anchorScreenX(manifestoPose(from, 0, aspect), aspect) - x0) * smoother(k);
-  const t = pose.target, p = pose.position;
-  const dist = Math.hypot(t.x - p.x, t.y - p.y, t.z - p.z);
-  for (let i = 0; i < 4; i++) {
-    const f = manifestoViewFrame(pose, aspect);
-    const h = Math.hypot(f.rx, f.rz);
-    // the aim turns by atan(error); the hero, near the image centre, follows
-    const turn = Math.atan((anchorScreenX(pose, aspect) - want) * f.tangent * aspect);
-    t.x += f.rx / h * dist * Math.tan(turn);
-    t.z += f.rz / h * dist * Math.tan(turn);
-  }
-  return { u, pose };
-}
-
-// Shared by the outward pose and the inverse return; one height law prevents
-// the return from omitting a component of the lift again. `progress` is the
-// climb's other clock the descent must not skip: the phone's tilt overhead,
-// desktop's own time (its frame shift and orbit run on it).
+// The climb's height above the rest, desktop and phone.
 function desktopHeightAbove(fromY, seconds, aspect) {
   const height = Math.max(70, 76 / Math.max(0.38, aspect));
   return 8 * smoother(seconds / 3.0) + (height - fromY - 8) * ascentAt(seconds, aspect);
@@ -285,14 +152,6 @@ function mobileHeightAbove(fromY, seconds) {
   return MOBILE_LIFT_HEIGHT * mobileRiseAt(seconds)
     + (38 - fromY - MOBILE_LIFT_HEIGHT) * mobileClimbAt(seconds);
 }
-function climbProfile(aspect) {
-  return isMobileManifesto(aspect)
-    ? { raised: mobileHeightAbove, total: 38, progress: mobileTiltAt }
-    : { raised: (fromY, seconds) => desktopHeightAbove(fromY, seconds, aspect),
-      total: Math.max(70, 76 / Math.max(0.38, aspect)),
-      progress: seconds => Math.min(seconds, CAMERA_SECONDS) / CAMERA_SECONDS };
-}
-
 /** Frame the mushrooms themselves, not the observer's position outside the
  * cutaway. Weight the nearby caps by projected plan area; distant hint tiers
  * must not pull the shot away from the established Purpose cluster. The hero
@@ -345,13 +204,13 @@ function mobilePose(from, seconds) {
 
 /** Desktop retains its authored lift and counterclockwise orbit. */
 export const spiralAt = seconds => smoother((seconds - SPIRAL_START_SECONDS) / (CAMERA_SECONDS - SPIRAL_START_SECONDS));
-export function manifestoPose(from, seconds, aspect = 1.6, { shift = null, spiral: orbit = null } = {}) {
+export function manifestoPose(from, seconds, aspect = 1.6) {
   if (isMobileManifesto(aspect)) return mobilePose(from, seconds);
   const lift = smoother(seconds / 3.0);
-  const spiral = orbit ?? spiralAt(seconds);
+  const spiral = spiralAt(seconds);
   const az = Math.atan2(from.position.z, from.position.x) + spiral * Math.PI * 100 / 180;
   const r = mix(Math.hypot(from.position.x, from.position.z), 60, spiral);
-  const { x: shiftX, z: shiftZ } = frameShiftAt(seconds, aspect, from, shift, orbit);
+  const { x: shiftX, z: shiftZ } = frameShiftAt(seconds, aspect, from);
   return {
     position: {
       x: (!(spiral > 0) ? from.position.x : Math.cos(az) * r) + shiftX,

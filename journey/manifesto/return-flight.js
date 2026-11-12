@@ -22,6 +22,8 @@ export function createReturnFlight(from, to, seconds, velocity = {}, options = {
   return { from, to, a, b, seconds, velocity: velocity || {}, options };
 }
 /** One camera move, rather than a blend of two independently rewound lifts.
+ * Since 2026-11 (v3) only the ENTRY flight (entry-flight.js) uses this; every
+ * way down — Return, away landing, retarget — is a glide (glide.js).
  * Interpolate viewing angles explicitly: near vertical, lerped look-at targets
  * can cancel their tiny horizontal components and flip the camera's heading.
  * The quintic tangent carries the displayed velocity into an early return or
@@ -42,22 +44,6 @@ export function sampleReturnFlight(flight, progress) {
     // that cap so the climb does not spend its middle looking into sky.
     const lead = (smoother(k / .8) - w) * (1 - smoother((k - .65) / .35));
     value.pitch += (flight.b.pitch - flight.a.pitch) * lead;
-  }
-  // Underground arrivals need to reach the viewing side of the root crown
-  // before entering it. A straight chord from the aerial view approaches
-  // from behind the final framing, forcing a close-range turn at the soil.
-  // This single Bezier arc has no intermediate stop; the original start
-  // tangent survives interruptions and every endpoint remains exact.
-  if (flight.options.rootApproach) {
-    const back = { x: -Math.cos(flight.b.yaw), z: -Math.sin(flight.b.yaw) };
-    const reach = Math.min(12, Math.max(0, flight.a.y - flight.b.y) * .3);
-    for (const key of ['x', 'y', 'z']) {
-      const a = flight.a[key], b = flight.b[key];
-      const c1 = a + (b - a) / 3;
-      const c2 = b + (key === 'y' ? reach * .45 : back[key] * reach);
-      value[key] = a*(1-w)**3 + 3*c1*(1-w)**2*w + 3*c2*(1-w)*w*w + b*w**3
-        + (flight.velocity[key] || 0) * flight.seconds * tangent;
-    }
   }
   if (flight.options.rootDeparture) {
     // Leave the crown on the viewing side rather than lifting through its

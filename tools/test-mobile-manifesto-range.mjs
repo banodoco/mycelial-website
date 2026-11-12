@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CONTENT } from '../content/content.js';
-import { manifestoPose, mobileReadingSchedule, lineSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, WORD_VISIBLE_SECONDS, WORD_VISIBLE_FRACTION, ascentAt, descentU, CAMERA_SECONDS, aerialPlacements, planAerialReveals } from '../journey/manifesto/pose.js';
+import { manifestoPose, mobileReadingSchedule, lineSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, WORD_VISIBLE_SECONDS, WORD_VISIBLE_FRACTION, ascentAt, CAMERA_SECONDS, aerialPlacements, planAerialReveals } from '../journey/manifesto/pose.js';
 const makeRng = seed => () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
 const groundY = () => 0;
 const from = { position: { x: 8, y: 3, z: 9 }, target: { x: 0, y: 2, z: 0 }, fov: 46 };
@@ -36,19 +36,23 @@ for (let t = 2; t < CAMERA_SECONDS; t += 1) {
     `mobile camera continues climbing at ${t}s`);
 }
 assert.deepEqual(end, manifestoPose(from, CAMERA_SECONDS + 5, aspect));
-for (const view of [aspect, 1.6]) {
-  for (const start of [0.2, 0.6, 1]) {
-    // Returns key on half the authored height (phone opening lift included)
-    // and half the climb's own progress, so they still descend monotonically
-    // and land exactly, without skipping a stretch the climb dwelt on.
-    let previous = Infinity;
-    for (let progress = 0; progress <= 1; progress += 1 / 32) {
-      const u = descentU(start, progress, view, from.position.y);
-      const y = manifestoPose(from, u * CAMERA_SECONDS, view).position.y;
-      assert.ok(y <= previous + 1e-9, 'return retraces its viewport height, including the phone opening lift');
-      previous = y;
+{
+  // A Return is one glide (journey/manifesto/glide.js) from the pose on
+  // screen: from any height, on either viewport, it comes down without ever
+  // climbing again and lands exactly on the rest.
+  const { createGlide, sampleGlide } = await import('../journey/manifesto/glide.js');
+  for (const view of [aspect, 1.6]) {
+    for (const start of [0.2, 0.6, 1]) {
+      const glide = createGlide(manifestoPose(from, start * CAMERA_SECONDS, view), from, view);
+      let previous = Infinity;
+      for (let k = 0; k <= 1; k += 1 / 64) {
+        const y = sampleGlide(glide, k).position.y;
+        assert.ok(y <= previous + 1e-9, 'return descends monotonically, including the phone opening lift');
+        previous = y;
+      }
+      const end = sampleGlide(glide, 1).position;
+      assert.ok(Math.hypot(end.x - from.position.x, end.y - from.position.y, end.z - from.position.z) < 1e-9, 'the glide lands on the rest');
     }
-    assert.equal(descentU(start, 1, view, from.position.y), 0);
   }
 }
 for (let t = 0.5; t < CAMERA_SECONDS; t += 0.5) {
