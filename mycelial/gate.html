@@ -724,12 +724,11 @@
         };
         const resizeNet = () => {
           dpr = Math.min(2, devicePixelRatio || 1);
-          net.width = Math.round(innerWidth * dpr);
-          net.height = Math.round(innerHeight * dpr);
-          // The box is the bitmap's own logical size, read live, so a phone's toolbar can never leave the two
-          // disagreeing (and the mark drawn off the screen's middle).
-          net.style.width = `${innerWidth}px`;
-          net.style.height = `${innerHeight}px`;
+          // The bitmap is the canvas's own box (fixed, inset: 0), read live, never innerWidth x innerHeight, which
+          // Chrome on an iPhone can report at its large viewport: the two never disagree (the mark drawn off the
+          // screen's middle) and the canvas never stands taller than the screen.
+          net.width = Math.round((net.clientWidth || innerWidth) * dpr);
+          net.height = Math.round((net.clientHeight || innerHeight) * dpr);
           draw();
         };
         const wake = () => {

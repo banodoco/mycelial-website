@@ -52,7 +52,7 @@ window.installDeckProgress = ({ slides, go, current }) => {
   picture.addEventListener('load', () => { picture.style.opacity = '1'; });
   picture.addEventListener('error', () => { picture.style.opacity = '0'; });
   const jump = (index) => {
-    if (document.activeElement === preview) buttons[index].focus();
+    if (document.activeElement === preview) buttons[index].focus({ preventScroll: true });
     hide(); go(index);
   };
   const buttons = slides.map((slide, index) => {
@@ -81,7 +81,7 @@ window.installDeckProgress = ({ slides, go, current }) => {
         event.preventDefault(); event.stopPropagation();
         const next = Math.max(0, Math.min(slides.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)));
         buttons.forEach((item, k) => { item.tabIndex = k === next ? 0 : -1; });
-        buttons[next].focus(); show(next);
+        buttons[next].focus({ preventScroll: true }); show(next);
       } else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); hide(); }
       else if ([' ', 'Enter'].includes(event.key)) event.stopPropagation();
     });
@@ -97,7 +97,7 @@ window.installDeckProgress = ({ slides, go, current }) => {
     if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { hide(); return; }
     if (event.key === 'Escape') {
       event.preventDefault(); event.stopPropagation();
-      buttons[shown >= 0 ? shown : current()].focus(); hide();
+      buttons[shown >= 0 ? shown : current()].focus({ preventScroll: true }); hide();
     } else if ([' ', 'Enter'].includes(event.key)) event.stopPropagation();
   });
   document.addEventListener('keydown', () => { touch = false; }, { capture: true });

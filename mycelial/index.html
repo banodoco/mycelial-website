@@ -100,6 +100,22 @@
   /* visible-view:end */
   window.deckView = visibleView;
   window.deckMiddle = visibleMiddle;
+  // The page itself never scrolls: the deck is a fixed stage the size of the screen. A scroll left behind (a phone's
+  // keyboard panning the screen, a focus, the browser's own adjustment as its bars settle) would show that stage
+  // shifted against the screen, its top under the address bar and an empty band over the bottom toolbar, until
+  // something else moved it. Whenever the page or the visual viewport reports an offset at no zoom, it goes back to
+  // the top; never while a text field has the keyboard (it may pan the screen to keep the field in view).
+  const unscroll = () => {
+    const vv = window.visualViewport, field = document.activeElement;
+    if (field && field.matches('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    if (vv && Math.abs((vv.scale || 1) - 1) >= 0.01) return;
+    if (scrollX || scrollY || (vv && (vv.offsetTop || vv.offsetLeft))) scrollTo(0, 0);
+  };
+  addEventListener('scroll', unscroll, { passive: true });
+  addEventListener('pageshow', unscroll);
+  addEventListener('focusout', () => setTimeout(unscroll, 0));
+  window.visualViewport?.addEventListener('scroll', unscroll);
+  window.visualViewport?.addEventListener('resize', unscroll);
   // Version F opens with the Mycelial mark: hide the slide before first paint (dot-transitions.js takes over).
   const root = document.documentElement;
   let gateOpened, gateMark;
@@ -214,6 +230,8 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); }
+  /* The page never scrolls or bounces (the deck is a fixed stage; a slide that scrolls keeps its scroll to itself). */
+  html { overscroll-behavior: none; }
   body { font-family: "EB Garamond", Georgia, serif; overflow: hidden; }
 
   :root { --version-ink: #f2ca83; --version-bg: #382a16; }
@@ -553,6 +571,8 @@
      layer above; on an iPhone such content could drop out of the composited page though laid out and styled, as
      the wheel slides' words once did. The layer lasts the whole visit, so nothing is promoted or demoted mid-turn. */
   html[data-ver="f"] .gap-host:is(.on, [data-deck-present]) > .split > .vis { will-change: opacity; }
+  /* The captions fade in on their own layers; made once the slide is shown, they are already there when the fade starts. */
+  html[data-ver="f"] .gap-host:is(.on, [data-deck-present]) .gp-ax, html[data-ver="f"] .gap-host:is(.on, [data-deck-present]) .gp-zone { will-change: opacity; }
   .gp-run { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
   .gp-flight { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
   @media (prefers-reduced-motion: reduce) { .gp-dot::before, .gp-empty i { animation: none; } .gp-dot, .gp-dot i { transition: none; } }
@@ -1664,7 +1684,7 @@
   .m-team b { font-weight: 400; color: var(--ink); } .m-team em { color: #f0c67e; font-size: 0.85rem; }
 
   /* All versions share slide geometry and typography. */
-  .slide { overflow-y: auto; }
+  .slide { overflow-y: auto; overscroll-behavior: contain; }
   .slide > .num, .slide > .split { flex-shrink: 0; }
   .d-cards { display: grid; gap: 0.7rem; }
   .d-cards > div { padding: 0.85rem 1.1rem; border-left: 1px solid #e0ab5e77; background: #ffffff03; }
