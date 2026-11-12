@@ -132,7 +132,7 @@
         || typeof HTMLCanvasElement.prototype.transferControlToOffscreen !== 'function'
         || matchMedia('(prefers-reduced-motion: reduce)').matches
         || q.has('capture') || q.has('introat') || q.has('nointro')
-        || q.get('prelude') === 'main') return;
+        || q.get('prelude') === 'main' || q.get('prelude') === 'none') return;
     try {
       window.__preludeWorker = new Worker((window.__runtimeBase || './') + 'organism/hero-spores-worker.js', { type: 'module' });
     } catch { /* hero-spores.js starts its own, or draws on the page */ }

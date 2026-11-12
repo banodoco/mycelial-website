@@ -178,7 +178,9 @@ export const PIN_PR = Number.isFinite(_pr) && _pr > 0 ? Math.min(_pr, 3) : null;
 
 /** ?prelude=main — draw the load prelude (organism/hero-spores.js) on the
  *  page's own thread instead of its worker, for an A/B of the off-thread
- *  path. Any other value, or none, leaves the normal choice. */
+ *  path. ?prelude=none — no prelude at all: no worker, no second WebGL
+ *  context; the scene's own spores arrive with the scene (the 8 GB Mac's
+ *  one-context A/B). Any other value, or none, leaves the normal choice. */
 export const PRELUDE_THREAD = _qs.get('prelude'); // string | null
 
 /** ?nowarm=1 — turn the rest-time GPU warm queue off entirely

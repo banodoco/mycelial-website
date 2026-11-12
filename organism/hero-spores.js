@@ -2648,6 +2648,8 @@ function createPreload() {
 
   function boot() {
     if (state.live || state.failed) return;
+    // ?prelude=none: the scene carries the load on its own (one context)
+    if (PRELUDE_THREAD === 'none') { dropEarlyWorker(); return; }
     const stage = document.getElementById('stage');
     if (!stage || !stage.parentNode) return;
     state.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
