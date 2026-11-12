@@ -106,6 +106,8 @@
     const n = to || { x: vw / 2, y: vh / 2 };
     net.width = ground.width = Math.round(vw * dpr);
     net.height = ground.height = Math.round(vh * dpr);
+    // The visible box, live: the bitmap and its CSS box agree whatever a phone's toolbar is doing.
+    net.style.width = `${vw}px`; net.style.height = `${vh}px`;
     const w = warp * sx / sy, even = w > 1.25 || w < 0.8;
     if (even) { const k = Math.sqrt(sx * sy); sx = k / Math.sqrt(warp); sy = k * Math.sqrt(warp); warp = 1; } else warp = w;
     if (sx !== 1 || sy !== 1 || even) {

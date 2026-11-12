@@ -681,6 +681,10 @@
           dpr = Math.min(2, devicePixelRatio || 1);
           net.width = Math.round(innerWidth * dpr);
           net.height = Math.round(innerHeight * dpr);
+          // The box is the bitmap's own logical size, read live, so a phone's toolbar can never leave the two
+          // disagreeing (and the mark drawn off the screen's middle).
+          net.style.width = `${innerWidth}px`;
+          net.style.height = `${innerHeight}px`;
           draw();
         };
         const wake = () => {
