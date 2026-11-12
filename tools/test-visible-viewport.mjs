@@ -29,11 +29,18 @@
  *       subscribes, the spore layer subscribes with the box it was composed
  *       for and re-sends the worker its size on every change, and the scene
  *       does not ease its framing while the layer still owns its own frame
+ *   V11 FINE POINTER (desktop, 2026-11 boot stutter): the settle poll stops
+ *       after QUICK_FRAMES agreeing reads instead of SETTLE_MS; an event that
+ *       finds nothing changed starts no per-frame phase; an observed change
+ *       still gets the full window; a coarse pointer keeps the old phase
+ *   V12 the browser read: on a fine pointer the fixed probe (a forced
+ *       layout) is measured only when a cheap source moved; on a coarse
+ *       pointer, every read — the phone path is byte-for-byte the old one
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  computeVisible, createVisibleViewport, visibleSize, SETTLE_MS, SETTLED_MS,
+  computeVisible, createVisibleViewport, createBrowserViewport, visibleSize, SETTLE_MS, SETTLED_MS, QUICK_FRAMES,
 } from '../visible-viewport.js';
 
 let failed = 0;
@@ -43,9 +50,10 @@ const row = (id, name, fn) => {
 };
 
 /** A fake world: a layout box, a visual viewport, a clock and a frame queue. */
-function world({ lw = 430, lh = 738, vv = { width: 430, height: 738, scale: 1, offsetTop: 0, offsetLeft: 0 } } = {}) {
+function world({ lw = 430, lh = 738, vv = { width: 430, height: 738, scale: 1, offsetTop: 0, offsetLeft: 0 }, quickSettle = null } = {}) {
   const w = { lw, lh, vv, dpr: 1, t: 0, frames: [], timers: [], reads: 0, published: [] };
   w.vp = createVisibleViewport({
+    quickSettle,
     read: () => { w.reads++; return { layoutWidth: w.lw, layoutHeight: w.lh, vv: w.vv, dpr: w.dpr }; },
     now: () => w.t,
     raf: (fn) => w.frames.push(fn),
@@ -210,6 +218,75 @@ row('V10', 'scene and spore layer: same source, same tier, no lost settle, no sp
     'every change re-sends the worker its view and canvas size');
   assert.match(spores, /const vp = visibleSize\(\);\s*return \{\s*width: Math\.max\(1, Math\.round\(vp\.width \* pr\)\),\s*height: Math\.max\(1, Math\.round\(vp\.height \* pr\)\)/,
     'the layer canvas is sized from the same visible box as the scene');
+});
+
+row('V11', 'fine pointer: a short settle unless a change is observed; coarse keeps the full window', () => {
+  const desk = { width: 1440, height: 900, scale: 1, offsetTop: 0, offsetLeft: 0 };
+  let fine = true;
+  const w = world({ lw: 1440, lh: 900, vv: desk, quickSettle: () => fine });
+  const frames = w.run(SETTLE_MS + 200);
+  assert.equal(frames, QUICK_FRAMES, `stops after ${QUICK_FRAMES} agreeing frames, not ${Math.round(SETTLE_MS / 16)}`);
+  assert.equal(w.vp.polling, false);
+  // load / pageshow with nothing changed: one read, no per-frame phase
+  const reads = w.reads;
+  w.vp.poke();
+  assert.equal(w.reads, reads + 1, 'the event is read once');
+  assert.equal(w.frames.length, 0, 'and starts no poll');
+  // a real resize: published at once, and the full window follows it
+  const seen = [];
+  w.vp.subscribe((n) => seen.push(n.width));
+  w.lw = 1200; w.vv = { ...desk, width: 1200 };
+  w.vp.poke();
+  assert.deepEqual(seen, [1200]);
+  const after = w.run(SETTLE_MS + 200);
+  assert(after >= Math.floor(SETTLE_MS / 16) - 2, `an observed change keeps the full window (${after} frames)`);
+  assert.equal(w.frames.length, 0, 'and then stops');
+  // a change observed by the start-up poll itself keeps the full window too
+  const w2 = world({ lw: 1440, lh: 900, vv: desk, quickSettle: () => true });
+  w2.frame();
+  w2.lh = 880; w2.vv = { ...desk, height: 880 };
+  const n2 = 1 + w2.run(SETTLE_MS + 200);
+  assert(n2 >= Math.floor(SETTLE_MS / 16) - 2, `a change in the start-up phase keeps the full window (${n2})`);
+  // a coarse pointer (and no quickSettle at all, V5): the full window
+  fine = false;
+  const w3 = world({ quickSettle: () => false });
+  assert(w3.run(SETTLE_MS + 200) >= Math.floor(SETTLE_MS / 16) - 2, 'coarse: unchanged');
+  w3.vp.poke();
+  assert.equal(w3.frames.length, 1, 'coarse: every event re-arms the poll, as before');
+});
+
+row('V12', 'the browser read: a fine pointer measures the probe only when a cheap source moved', () => {
+  const make = (coarse) => {
+    const W = { rects: 0, frames: [], listeners: {} };
+    const probe = { style: {}, parentNode: null, setAttribute() {},
+      getBoundingClientRect: () => { W.rects++; return { width: W.win.innerWidth, height: W.win.innerHeight }; } };
+    const body = { appendChild: (c) => { c.parentNode = body; } };
+    W.win = {
+      innerWidth: 1440, innerHeight: 900, devicePixelRatio: 1, visualViewport: null,
+      document: { body, documentElement: { style: { setProperty() {} } }, createElement: () => probe },
+      matchMedia: (q) => ({ matches: q === '(pointer: coarse)' ? coarse : true, addEventListener() {}, removeEventListener() {} }),
+      performance: { now: () => 0 },
+      requestAnimationFrame: (fn) => W.frames.push(fn),
+      setTimeout: () => 0, clearTimeout() {}, setInterval() {},
+      addEventListener: (type, fn) => { (W.listeners[type] ||= []).push(fn); },
+      dispatchEvent() {},
+    };
+    W.vp = createBrowserViewport(W.win);
+    W.frame = () => { for (const fn of W.frames.splice(0)) fn(); };
+    return W;
+  };
+  const fine = make(false);
+  for (let i = 0; i < 10; i++) fine.frame();
+  assert.equal(fine.rects, 1, 'fine: the probe is measured once for the whole start-up phase');
+  for (const fn of fine.listeners.load) fn();
+  assert.equal(fine.rects, 1, 'fine: load with nothing changed measures nothing');
+  fine.win.innerWidth = 1280;
+  for (const fn of fine.listeners.resize) fn();
+  assert.equal(fine.rects, 2, 'fine: a moved cheap source re-measures');
+  assert.equal(fine.vp.get().width, 1280);
+  const coarse = make(true);
+  for (let i = 0; i < 10; i++) coarse.frame();
+  assert.equal(coarse.rects, 11, 'coarse: every read measures, as before');
 });
 
 if (failed) { console.log(`visible viewport: ${failed} FAILED`); process.exit(1); }

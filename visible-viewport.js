@@ -37,6 +37,16 @@
 //     bottom: var(--visible-bottom, 0px)` lays out exactly as `inset: 0`.
 //   · after that, a 4 Hz watch of the cheap sources (no layout read) re-arms
 //     the poll whenever any of them moves, for the life of the page;
+//   · ON A FINE POINTER (desktop) THE SETTLE PHASE IS SHORT AND CHEAP
+//     (2026-11, boot stutter): the poll stops after QUICK_FRAMES agreeing
+//     reads unless a change is actually observed (then the full SETTLE_MS
+//     window applies, as everywhere); an event that finds nothing changed
+//     starts no per-frame phase at all; and the fixed probe — the one
+//     forced layout per read — is measured only when a cheap source
+//     (innerWidth/innerHeight, the visual viewport, the ratio) has moved
+//     since it was last measured. The large-viewport lie this module exists
+//     for is a phone's; a coarse pointer keeps every read and the full
+//     window exactly as before;
 //   · two tiers: `subscribe` (every change, at once) and `subscribeSettled`
 //     (once per burst, SETTLED_MS after it) — see createVisibleViewport.
 //
@@ -50,6 +60,9 @@ export const SETTLED_MS = 150;
 /** The background watch's period (see createBrowserViewport). */
 export const WATCH_MS = 250;
 const SCALE_EPS = 0.01;
+/** Fine pointer: agreeing per-frame reads after which the settle poll may
+ *  stop early (see the policy note above). */
+export const QUICK_FRAMES = 3;
 
 /** Pure: the visible box from one set of readings. */
 export function computeVisible({ layoutWidth, layoutHeight, vv, dpr = 1, coarse = false }) {
@@ -106,12 +119,18 @@ function freeze(s) {
  * settles in five steps restarts them once, as one window `resize` did.
  */
 export function createVisibleViewport({ read, now, raf = null, publish = null,
-  setTimer = null, clearTimer = null }) {
+  setTimer = null, clearTimer = null, quickSettle = null }) {
   let current = freeze(computeVisible(read()));
   let lastRaw = current;
   let revision = 0;
   let pollUntil = now() + SETTLE_MS;
   let polling = false;
+  // quickSettle(): true where a short settle phase is enough (a fine
+  // pointer). `quickArmed` stays true while the current phase has observed
+  // no change; `agreeRun` counts its consecutive agreeing reads.
+  const quick = () => !!(quickSettle && quickSettle());
+  let quickArmed = true;
+  let agreeRun = 0;
   const subs = [];
   const settledSubs = [];
   let settledBase = current;   // what settled subscribers last heard
@@ -134,6 +153,7 @@ export function createVisibleViewport({ read, now, raf = null, publish = null,
       current = freeze(raw);
       revision += 1;
       pollUntil = now() + SETTLE_MS;
+      quickArmed = false;
       if (publish) publish(current, prev);
       for (const fn of subs.slice()) {
         try { fn(current, prev); } catch (err) { console.error('[visible-viewport] subscriber threw', err); }
@@ -148,6 +168,9 @@ export function createVisibleViewport({ read, now, raf = null, publish = null,
   function frame() {
     polling = false;
     const agree = refresh();
+    agreeRun = agree ? agreeRun + 1 : 0;
+    // a fine pointer, nothing moved in this phase, and the reads agree
+    if (agree && quickArmed && agreeRun >= QUICK_FRAMES && quick()) return;
     if (now() < pollUntil || !agree) schedule();
   }
   function schedule() {
@@ -157,6 +180,18 @@ export function createVisibleViewport({ read, now, raf = null, publish = null,
   }
   /** An event that can move the box: read now, and keep reading a while. */
   function poke() {
+    if (quick()) {
+      // read once; only an observed change (or reads still in flux) earns
+      // the per-frame phase, and then the full window
+      const before = revision;
+      const agree = refresh();
+      if (agree && revision === before) return;
+      quickArmed = false;
+      agreeRun = 0;
+      pollUntil = Math.max(pollUntil, now() + SETTLE_MS);
+      schedule();
+      return;
+    }
     pollUntil = Math.max(pollUntil, now() + SETTLE_MS);
     refresh();
     schedule();
@@ -198,10 +233,19 @@ export function createVisibleViewport({ read, now, raf = null, publish = null,
   };
 }
 
-function createBrowserViewport(win) {
+export function createBrowserViewport(win) {
   const doc = win.document;
   let probe = null;
   const coarseQuery = typeof win.matchMedia === 'function' ? win.matchMedia('(pointer: coarse)') : null;
+  const fine = () => !(coarseQuery && coarseQuery.matches);
+  // The cheap sources, as one string: no layout read (see the watch below).
+  const sign = () => {
+    const v = win.visualViewport;
+    return `${win.innerWidth},${win.innerHeight},${win.devicePixelRatio},`
+      + (v ? `${v.width},${v.height},${v.offsetTop},${v.offsetLeft},${v.scale}` : '');
+  };
+  // the probe's last measured box and the cheap sources it was measured under
+  let probeBox = null, probeSig = null;
   const read = () => {
     let layoutWidth = win.innerWidth, layoutHeight = win.innerHeight;
     // What fixed-position CSS actually lays out in. innerHeight can report
@@ -214,8 +258,19 @@ function createBrowserViewport(win) {
         probe.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;'
           + 'visibility:hidden;pointer-events:none;contain:strict;z-index:-1;';
       }
-      if (probe.parentNode !== host) host.appendChild(probe);
-      const r = probe.getBoundingClientRect();
+      // On a fine pointer the probe is re-measured only when a cheap source
+      // has moved: its box cannot change otherwise there, and the measure is
+      // a forced layout in the busiest frames of the boot. A coarse pointer
+      // measures every read, as it always has.
+      const sig = sign();
+      let r;
+      if (fine() && probeBox && probeSig === sig && probe.parentNode === host) r = probeBox;
+      else {
+        if (probe.parentNode !== host) host.appendChild(probe);
+        const b = probe.getBoundingClientRect();
+        r = probeBox = { width: b.width, height: b.height };
+        probeSig = sig;
+      }
       if (r.width > 0 && r.height > 0) {
         layoutWidth = Math.min(layoutWidth, r.width);
         layoutHeight = Math.min(layoutHeight, r.height);
@@ -240,7 +295,7 @@ function createBrowserViewport(win) {
     }
   };
   const api = createVisibleViewport({
-    read, publish,
+    read, publish, quickSettle: fine,
     now: () => win.performance.now(),
     raf: (fn) => win.requestAnimationFrame(fn),
     setTimer: (fn, ms) => win.setTimeout(fn, ms),
@@ -276,13 +331,7 @@ function createBrowserViewport(win) {
   // difference is treated exactly like an event. This is what keeps the box
   // right after the settle poll has ended — bars that collapse or return
   // late, with nothing fired.
-  let signature = '';
-  const sign = () => {
-    const v = win.visualViewport;
-    return `${win.innerWidth},${win.innerHeight},${win.devicePixelRatio},`
-      + (v ? `${v.width},${v.height},${v.offsetTop},${v.offsetLeft},${v.scale}` : '');
-  };
-  signature = sign();
+  let signature = sign();
   win.setInterval(() => {
     const next = sign();
     if (next !== signature) { signature = next; api.poke(); }

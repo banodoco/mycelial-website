@@ -398,10 +398,20 @@
         addEventListener('visibleviewportchange', () => measureLift());
         document.fonts.ready.then(() => measureLift());
         // iOS does not promise an event when its bars settle, so the first
-        // seconds are also re-read once a frame; it stops on its own.
+        // seconds are also re-read once a frame; it stops on its own. A fine
+        // pointer (desktop) has no toolbar to settle, and each read here is
+        // two forced layouts in the busiest frames of the boot (2026-11,
+        // stutter): there it stops after three reads in a row that left the
+        // pose where it was. Events and the ResizeObserver above still
+        // re-measure; a coarse pointer keeps the full two seconds.
         const settleUntil = performance.now() + 2000;
+        const finePointer = !matchMedia('(pointer: coarse)').matches;
+        let unchanged = 0;
         const settle = now => {
+          const before = lastLift;
           measureLift();
+          unchanged = lastLift === before ? unchanged + 1 : 0;
+          if (finePointer && unchanged >= 3) return;
           if (now < settleUntil) requestAnimationFrame(settle);
         };
         requestAnimationFrame(settle);
