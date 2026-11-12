@@ -47,7 +47,7 @@
     },
     {
       "path": "content",
-      "include": ["connect-nodes.js", "content.js", "contributors.js", "manifesto-concepts.js", "manifesto-links.js"]
+      "include": ["connect-nodes.js", "content.js", "contributors.js", "manifesto-concepts.js", "manifesto-links.js", "manifesto-verse.js"]
     },
     {
       "path": "journey",
