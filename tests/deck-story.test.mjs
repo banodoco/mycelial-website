@@ -252,6 +252,7 @@ test('slide 5 portrait phones show the roadmap after the demo, before the links'
   assert.match(source, /mobileRoadmap\.classList\.add\('as-mobile-roadmap'\)/);
   assert.ok(source.indexOf('demoSlide.appendChild(mobileRoadmap)') < source.indexOf('demoSlide.appendChild(mobileLinks)'));
   assert.match(css, /@media \(max-width: 600px\) and \(orientation: portrait\)[^{]*\{[^@]*\.as-host\.story-refined h1 \.story-roadmap-grid \{ display: none; \}/);
+  assert.match(css, /@media \(max-width: 600px\) and \(orientation: portrait\)[^{]*\{[^@]*\.story-intro > \.story-links \{ display: flex; \}[^@]*\.as-mobile-links \{ display: none; \}/);
   assert.match(css, /\.as-host\.story-refined \.as-mobile-roadmap\s*\{[^}]*display: grid[^}]*opacity: var\(--as-reveal-alpha, 1\)/);
 });
 test('mobile chat keeps its entire message history and permits touch scrolling', () => {

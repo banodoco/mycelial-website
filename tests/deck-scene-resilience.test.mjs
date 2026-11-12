@@ -23,11 +23,11 @@ test('clock accounts the old interval at pause and pace boundaries',()=>{
 const drawCode=section(stack,'  const draw = () => {',"  cv.addEventListener('contextrestored'");
 test('transient thread failure retries rather than hiding its canvas forever',()=>{
   let tries=0,faults=0;
-  const f=expose(drawCode,{drawFaults:0,baseReady:true,drawThreads(){if(++tries===1)throw Error('injected')},reportFault(){faults++}},'draw');
-  f.fn();for(let i=0;i<20;i++)f.fn();assert.equal(tries,21);assert.equal(faults,1);assert.equal(f.c.baseReady,false);
+  const f=expose(drawCode,{drawFaults:0,baseReady:true,threadsDirty:false,drawThreads(){if(++tries===1)throw Error('injected')},drawGuide(){},reportFault(){faults++}},'draw');
+  f.fn();for(let i=0;i<20;i++)f.fn();assert.equal(tries,21);assert.equal(faults,1);assert.equal(f.c.baseReady,false);assert.equal(f.c.threadsDirty,true);
 });
 test('persistent decorative failures are bounded, with no automatic repair timer',()=>{
-  let tries=0;const f=expose(drawCode,{drawFaults:0,baseReady:true,drawThreads(){tries++;throw Error('injected')},reportFault(){}},'draw');
+  let tries=0;const f=expose(drawCode,{drawFaults:0,baseReady:true,threadsDirty:false,drawThreads(){tries++;throw Error('injected')},drawGuide(){},reportFault(){}},'draw');
   for(let i=0;i<30;i++)f.fn();assert.equal(tries,2);assert.equal(f.c.drawFaults,2);
 });
 function capture(fail){
@@ -52,9 +52,33 @@ test('stack stale frame does not paint or restart a newer scene',()=>{
   f.fn({});assert.equal(painted,0);assert.equal(scheduled,0);
 });
 const recovery=section(stack,'  const recoverFrame =','  // As on slide 5');
-test('stack persistent frame fault gets only one recovery per visit',()=>{
-  let calls=0;const ctx={};const f=expose(recovery,{reportFault(){},running:true,raf:0,video:{pause(){}},current:()=>true,activeCtx:ctx,build:null,frameRecoveredFor:null,metrics:{frameRecoveries:0},amb:null,clearGhosts(){},layout(){calls++;throw Error('persistent')}},'recoverFrame');
-  f.fn(ctx,Error('initial'));f.fn(ctx,Error('again'));assert.equal(calls,1);assert.equal(f.c.metrics.frameRecoveries,1);assert.equal(f.c.running,false);
+test('stack persistent frame fault lands at rest every time and retires the loop after two restarts',()=>{
+  let lands=0,wakes=0,completed=0;const ctx={};
+  const f=expose(recovery,{reportFault(){},running:true,raf:0,video:{pause(){}},current:()=>true,activeCtx:ctx,build:null,frameRecoveredFor:null,frameFaults:0,loopRetired:false,
+    metrics:{frameRecoveries:0},amb:{},entryFinished:false,entryCompletion(){completed++},landAtRest(){lands++},motionOff:()=>false,guide:{on:true,a:1},draw(){},now:()=>1,openI:-1,
+    tourFrom(){},play(){},wake(){wakes++},endFold(){}},'recoverFrame');
+  f.fn(ctx,Error('first'));assert.equal(lands,1);assert.equal(f.c.running,true);assert.equal(f.c.entryFinished,true);assert.equal(completed,1);
+  f.fn(ctx,Error('second'));f.fn(ctx,Error('third'));f.fn(ctx,Error('fourth'));
+  assert.equal(lands,4,'the rest picture is landed on every fault');assert.equal(wakes,2,'the loop restarts twice only');
+  assert.equal(f.c.loopRetired,true);assert.equal(f.c.running,false);assert.equal(f.c.metrics.frameRecoveries,4);
+  f.fn({},Error('stale visit'));assert.equal(lands,4,'a departed visit is not landed');
+});
+test('the rest picture is landed step by step, so one failing step cannot keep the planes hidden',()=>{
+  const land=section(stack,'  const landAtRest =','  // What a settled, ambient stack');
+  let applied=0,faults=0;const state=[{o:0,pile:3}];
+  const f=expose(land,{build:{},clearGhosts(){throw Error('ghosts')},clearResidue(){},geo:{},layout(){},st:state,PL:[{cy:150}],settledOf:()=>({o:1,y:150}),lit:[0],stackFlight:null,
+    applyPlanes(){applied++},vis:{sh:0,lb:[0],rt:0,gd:0},syncFlagVisibility(){},flags:[{tabIndex:-1}],view:{mobile:true},openI:-1,show(i){f.c.openI=i},arrangeFlags(){},stepHead(){},
+    draw(){throw Error('canvas')},reportFault(){faults++}},'landAtRest');
+  assert.equal(f.fn({}),false);assert.equal(faults,2);assert.equal(applied,1);assert.equal(state[0].o,1);assert.equal(state[0].pile,0);
+  assert.deepEqual(JSON.parse(JSON.stringify(f.c.vis)),{sh:1,lb:[1],rt:1,gd:1});assert.equal(f.c.openI,0);
+});
+test('entry clears every residue an earlier exit could leave, before it lays out',()=>{
+  const start=section(stack,'  const start = (ctx) =>','  const launch =');
+  assert.match(start,/build = null;[^\n]*\n\s*try \{ clearGhosts\(\); clearResidue\(ctx\); \}/);
+  const residue=section(stack,'  const clearResidue =','  // The settled stack');
+  for(const needle of ['resetStackFlight()','img[data-st-flight]',"avatar.style.visibility = ''","el.style.display = ''","el.style.visibility = ''","card.style.opacity = ''","slide.classList.remove('st-arrive')",'forgetShown()'])assert.ok(residue.includes(needle),needle);
+  const reset=section(stack,'  const resetStackFlight =','  const avatar =');
+  for(const needle of ["root.style.transform = ''","root.style.opacity = ''","root.classList.remove('is-gathering')","root.style.removeProperty('--st-gather')"])assert.ok(reset.includes(needle),needle);
 });
 const media=section(stack,'  const mayPlay =','  const recoverFrame =');
 test('stack never starts media while user motion is disabled',()=>{
@@ -86,19 +110,36 @@ test('late wheel font events invalidate caches but do not publish an obsolete vi
 const planeCode=section(stack,'  const applyPlanes =','  const apply =');
 test('ambient lift changes transform only, without rewriting plane size or inner fit',()=>{
   const style={translate:''},p={w:780,h:340,cy:150},state={x:1062,y:144,w:780,h:340,rx:58,rz:4.5,o:1,c:1,g:0};let boxes=0,fits=0;
-  const f=expose(planeCode,{st:[state],planes:[{style}],shown:[{...state,y:150,ambient:true,stretchChat:false}],PL:[p],ghosts:[null],amb:{},build:null,box(){boxes++},fit(){fits++},stretch(){fits++},inners:[{style:{}}],ghostScrolls:[]},'applyPlanes');
+  const f=expose(planeCode,{st:[state],slabs:[{style}],planes:[{style:{}}],wk:1,shown:[{...state,y:150,ambient:true,stretchChat:false}],PL:[p],ghosts:[null],amb:{},build:null,box(){boxes++},fit(){fits++},stretch(){fits++},inners:[{style:{}}],ghostScrolls:[]},'applyPlanes');
   f.fn();assert.equal(boxes,0);assert.equal(fits,0);assert.equal(style.translate,'0 -6.000px');
+  // the world laid out at its size on screen: the same lift, in screen units
+  const small={translate:''};
+  const g=expose(planeCode,{st:[state],slabs:[{style:small}],planes:[{style:{}}],wk:0.25,shown:[{...state,y:150,ambient:true,stretchChat:false}],PL:[p],ghosts:[null],amb:{},build:null,box(){boxes++},fit(){fits++},stretch(){fits++},inners:[{style:{}}],ghostScrolls:[]},'applyPlanes');
+  g.fn();assert.equal(boxes,0);assert.equal(small.translate,'0 -1.500px');
 });
 test('normal build still writes the same unshifted frame and rotation',()=>{
-  let boxValue;const style={},state={x:1062,y:150,w:780,h:340,rx:58,rz:4.5,o:1,c:1,g:0};
-  const f=expose(planeCode,{st:[state],planes:[{style}],shown:[{}],PL:[{w:780,h:340,cy:150}],ghosts:[null],amb:null,build:{},box(_,s){boxValue=s},fit(){},inners:[{style:{}}],ghostScrolls:[]},'applyPlanes');
+  let boxValue;const style={},face={},state={x:1062,y:150,w:780,h:340,rx:58,rz:4.5,o:1,c:1,g:0};
+  const f=expose(planeCode,{st:[state],slabs:[{style}],planes:[{style:face}],wk:0.25,shown:[{}],PL:[{w:780,h:340,cy:150}],ghosts:[null],amb:null,build:{},box(_,s){boxValue=s},fit(){},inners:[{style:{}}],ghostScrolls:[]},'applyPlanes');
   f.fn();assert.equal(boxValue,state);assert.equal(style.translate,'');assert.equal(style.transform,'rotateX(58.00deg) rotateZ(4.50deg)');
+  assert.equal(style.opacity,'1.000');assert.equal(face.width,'780.0px');assert.equal(face.height,'340.0px'); // the plane keeps its scene size inside the layer
 });
-test('static artwork cache builds once across 60 settled frames',()=>{
+test('a layer box is the scene box times the world unit',()=>{
+  const style={};const f=expose(section(stack,'  let wk = 1;','  // Fit content of natural size'),{},'(k)=>{wk=k;return box}');
+  f.fn(0.25)({style},{x:1062,y:150,w:780,h:340});
+  assert.deepEqual({...style},{width:'195.000px',height:'85.000px',left:'168.000px',top:'-5.000px'});
+  f.fn(1)({style},{x:1062,y:150,w:780,h:340});
+  assert.deepEqual({...style},{width:'780.000px',height:'340.000px',left:'672.000px',top:'-20.000px'});
+});
+test('settled artwork is drawn once across 60 frames and again only when what it shows changes',()=>{
   const fake=()=>new Proxy({canvas:{}},{get(t,k){return t[k]??(()=>{})}});let bases=0;
-  const f=expose(section(stack,'  const prepareThreadContext =','  const draw ='),{g:fake(),baseG:fake(),baseCv:{width:0,height:0},baseReady:false,baseFailed:false,cv:{width:600,height:400},dpr:2,threadBox:{x:10,y:20},geo:{corners:[]},view:{k:1},vis:{sh:1,rt:1,lb:[]},metrics:{cacheHits:0},guide:{a:0},drawBaseThreads(){bases++}},'drawThreads');
-  for(let i=0;i<60;i++)f.fn();assert.equal(bases,1);assert.equal(f.c.metrics.cacheHits,60);
-  f.c.baseReady=false;f.fn();assert.equal(bases,2);
+  const bindings={g:fake(),baseG:fake(),baseCv:{width:0,height:0},baseReady:false,baseFailed:false,cv:{width:600,height:400},dpr:2,threadBox:{x:10,y:20},geo:{corners:[]},view:{k:1},
+    vis:{sh:1,rt:1,lb:[0]},lit:[0],flagY:[100],threadsDirty:true,threadSig:'',metrics:{cacheHits:0,threadDraws:0,threadSkips:0,guideDraws:0},guide:{a:0},drawBaseThreads(){bases++}};
+  const f=expose(section(stack,'  const prepareThreadContext =','  // The guide: a bead of light'),bindings,'drawThreads');
+  for(let i=0;i<60;i++)f.fn();assert.equal(bases,1);assert.equal(f.c.metrics.threadDraws,1);assert.equal(f.c.metrics.threadSkips,59);
+  f.c.lit[0]=0.5;f.fn();assert.equal(f.c.metrics.threadDraws,2,'a card opening draws again');assert.equal(bases,1,'from the cache');
+  f.c.flagY[0]=120;f.fn();assert.equal(f.c.metrics.threadDraws,3,'a flag moving draws again');
+  f.c.threadsDirty=true;f.c.baseReady=false;f.fn();assert.equal(f.c.metrics.threadDraws,4);assert.equal(bases,2,'a new layout rebuilds the cache');
+  f.fn();assert.equal(f.c.metrics.threadDraws,4);
 });
 test('compact layout has positive scale and preserves normal viewport slot position',()=>{
   for(const H of [420,620,844]){const bottom=400,slotH=200,natural=H-70-slotH,slot=Math.max(natural,bottom+144),height=slot-12-(bottom+12);assert.ok(height>0);if(H===844)assert.equal(slot,natural)}

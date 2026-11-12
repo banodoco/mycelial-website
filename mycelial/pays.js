@@ -594,8 +594,10 @@
     if (hn < lead(fly) + FLY.travel + 0.4) root.classList.remove('is-labelled');
     if (hn < 0.4) document.documentElement.classList.remove('pa-quiet');
     if (hn <= 0) { endUnfly(); return; }
-    draw();
-    checkFlightText(reverseCtx);
+    // A frame that throws ends the step back at its endpoint; it must not leave the stack held, small and unseen,
+    // behind a loop that has stopped.
+    try { draw(); checkFlightText(reverseCtx); }
+    catch (error) { window.deckReportSceneFault?.('pays', 'unfly', error, u.ctx); endUnfly(); return; }
     u.raf = requestAnimationFrame((now) => unstep(u, now));
   };
   const endUnfly = (owner = unflying?.ctx) => {

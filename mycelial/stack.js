@@ -100,12 +100,22 @@
     models: `<span class="st-comfy">ComfyUI workflows</span><span class="st-mod">${I.cube}Wan</span><i class="st-link"></i><span class="st-mod">${I.cube}LTX-Video</span><i class="st-link"></i><span class="st-mod">${I.cube}Qwen Image</span><span class="st-gpu">${I.cloud}local GPU or cloud</span>`,
   };
 
-  // In Chromium the world is laid out at its size on screen (CSS zoom) rather than at the scene's size and scaled down:
-  // a plane under the perspective is rasterized at its laid-out size, so scale(k) had each rasterized at up to 1/k its
-  // pixels on screen. Every length in the world scales by k, its perspective included, so the picture is the same.
-  // WebKit lays a zoomed world out differently on a phone (its smallest type is held up, and the planes shift), so
-  // there, and in other engines, the world is still scaled.
+  // The world is laid out at its size on screen, in every engine. A box under the perspective is its own compositing
+  // layer, and a layer is rasterized at its laid-out size (times the screen's pixel ratio) whatever scale its ancestors
+  // then give it: with the world laid out in scene px and scaled down by k, each plane was painted at 1/k its size on
+  // screen each way. On a phone k is about 1/7, so the five planes at rest were some 47 times the pixels they show, and
+  // the copies of slide 5's panels, at the start of the unfold, far more (docs/scene-resilience.md has the figures).
+  // So each plane is two boxes. The slab is the layer: the plane's box at its size on screen (scene px times k), turned
+  // under a perspective that is k times the scene's. The plane itself, inside it, keeps its scene size, its border, its
+  // shadow and its content, and is scaled by k in the flat, so it is painted into the slab at the size it is seen.
+  // Every length scales by k, the perspective included, so the picture is the one the scaled world drew.
+  // In Chromium the plane is brought to size by CSS zoom instead of a flat scale, as its world was before: zoom lays
+  // the content out at its size on screen (hairlines stay a whole device pixel), which is the look it had there.
+  // WebKit lays a zoomed box out differently on a phone (its smallest type is held up), so there, and in other
+  // engines, the plane is scaled, which is the look it had there.
   const ZOOM = /\bChrome\//.test(navigator.userAgent);
+  // ?stack=scaled (and the debug panel's "st big") lays the world out the former way, scene px scaled by k, to compare.
+  let scaledWorld = /[?&]stack=scaled\b/.test(location.search);
   const world = document.createElement('div');
   world.className = 'st-world';
   world.style.perspective = `${PERSP}px`;
@@ -123,10 +133,11 @@
     return el;
   });
   const inners = planes.map((el) => el.firstChild);
+  const slabs = planes.map((el) => { const slab = document.createElement('div'); slab.className = 'st-slab'; slab.appendChild(el); return slab; });
   // Ghosts: arriving from slide 5, the rendering, timeline and agent planes first carry exact copies of its panels.
   const SRC = { 0: '.as-player', 1: '.as-timeline', 3: '.as-chat' };
   const ghosts = PL.map((_, i) => { if (!SRC[i]) return null; const el = document.createElement('div'); el.className = 'st-ghost'; return el; });
-  [...planes].reverse().forEach((el) => world.appendChild(el)); // snapshot ghosts attach only during their handoff
+  [...slabs].reverse().forEach((el) => world.appendChild(el)); // snapshot ghosts attach only during their handoff
   // The player's picture rides between slide 5 and the top plane on a layer of its own, the plane's box under the
   // plane's own turn: slide 5's exact frame, eased from its place in slide 5's player to the plane's picture box as
   // the plane morphs, then dissolving where it stands into the plane's own film (and the other way back).
@@ -147,7 +158,14 @@
   // The moving guide and leaders remain live; no extra full-screen canvas.
   const baseCv = document.createElement('canvas'), baseG = context2D(baseCv);
   let threadBox = { x: 0, y: 0, w: 1, h: 1 }, baseReady = false, baseFailed = false, drawFaults = 0;
-  const metrics = { frames: 0, baseDraws: 0, cacheHits: 0, frameRecoveries: 0 };
+  // The guide's bead moves in every frame; the threads, leaders and roots under it change only when a card opens or
+  // the stack builds or gathers. So the bead has a small canvas of its own that follows it, and the artwork's canvas is
+  // drawn again only when what it shows has changed (threadsDirty, or its figures: threadSig).
+  const GUIDE = 80; // the bead's canvas, css px square: its glow and its tail fit well inside
+  const guideCv = document.createElement('canvas'), guideG = context2D(guideCv);
+  guideCv.className = 'st-guide';
+  let threadsDirty = true, threadSig = '', guideShown = false;
+  const metrics = { frames: 0, baseDraws: 0, cacheHits: 0, threadDraws: 0, threadSkips: 0, guideDraws: 0, frameRecoveries: 0, heals: 0 };
   const reportFault = (phase, error, ctx = activeCtx) => window.deckReportSceneFault?.('stack', phase, error, ctx);
   // The flags (buttons, so keyboard users can reach them) and the cards they unfold into.
   const flags = TAGS.map((t, i) => {
@@ -167,7 +185,7 @@
   // would otherwise turn the deck.
   const hit = document.createElement('div');
   hit.className = 'st-hit';
-  root.append(hit, world, cv, ...flags, ...cards);
+  root.append(hit, world, cv, guideCv, ...flags, ...cards);
   const video = planes[0].querySelector('video');
   const timeEl = planes[0].querySelector('.st-time');
   const head = planes[1].querySelector('.st-head');
@@ -177,9 +195,13 @@
   // A plane's state; its pile (scene px, down the scene) is how far it has gathered toward the agent's plane.
   const st = PL.map(settledOf);
   const shown = PL.map(() => ({}));
+  // The world's unit on screen: k, as the stylesheet is given it (1 when the world is scaled as a whole).
+  let wk = 1;
+  // A layer's box, on screen: the scene's box (to a tenth of a scene px, as flightGeometry() reads it back) times wk.
   const box = (el, s) => {
-    el.style.width = `${s.w.toFixed(1)}px`; el.style.height = `${s.h.toFixed(1)}px`;
-    el.style.left = `${(s.x - s.w / 2).toFixed(1)}px`; el.style.top = `${(s.y - s.h / 2).toFixed(1)}px`;
+    const w = +s.w.toFixed(1), h = +s.h.toFixed(1), l = +(s.x - s.w / 2).toFixed(1), t = +(s.y - s.h / 2).toFixed(1);
+    el.style.width = `${(w * wk).toFixed(3)}px`; el.style.height = `${(h * wk).toFixed(3)}px`;
+    el.style.left = `${(l * wk).toFixed(3)}px`; el.style.top = `${(t * wk).toFixed(3)}px`;
   };
   // Fit content of natural size (nw, nh) inside a (w, h) box without changing its shape: scale as one unit, centred.
   const fit = (el, w, h, nw, nh) => {
@@ -190,7 +212,7 @@
     el.style.transform = `scale(${(w / nw).toFixed(5)}, ${(h / nh).toFixed(5)})`;
   };
   const applyPlanes = () => st.forEach((s, i) => {
-    const el = planes[i], was = shown[i], p = PL[i], gh = ghosts[i], pile = s.pile || 0;
+    const el = slabs[i], was = shown[i], p = PL[i], gh = ghosts[i], pile = s.pile || 0;
     const moved = was.x !== s.x || was.y !== s.y || was.w !== s.w || was.h !== s.h || (was.pile || 0) !== pile;
     const resized = was.w !== s.w || was.h !== s.h;
     const turned = was.rx !== s.rx || was.rz !== s.rz;
@@ -198,7 +220,7 @@
     const ambient = !!amb && !build?.back && !gh?.firstChild;
     if (ambient) {
       if (!was.ambient || resized || was.x !== s.x) box(el, { ...s, y: p.cy });
-      const lift = `0 ${(s.y + pile - p.cy).toFixed(3)}px`;
+      const lift = `0 ${((s.y + pile - p.cy) * wk).toFixed(3)}px`;
       if (el.style.translate !== lift) el.style.translate = lift;
     } else if (moved || was.ambient) {
       el.style.translate = '';
@@ -206,6 +228,7 @@
     }
     const stretchChat = i === 3 && !!gh?.firstChild;
     if (resized || was.stretchChat !== stretchChat) {
+      planes[i].style.width = `${s.w.toFixed(1)}px`; planes[i].style.height = `${s.h.toFixed(1)}px`;
       if (stretchChat) stretch(inners[i], s.w - 2, s.h - 2, p.w - 2, p.h - 2);
       else fit(inners[i], s.w - 2, s.h - 2, p.w - 2, p.h - 2);
     }
@@ -216,8 +239,8 @@
       gh.style.display = s.g > 0 && gh.firstChild ? 'block' : 'none';
       if (s.g > 0 && gh.firstChild) {
         box(gh, s); gh.style.transform = el.style.transform; gh.style.opacity = s.g.toFixed(3);
-        if (i === 3) stretch(gh.firstChild, s.w, s.h, gh.dataset.w, gh.dataset.h);
-        else fit(gh.firstChild, s.w, s.h, gh.dataset.w, gh.dataset.h);
+        if (i === 3) stretch(gh.firstChild, s.w * wk, s.h * wk, gh.dataset.w, gh.dataset.h);
+        else fit(gh.firstChild, s.w * wk, s.h * wk, gh.dataset.w, gh.dataset.h);
         const scroll = ghostScrolls[i];
         if (scroll && !scroll.ready) { scroll.sync(); scroll.ready = true; }
       }
@@ -231,8 +254,8 @@
     const kg = Math.min(s.w / cy.nw, s.h / cy.nh), ki = Math.min((s.w - 2) / (p.w - 2), (s.h - 2) / (p.h - 2));
     const A = { x: (s.w - kg * cy.nw) / 2 + kg * cy.A.x, y: (s.h - kg * cy.nh) / 2 + kg * cy.A.y, w: kg * cy.A.w };
     const B = { x: 1 + (s.w - 2 - ki * (p.w - 2)) / 2 + ki * cy.P.x, y: 1 + (s.h - 2 - ki * (p.h - 2)) / 2 + ki * cy.P.y, w: ki * cy.P.w };
-    box(carry, s); carry.style.transform = planes[0].style.transform; carry.style.opacity = cy.a.toFixed(3);
-    carryPic.style.transform = `translate(${lerp(A.x, B.x, q).toFixed(2)}px, ${lerp(A.y, B.y, q).toFixed(2)}px) scale(${(lerp(A.w, B.w, q) / cy.P.w).toFixed(5)})`;
+    box(carry, s); carry.style.transform = slabs[0].style.transform; carry.style.opacity = cy.a.toFixed(3);
+    carryPic.style.transform = `translate(${(lerp(A.x, B.x, q) * wk).toFixed(3)}px, ${(lerp(A.y, B.y, q) * wk).toFixed(3)}px) scale(${(lerp(A.w, B.w, q) / cy.P.w * wk).toFixed(5)})`;
   };
   const view = { k: 1, ox: 0, oy: 0, mobile: false, right: true, low: false, snug: false };
   // A point (u, v) from a plane's centre, in its own px, into the scene: exactly what CSS does with
@@ -289,7 +312,6 @@
     // Which side the flags hang on: the right of the stack beside the text, or its left under the text on a phone.
     const right = view.right = !view.mobile, out = right ? 1 : -1;
     PO.x = right ? 1900 : 210; TURN = right ? 4.5 : -4.5;
-    world.style.perspectiveOrigin = `${PO.x}px ${PO.y}px`;
     stackUp();
     // The whole picture's extent in scene px: labels, planes and roots.
     const cw = PL.map((p) => edgesOf(settledOf(p)));
@@ -328,11 +350,18 @@
     view.k = k;
     view.ox = (Rg.l + Rg.r + mobileFlagW) / 2 - ((box.l + box.r) / 2) * k;
     view.oy = (Rg.t + Rg.b) / 2 - ((box.t + box.b) / 2) * k;
-    if (ZOOM) {
-      const kz = +k.toFixed(4);
-      world.style.zoom = String(kz);
-      world.style.transform = `translate(${(+view.ox.toFixed(1) / kz).toFixed(4)}px, ${(+view.oy.toFixed(1) / kz).toFixed(4)}px)`;
-    } else world.style.transform = `translate(${view.ox.toFixed(1)}px, ${view.oy.toFixed(1)}px) scale(${k.toFixed(4)})`;
+    wk = scaledWorld ? 1 : +k.toFixed(4);
+    world.style.transform = `translate(${view.ox.toFixed(1)}px, ${view.oy.toFixed(1)}px)${scaledWorld ? ` scale(${k.toFixed(4)})` : ''}`;
+    world.style.perspective = `${(PERSP * wk).toFixed(3)}px`;
+    world.style.perspectiveOrigin = `${(PO.x * wk).toFixed(3)}px ${(PO.y * wk).toFixed(3)}px`;
+    world.style.width = `${(1672 * wk).toFixed(1)}px`; world.style.height = `${(941 * wk).toFixed(1)}px`;
+    planes.forEach((el) => {
+      el.style.zoom = !scaledWorld && ZOOM ? String(wk) : '';
+      el.style.transform = scaledWorld || ZOOM ? '' : `scale(${wk})`;
+    });
+    carry.style.borderRadius = `${(16 * wk).toFixed(2)}px`;
+    // Every box is written again in the new unit, whatever was last shown.
+    shown.forEach((was) => { for (const key of Object.keys(was)) delete was[key]; });
     dpr = Math.min(2, Math.round(devicePixelRatio || 1) || 1);
     // Settled geometry, in screen px: the corners the threads tie together, the flags' places, the roots.
     const corners = cw.map(onScreen);
@@ -404,7 +433,9 @@
     const pixelW = Math.max(1, Math.ceil(w * dpr)), pixelH = Math.max(1, Math.ceil(h * dpr));
     if (cv.width !== pixelW) cv.width = pixelW;
     if (cv.height !== pixelH) cv.height = pixelH;
-    baseReady = false; baseFailed = false; drawFaults = 0;
+    if (guideCv.width !== GUIDE * dpr) guideCv.width = guideCv.height = GUIDE * dpr;
+    baseReady = false; baseFailed = false; drawFaults = 0; threadsDirty = true;
+    metrics.layouts = (metrics.layouts || 0) + 1;
   };
 
   // ---- Drawing the threads -----------------------------------------------------------------------
@@ -484,8 +515,13 @@
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.setLineDash([]);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   };
+  const f3 = (v) => v.toFixed(3);
   const drawThreads = () => {
     if (!g || !geo) return;
+    // Everything this canvas shows, in figures: unchanged, it stands as drawn.
+    const sig = `${f3(vis.sh)}|${f3(vis.rt)}|${vis.lb.map(f3)}|${lit.map(f3)}|${flagY.map((y) => y.toFixed(1))}`;
+    if (!threadsDirty && sig === threadSig) { metrics.threadSkips++; return; }
+    metrics.threadDraws++;
     prepareThreadContext(g);
     if (baseG && !baseFailed && vis.sh === 1 && vis.rt === 1) {
       try {
@@ -517,30 +553,45 @@
       }
       dot(g, x0, m.y, 1.5, q * (0.7 + 0.3 * l));
     });
-    // The guide: a bead of light with a short tail along its way, breathing while it waits at a flag.
-    // (It lets go as the stack gathers up: vis.gd.)
+    threadSig = sig; threadsDirty = false;
+  };
+  // The guide: a bead of light with a short tail along its way, breathing while it waits at a flag.
+  // (It lets go as the stack gathers up: vis.gd.) Its canvas is moved to it, on whole device pixels, and the bead is
+  // drawn inside at its exact place, as it was on the artwork's canvas.
+  const drawGuide = () => {
     const ga = guide.a * (vis.gd ?? 1);
-    if (ga > 0.01 && guide.pos) {
-      const [x, y] = guide.pos;
-      if (guide.tail) {
-        const [tx, ty] = guide.tail, tl = g.createLinearGradient(tx, ty, x, y);
-        tl.addColorStop(0, GOLD(0)); tl.addColorStop(1, GOLD(0.8 * ga));
-        g.lineWidth = 1.3; g.strokeStyle = tl; g.beginPath(); g.moveTo(tx, ty); g.lineTo(x, y); g.stroke();
-      }
-      dot(g, x, y, 2.3 + 0.5 * guide.breath, ga);
+    if (!guideG || !(ga > 0.01) || !guide.pos) {
+      if (guideShown) { guideShown = false; guideCv.style.visibility = 'hidden'; }
+      return;
     }
+    metrics.guideDraws++;
+    const [x, y] = guide.pos, ox = Math.round((x - GUIDE / 2) * dpr) / dpr, oy = Math.round((y - GUIDE / 2) * dpr) / dpr;
+    guideCv.style.transform = `translate(${ox}px, ${oy}px)`;
+    const g = guideG;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, guideCv.width, guideCv.height);
+    g.setTransform(dpr, 0, 0, dpr, -ox * dpr, -oy * dpr);
+    g.globalAlpha = 1; g.lineCap = 'round'; g.lineJoin = 'round';
+    if (guide.tail) {
+      const [tx, ty] = guide.tail, tl = g.createLinearGradient(tx, ty, x, y);
+      tl.addColorStop(0, GOLD(0)); tl.addColorStop(1, GOLD(0.8 * ga));
+      g.lineWidth = 1.3; g.strokeStyle = tl; g.beginPath(); g.moveTo(tx, ty); g.lineTo(x, y); g.stroke();
+    }
+    dot(g, x, y, 2.3 + 0.5 * guide.breath, ga);
+    if (!guideShown) { guideShown = true; guideCv.style.visibility = 'visible'; }
   };
   const draw = () => {
     // Two failed attempts stop decoration until a fresh layout/visit/context.
     // A fault never disables the independent HTML labels, cards or planes.
     if (drawFaults >= 2) return;
-    try { drawThreads(); }
-    catch (error) { baseReady = false; drawFaults++; reportFault('threads', error); }
+    try { drawThreads(); drawGuide(); }
+    catch (error) { baseReady = false; threadsDirty = true; drawFaults++; reportFault('threads', error); }
   };
-  cv.addEventListener('contextrestored', () => {
-    baseReady = false; baseFailed = false; drawFaults = 0;
+  const restoreCanvas = () => {
+    baseReady = false; baseFailed = false; drawFaults = 0; threadsDirty = true;
     if (current(activeCtx)) { draw(); wake(); }
-  });
+  };
+  cv.addEventListener('contextrestored', restoreCanvas);
+  guideCv.addEventListener('contextrestored', restoreCanvas);
 
   // ---- States ------------------------------------------------------------------------------------
   let snapshotRelease = null;
@@ -649,7 +700,7 @@
       wrap.appendChild(c);
       gh.replaceChildren(wrap);
       gh.dataset.w = r.width; gh.dataset.h = r.height;
-      world.insertBefore(gh, planes[i].nextSibling);
+      world.insertBefore(gh, slabs[i].nextSibling);
       const sourceMessages = src.querySelector('.as-msgs'), messages = c.querySelector('.as-msgs');
       if (sourceMessages && messages) {
         // cloneNode copies the finished conversation, but not its viewport.
@@ -860,7 +911,7 @@
   };
   // With reduced motion there is no clock: hover and taps open the cards directly.
   const react = () => {
-    if (motionOff()) {
+    if (motionOff() || loopRetired) {
       const h = held();
       show(h >= 0 ? h : view.mobile ? Math.max(0, openI) : -1);
       arrangeFlags(0); draw();
@@ -905,11 +956,12 @@
       const t = now();
       if (build && build.back) { if (!unfold(t)) return; } else step(t);
       metrics.frames++;
+      if (amb && !build && metrics.frames % 60 === 0) heal(ctx, 'ambient');
     } catch (error) { recoverFrame(ctx, error); return; }
     if (current(ctx) && activeCtx === ctx && running && !paused) raf = requestAnimationFrame(() => tick(ctx));
   };
   const wake = () => { const ctx = activeCtx; if (current(ctx) && running && !paused && !raf) raf = requestAnimationFrame(() => tick(ctx)); };
-  let playRequest = null, frameRecoveredFor = null;
+  let playRequest = null, frameRecoveredFor = null, frameFaults = 0, loopRetired = false;
   const mayPlay = () => !window.deckStackPosterOnly?.() && current(activeCtx) && slide.classList.contains('on') && running && !paused && !motionBlocked() && !build?.back;
   const play = () => {
     if (!mayPlay() || playRequest || !video.paused || !video.getAttribute('src')) return;
@@ -920,21 +972,83 @@
       if (playRequest === request && mayPlay() && error.name !== 'AbortError') reportFault('playback', error);
     }).finally(() => { if (playRequest === request) playRequest = null; });
   };
+  // ---- The rest picture, whatever came before ---------------------------------------------------
+  // Everything a build, a fold or a gathering can leave behind is put back here, without asking what was left: the
+  // root's own transform and opacity, the gathering's class and pile, the hand-off copies, the cards' and flags'
+  // inline styles, and every plane's box (the record of what was last written is thrown away, so all are written again).
+  const forgetShown = () => shown.forEach((was) => { for (const key of Object.keys(was)) delete was[key]; });
+  const clearResidue = (ctx) => {
+    if (stackFlight && stackFlight.ctx !== ctx) stackFlight.release();
+    if (!stackFlight) {
+      resetStackFlight();
+      document.querySelectorAll('img[data-st-flight]').forEach((copy) => copy.remove());
+      avatar.style.visibility = '';
+    }
+    for (const el of [root, world, cv, ...slabs, ...planes, ...inners, ...flags]) { el.hidden = false; el.style.display = ''; el.style.visibility = ''; }
+    world.style.opacity = ''; cv.style.opacity = '';
+    flags.forEach((f) => { f.style.transition = ''; });
+    cards.forEach((card) => { card.style.transition = ''; card.style.opacity = ''; card.style.visibility = ''; card.style.display = ''; });
+    slide.classList.remove('st-arrive');
+    forgetShown();
+    threadsDirty = true; baseReady = false; baseFailed = false; drawFaults = 0;
+  };
+  // The settled stack: every plane in place and opaque, flags, leaders, threads and roots drawn, on a phone a card open.
+  // It keeps an open card and the tour's place when there is one. Each step is tried by itself, so a fault in one
+  // (a canvas refused, say) cannot keep the planes and flags from being shown.
+  const landAtRest = (ctx, relayout = false) => {
+    const steps = [
+      () => { build = null; clearGhosts(); },
+      () => clearResidue(ctx),
+      () => { if (relayout || !geo) layout(); },
+      () => { st.forEach((s, i) => Object.assign(s, settledOf(PL[i]), { y: PL[i].cy - 6 * lit[i], pile: stackFlight ? s.pile || 0 : 0 })); applyPlanes(); },
+      () => { vis.sh = 1; vis.lb = PL.map(() => 1); vis.rt = 1; if (!stackFlight) vis.gd = 1; syncFlagVisibility(); },
+      () => { flags.forEach((f) => { f.tabIndex = 0; }); if (view.mobile && openI < 0) show(0); arrangeFlags(0); },
+      () => { stepHead(); draw(); },
+    ];
+    let whole = true;
+    for (const step of steps) { try { step(); } catch (error) { whole = false; reportFault('rest', error, ctx); } }
+    return whole;
+  };
+  // What a settled, ambient stack must look like in the DOM, read from inline styles only (no layout). The answer is
+  // the list of what is wrong; the frame loop asks about once a second and heals by landing at rest again, and the
+  // debug log prints it, so a blank picture on a device can be told apart: wrong state, or right state not painted.
+  const restFaults = () => {
+    const wrong = [];
+    if (!entryFinished || build || stackFlight || piled) return wrong; // a build, a fold or a gathering owns the picture
+    if (root.style.opacity || root.style.transform || root.style.transition) wrong.push(`root ${root.style.opacity} ${root.style.transform} ${root.style.transition}`);
+    if (root.classList.contains('is-gathering')) wrong.push('root is-gathering');
+    slabs.forEach((el, i) => { if (parseFloat(el.style.opacity) !== 1 || el.style.display || el.style.visibility || !el.style.width) wrong.push(`plane ${i} opacity ${el.style.opacity || 'unset'}`); });
+    flags.forEach((el, i) => { if (el.style.getPropertyValue('--in') !== '1.000') wrong.push(`flag ${i} --in ${el.style.getPropertyValue('--in') || 'unset'}`); });
+    cards.forEach((el, i) => { if (el.style.opacity) wrong.push(`card ${i} opacity ${el.style.opacity}`); });
+    if (view.mobile && openI < 0 && amb) wrong.push('no card open');
+    if (avatar.style.visibility) wrong.push('avatar hidden');
+    return wrong;
+  };
+  const heal = (ctx, why) => {
+    const wrong = restFaults();
+    if (!wrong.length) return true;
+    metrics.heals++;
+    reportFault('state', new Error(`${why}: ${wrong.join('; ')}`), ctx);
+    landAtRest(ctx);
+    return false;
+  };
+  // A frame that throws never ends the picture: the stack lands at rest at once, every time. The loop is started
+  // again twice in a visit; after that the picture stands still, and flags and planes open their cards without a clock.
   const recoverFrame = (ctx, error) => {
     reportFault('frame', error, ctx);
     running = false; raf = 0; video.pause();
     if (!current(ctx) || activeCtx !== ctx) return;
-    if (build?.back) { endFold(); return; }
-    if (frameRecoveredFor === ctx) return; // at most one recovery per visit
-    frameRecoveredFor = ctx; metrics.frameRecoveries++;
-    try {
-      build = null; amb = null; clearGhosts(); layout(); settleAll(); stepHead();
-      flags.forEach(f => { f.tabIndex = 0; });
-      if (view.mobile && openI < 0) show(0);
-      entryFinished = true; entryCompletion?.(ctx, 'completed');
-      amb = { t: now() }; tourFrom(Math.max(0, openI), now());
-      running = true; play(); wake();
-    } catch (failure) { reportFault('recovery', failure, ctx); }
+    if (build?.back) { try { endFold(); } catch (failure) { reportFault('recovery', failure, ctx); build = null; } return; }
+    if (frameRecoveredFor !== ctx) { frameRecoveredFor = ctx; frameFaults = 0; }
+    frameFaults++; metrics.frameRecoveries++;
+    amb = null;
+    landAtRest(ctx, frameFaults === 1);
+    entryFinished = true;
+    try { entryCompletion?.(ctx, 'completed'); } catch (failure) { reportFault('recovery', failure, ctx); }
+    if (motionOff()) return;
+    if (frameFaults > 2) { loopRetired = true; guide.on = false; guide.a = 0; try { draw(); } catch { /* still */ } return; }
+    amb = { t: now() }; tourFrom(Math.max(0, openI), now());
+    running = true; play(); wake();
   };
 
   // As on slide 5, the network stays visible behind; only where its threads pass behind the text are they softened.
@@ -965,8 +1079,11 @@
     if (!current(ctx) || ctx.to !== 5) return Promise.resolve('cancelled');
     const promise = makeCompletion(ctx, (fn) => { entryCompletion = fn; }, () => stop(ctx, true));
     activeCtx = ctx;
-    if (stackFlight?.ctx !== ctx) stackFlight?.release();
-    if (!stackFlight) resetStackFlight();
+    // Entering establishes the whole picture from nothing: no earlier exit, finished or cut short, is trusted to have
+    // put anything back.
+    build = null; loopRetired = false; frameFaults = 0; frameRecoveredFor = null;
+    try { clearGhosts(); clearResidue(ctx); } catch (error) { reportFault('enter', error, ctx); }
+    if (slide.scrollTop) slide.scrollTop = 0; // a short screen scrolls this slide; it is entered from its top
     entryFinished = false;
     syncPreviewPolicy();
     if (document.getElementById('overview')?.classList.contains('on') || (window.deckStill?.() && !motionOff())) { pendingCtx = ctx; return promise; }
@@ -975,27 +1092,28 @@
   };
   const launch = (ctx) => {
     if (!current(ctx) || activeCtx !== ctx) return;
-    window.warmDeckMedia?.(slide);
     pendingCtx = null;
     running = true; paused = false; playRequest = null;
-    layout();
-    slide.classList.remove('st-arrive');
-    softenNet(ctx, true);
-    flags.forEach((f) => { f.tabIndex = 0; });
-    if (motionOff() || ctx.rest || ctx.direct) {
-      if (!stackFlight) resetStackFlight();
-      settleAll(); stepHead();
-      if (view.mobile) show(0);
-      entryFinished = true; entryCompletion?.(ctx, 'completed');
-      // Landing at rest: the first card is open as it lands (on a wider screen, once the words are in).
-      if (!motionOff()) { amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0)); play(); wake(); }
-      return;
-    }
-    // The product moves at once; the slide must not fade in under it.
-    slide.classList.add('st-arrive');
-    window.deckLater(() => { if (current(ctx)) slide.classList.remove('st-arrive'); }, 900, ctx);
-    if (!window.deckStackPosterOnly?.()) try { video.currentTime = 2; } catch { /* not loaded */ }
-    begin(true, true); play(); wake();
+    try {
+      window.warmDeckMedia?.(slide);
+      layout();
+      slide.classList.remove('st-arrive');
+      softenNet(ctx, true);
+      flags.forEach((f) => { f.tabIndex = 0; });
+      if (motionOff() || ctx.rest || ctx.direct) {
+        landAtRest(ctx);
+        if (view.mobile) show(0);
+        entryFinished = true; entryCompletion?.(ctx, 'completed');
+        // Landing at rest: the first card is open as it lands (on a wider screen, once the words are in).
+        if (!motionOff()) { amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0)); play(); wake(); }
+        return;
+      }
+      // The product moves at once; the slide must not fade in under it.
+      slide.classList.add('st-arrive');
+      window.deckLater(() => { if (current(ctx)) slide.classList.remove('st-arrive'); }, 900, ctx);
+      if (!window.deckStackPosterOnly?.()) try { video.currentTime = 2; } catch { /* not loaded */ }
+      begin(true, true); play(); wake();
+    } catch (error) { recoverFrame(ctx, error); } // an entry that cannot start lands at rest like a frame that throws
   };
   const stop = (ctx = activeCtx, preserveScene = false) => {
     if (ctx && activeCtx && activeCtx !== ctx) return;
@@ -1012,7 +1130,7 @@
     slide.classList.remove('st-arrive');
     softenNet(ctx, false);
     video.pause(); playRequest = null;
-    baseReady = false; baseCv.width = baseCv.height = 1;
+    baseReady = false; baseCv.width = baseCv.height = 1; threadsDirty = true;
     if (activeCtx === ctx) activeCtx = null;
   };
 
@@ -1157,7 +1275,7 @@
     apply();
     geo.corners = gathered.map((g) => onScreen(edgesOf(g)));
     geo.rootDy = geo.corners[4].nl.y - geo.rest[4].nl.y;
-    baseReady = false; // the cached roots and threads are the settled ones
+    baseReady = false; threadsDirty = true; // the cached roots and threads are the settled ones
     const was = piled.vis;
     vis.lb = was.lb.map((l) => l * a); vis.rt = was.rt * (1 - seep(clamp(q / GATHER.roots))); vis.gd = was.gd * a;
     flags.forEach((f) => { f.style.transition = 'none'; });
@@ -1175,7 +1293,7 @@
     piled = null;
     st.forEach((s, i) => { s.pile = 0; [s.rx, s.rz] = was.turn[i]; });
     if (geo) { geo.corners = geo.rest; geo.rootDy = 0; }
-    baseReady = false;
+    baseReady = false; threadsDirty = true;
     Object.assign(vis, was.vis);
     flags.forEach((f) => { f.style.transition = ''; });
     cards.forEach((card) => { card.style.transition = ''; card.style.opacity = ''; });
@@ -1198,8 +1316,12 @@
     return { k: lerp(1, tuck, w) * (1 - 0.6 * end), w, a: 1 - end };
   };
   const resetStackFlight = () => {
-    root.style.transform = ''; root.style.transformOrigin = ''; root.style.opacity = '';
+    root.style.transform = ''; root.style.transformOrigin = ''; root.style.opacity = ''; root.style.transition = '';
     unpile();
+    // The same end whether or not a gathering was on record.
+    if (root.classList.contains('is-gathering') || root.style.getPropertyValue('--st-gather')) { root.classList.remove('is-gathering'); root.style.removeProperty('--st-gather'); }
+    if (st.some((s) => s.pile)) { st.forEach((s) => { s.pile = 0; }); threadsDirty = true; }
+    if (geo && geo.corners !== geo.rest) { geo.corners = geo.rest; geo.rootDy = 0; baseReady = false; threadsDirty = true; }
   };
   const avatar = planes[3].querySelector('.st-avatar img');
   // Where she has grown to by the end of the gathering: her upright place, grown about its middle toward her size in
@@ -1247,6 +1369,7 @@
     const box = root.getBoundingClientRect();
     if (!box.width || !box.height || !rect?.width) return null;
     const copy = avatar.cloneNode();
+    copy.dataset.stFlight = ''; // so an entry can clear one that was never released
     Object.assign(copy.style, { position: 'fixed', left: '0', top: '0', width: '23px', height: '20px', transformOrigin: '0 0', imageRendering: 'pixelated', pointerEvents: 'none', zIndex: '3' });
     document.body.appendChild(copy); avatar.style.visibility = 'hidden';
     // u: from lying on her plane to upright; g: from her size at rest to grown.
@@ -1264,8 +1387,7 @@
     const C = { x: (P.x - box.left) * sx, y: (P.y - box.top) * sy };
     const tuck = clamp(Math.min(GATHER.tuck * rect.width / (P.w || 1), rect.height / (P.h || 1)), 0.002, 1);
     let shownQ = null;
-    const flight = { ctx, copy, hideCopy() { flight.draw(1); }, stand(q) { copy.style.visibility = 'visible'; pose(q); }, draw(q) {
-      if (stackFlight !== flight || !ctx.isCurrent() || ctx.terminal) return;
+    const paint = (q) => {
       copy.style.visibility = q < 1 ? 'visible' : 'hidden';
       q = clamp(q);
       const { k, w, a } = gatherAt(q, tuck), m = k * w;
@@ -1277,8 +1399,20 @@
       pileAt(q);
       root.style.transform = `translate(${((O.x - C.x) * m).toFixed(2)}px, ${((O.y - C.y) * m).toFixed(2)}px) scale(${Math.max(0.001, k).toFixed(5)})`;
       root.style.opacity = a.toFixed(3);
+    };
+    const flight = { ctx, copy, hideCopy() { flight.draw(1); }, stand(q) { copy.style.visibility = 'visible'; pose(q); }, draw(q) {
+      if (stackFlight !== flight || !ctx.isCurrent() || ctx.terminal) return;
+      // A frame of the gathering that throws gives the stack back whole; it must never be left small and unseen.
+      try { paint(q); } catch (error) { reportFault('gather', error, ctx); flight.release(); }
     } };
     stackFlight = flight;
+    // While she holds the stack its root's opacity is written in every frame. On the step back from slide 7 this slide
+    // carries dt-return, whose rule gives the slide's pictures a 0.6 s opacity transition for their fade-in; on the root
+    // that began a new transition at each of those frames (measured: the pile's 0.08 s fade-in took 0.42 s, and its
+    // hiding at the start 0.5 s). A transition the engine composites, begun again frame after frame on a layer that is
+    // being scaled, is the kind of thing that has left content of this deck unpainted on an iPhone; the root follows
+    // the gathering's own figures instead, as it already did on the way to slide 7.
+    root.style.transition = 'none';
     root.style.transformOrigin = `${O.x}px ${O.y}px`;
     flight.release = ctx.transitionDefer(() => {
       if (stackFlight !== flight) return;
@@ -1317,13 +1451,15 @@
       collapseSource = { ctx, rect, copy, flight, completed: collapsed, settle };
       const stepCollapse = () => {
         if (!current(ctx)) return;
-        if (started === null) started = now();
-        const elapsed = now() - started;
-        let q = clamp(elapsed / (GATHER.s * 1000));
-        // A delayed frame must still show the stack small, gathered under her, before it disappears.
-        if (q === 1 && !smallFrame) q = GATHER.shrink[1];
-        flight.draw(q); copy.style.visibility = 'visible'; // she stays until slide 7 has painted her
-
+        let q = 1;
+        try {
+          if (started === null) started = now();
+          const elapsed = now() - started;
+          q = clamp(elapsed / (GATHER.s * 1000));
+          // A delayed frame must still show the stack small, gathered under her, before it disappears.
+          if (q === 1 && !smallFrame) q = GATHER.shrink[1];
+          flight.draw(q); copy.style.visibility = 'visible'; // she stays until slide 7 has painted her
+        } catch (error) { reportFault('gather', error, ctx); q = 1; } // the turn goes on to slide 7 all the same
         if (q < 1) {
           if (q >= GATHER.shrink[1] - 1e-9) smallFrame = true;
           frame = requestAnimationFrame(stepCollapse);
@@ -1356,12 +1492,10 @@
     if (collapseSource?.ctx === ctx) { collapseSource.settle('completed', 'cancelled'); collapseSource.copy.remove(); collapseSource.flight.release(); collapseSource = null; }
     if (build?.back && build.ctx === ctx) endFold();
     if (ctx.to === 5 && activeCtx === ctx && (build || !entryFinished)) {
-      build = null; clearGhosts(); settleAll(); stepHead();
-      flags.forEach((f) => { f.tabIndex = 0; });
-      if (view.mobile && openI < 0) show(0);
-      if (!amb) { amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0)); }
+      landAtRest(ctx);
+      if (!amb && !motionOff()) { amb = { t: now() }; tourFrom(0, now() + (wide() ? REST_WIDE * 1000 : 0)); }
       entryFinished = true; entryCompletion?.(ctx, 'completed');
-    }
+    } else if (ctx.to === 5 && activeCtx === ctx) heal(ctx, 'restore');
     if (ctx.to === 5 && activeCtx === ctx) softenNet(ctx, true);
     releaseFoldText();
     return true;
@@ -1380,6 +1514,14 @@
     return true;
   };
   window.deckRegisterScene?.([5], { enter: sceneEnter, exit: sceneExit, restore: sceneRestore, resize: sceneResize });
+  // Whenever the controller closes a turn or a layout on this slide, the settled picture is checked against what it
+  // must be, and a loop that should be running and has no frame asked for is given one.
+  window.addEventListener('deck-transaction', (event) => {
+    const ctx = activeCtx;
+    if (event.detail.reason === 'abort' || !current(ctx) || ctx.to !== 5 || !slide.classList.contains('on')) return;
+    try { heal(ctx, event.detail.reason); } catch (error) { reportFault('state', error, ctx); }
+    if (running && !paused && !raf && !loopRetired && !motionBlocked()) wake();
+  });
   // Clicks on the stack stay here; they never turn the slide.
   root.addEventListener('click', (e) => { if (e.target.closest('.st-plane, .st-flag, .st-card, .st-hit')) e.stopPropagation(); });
   // Flags: hover (a mouse) or keyboard focus shows a layer's card; a click or tap pins it (again to let go).
@@ -1413,6 +1555,7 @@
   const syncPreviewPolicy = () => {
     const posterOnly = !!window.deckStackPosterOnly?.();
     preview.classList.toggle('is-poster-only', posterOnly);
+    root.classList.toggle('is-live', !posterOnly); // the playhead only has a layer of its own where it moves
     if (posterOnly) {
       playRequest = null; video.pause(); preview.classList.remove('is-video-ready');
       // Release an existing desktop decoder on resize; the still remains.
@@ -1434,11 +1577,51 @@
     layout: view.mobile ? 'stacked' : view.low ? 'low' : view.snug ? 'snug' : 'desktop',
     building: !!build, reverse: !!build?.back, entryFinished, open: openI, drawFaults,
     metrics: { ...metrics }, scale: view.k, threadBox: { ...threadBox },
-    canvasPixels: cv.width * cv.height + baseCv.width * baseCv.height,
+    canvasPixels: cv.width * cv.height + baseCv.width * baseCv.height + guideCv.width * guideCv.height,
     ghostPixels: ghostCanvases.flat().reduce((n, c) => n + c.width * c.height, 0) + carryCv.width * carryCv.height,
     flags: flags.map(f => ({ reveal: f.style.getPropertyValue('--in'), opacity: getComputedStyle(f).opacity,
       rect: [f.getBoundingClientRect().x, f.getBoundingClientRect().y] })),
+    // What the state says the picture is. wrong: [] with nothing on screen means it was not painted, not that it was hidden.
+    wrong: restFaults(),
+    state: { ambient: !!amb, held: !!stackFlight, piled: !!piled, collapsing: !!collapseSource, pending: !!pendingCtx, snapshot: !!snapshotRelease,
+      carrying: cy.on, loopRetired, frameFaults, guide: { on: guide.on, mode: guide.mode, at: guide.i, alpha: +guide.a.toFixed(2), shown: guideShown },
+      vis: { sh: vis.sh, rt: vis.rt, gd: vis.gd, lb: vis.lb.slice() }, hold: { ...hold }, threadsDirty, baseReady, baseFailed,
+      scaledWorld, unit: wk, layer: root.hasAttribute('data-st-layer'), flat: root.hasAttribute('data-st-flat') },
+    slide: { classes: slide.className, style: slide.getAttribute('style'), scrollTop: slide.scrollTop, settled: slide.hasAttribute('data-settled') },
+    root: { classes: root.className, style: root.getAttribute('style'), opacity: getComputedStyle(root).opacity, visibility: getComputedStyle(root).visibility,
+      // a transition still listed here on a settled slide, with nothing on screen, is an engine's animation that never ended
+      animations: (root.getAnimations?.({ subtree: true }) || []).filter((a) => a.playState !== 'finished').slice(0, 12).map((a) => `${a.effect?.target?.className || ''}:${a.transitionProperty || a.animationName || 'animation'}:${a.playState}:${Math.round(a.currentTime || 0)}`) },
+    world: { style: world.getAttribute('style') },
+    planes: slabs.map((el, i) => { const r = planes[i].getBoundingClientRect(), cs = getComputedStyle(el);
+      return { rect: [r.x, r.y, r.width, r.height].map(Math.round), opacity: cs.opacity, visibility: cs.visibility, display: cs.display,
+        style: el.getAttribute('style'), face: planes[i].getAttribute('style'), classes: planes[i].className, lit: +lit[i].toFixed(2) }; }),
+    cards: cards.map((el) => { const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+      return { open: el.classList.contains('is-open'), opacity: cs.opacity, visibility: cs.visibility, rect: [r.x, r.y, r.width, r.height].map(Math.round), style: el.getAttribute('style') }; }),
+    canvases: { threads: [cv.width, cv.height, cv.getAttribute('style')], cache: [baseCv.width, baseCv.height], guide: [guideCv.width, guideCv.height, guideCv.getAttribute('style')],
+      carry: [carryCv.width, carryCv.height], ghosts: ghostCanvases.map((list) => list.map((c) => `${c.width}x${c.height}`)),
+      contexts: { threads: !!g, cache: !!baseG, guide: !!guideG, carry: !!carryG, lost: !!g?.isContextLost?.() } },
+    // CSS px² of the stack's 3D layers as laid out; an engine that paints a layer at its laid-out size holds this times dpr² pixels.
+    layerArea: Math.round([...slabs, ...ghosts.filter((gh) => gh?.isConnected && gh.style.display === 'block'), ...(cy.on ? [carry] : [])]
+      .reduce((n, el) => n + (parseFloat(el.style.width) || 0) * (parseFloat(el.style.height) || 0), 0)),
   }) });
+  // Experiments for a device on which the picture is missing (the debug panel's "st …" buttons call these).
+  if (window.__deckDebug) window.__deckDebug.stackControl = {
+    // Land the settled picture again from nothing, and start the loop. Returns what the state had wrong before.
+    restore() {
+      const ctx = activeCtx;
+      if (!current(ctx) || !slide.classList.contains('on')) return ['slide 6 is not the current visit'];
+      const wrong = restFaults();
+      build = null; landAtRest(ctx, true); entryFinished = true;
+      if (!motionOff()) { if (!amb) { amb = { t: now() }; tourFrom(Math.max(0, openI), now()); } loopRetired = false; running = true; paused = false; wake(); }
+      return wrong;
+    },
+    // The compositing hint that brought back the text of slides 9 to 11, on the stack's root. Off unless asked for.
+    layer(on = !root.hasAttribute('data-st-layer')) { root.toggleAttribute('data-st-layer', on); return on; },
+    // The planes without their 3D turn: if they come back flat, it is their 3D layers that were not composited.
+    flat(on = !root.hasAttribute('data-st-flat')) { root.toggleAttribute('data-st-flat', on); return on; },
+    // The former layout: the world in scene px, scaled down as a whole (large layers).
+    big(on = !scaledWorld) { scaledWorld = on; if (current(activeCtx) && slide.classList.contains('on')) { layout(); landAtRest(activeCtx); } return on; },
+  };
 
   syncPreviewPolicy();
   layout();

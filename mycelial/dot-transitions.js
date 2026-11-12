@@ -1157,9 +1157,10 @@
     const tw = [];
     for (const el of textOf(s)) {
       const bounds = context.geometry?.box(el);
-      // The third slide's copy spreads from its upper right on every layout,
-      // even where the mobile label and the travelling node sit on the left.
-      const origin = el.matches('.gap-copy') && context.from === 1
+      // Where the third slide's copy is set right-aligned beside its chart, it
+      // spreads from its upper right. Stacked above the chart and left-aligned
+      // (a phone), it spreads from the node at its top left like every other slide.
+      const origin = el.matches('.gap-copy') && context.from === 1 && getComputedStyle(el).textAlign === 'right'
         ? { x: (bounds || el.getBoundingClientRect()).right, y: at.y }
         : at;
       copy.paint(el, origin, 0, bounds, state);
@@ -1425,8 +1426,11 @@
     const intro = window.__deckIntro, gate = intro?.gate;
     const placed = gate && gate.w === innerWidth && gate.h === innerHeight &&
       [gate.x, gate.y, gate.size].every(Number.isFinite) && gate.size > 0;
-    const c = placed ? { x: gate.x, y: gate.y } : { x: innerWidth / 2, y: innerHeight / 2 };
     const size = placed ? gate.size : Math.min(innerWidth, innerHeight) * 0.2;
+    // Without a gate to take over from, the lockup (the mark with its name beneath) is centred as one shape: the
+    // mark alone on the middle line leaves the pair sitting low, by half of what the name adds below it.
+    const lift = (nameDrop(size) + 0.35 * 22 - size / 2) / 2;
+    const c = placed ? { x: gate.x, y: gate.y } : { x: innerWidth / 2, y: innerHeight / 2 - lift };
     html.classList.add('dt-intro');
     dot.classList.add('is-moving');
     copy.hide(current, context, anchor, 5000);
