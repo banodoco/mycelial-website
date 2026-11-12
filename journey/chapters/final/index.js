@@ -1724,7 +1724,14 @@ export function createFinal(sceneApi) {
       const held = base * stay;
       // Mobile already presents these same detailed background instances.
       // Keep them throughout the branch instead of crossfading to old proxies.
-      const seatAmount = mobile ? held + (1 - held) * (progress ?? 0) : seats;
+      // The hand-back (progress null) retires the copies on desktop: they
+      // left over the descent (the branch's seatLight reaches 0 by 70% of
+      // it) while the ring came back, and the bare `setManifesto(null)` used
+      // to relight them at the default `seats = 1` on the landing frame —
+      // over the returned ring, and nothing in Purpose's own frame (its
+      // desktop setPurpose(0) returns early) turned them off again
+      // (2026-11 — "the mushrooms at the back flash up a little when it lands").
+      const seatAmount = mobile ? held + (1 - held) * (progress ?? 0) : progress === null ? 0 : seats;
       const seatRetirement = progress === null ? 0 : Math.max(0, Math.min(1, seatRetreat));
       aerial.setSeatLight(seatAmount, seatRetirement);
       sky.setPurposeAerial(false);
