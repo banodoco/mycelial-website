@@ -55,10 +55,30 @@ try {
   await page.setViewportSize({width,height}); await page.waitForTimeout(150);
   const s = await state(); assertFit(s, `${width}x${height}`);
   console.log('FIT',width,height,s.font,'fills',s.fill.toFixed(2),'of the height');
+  // 2026-11-12: the manuscript fills the band under the logo to 10% above
+  // the foot; a collapse of the size (or of the band) fails here.
+  if (height >= 720) {
+   assert.ok(s.font >= 15, `a desktop ${width}x${height} keeps body-sized type (${s.font}px)`);
+   assert.ok(s.fill >= .7, `the manuscript fills its band at ${width}x${height} (${s.fill.toFixed(2)})`);
+  }
   if ((width===1440&&height===900)||(width===1280&&height===720)||(width===1440&&height===500)) {
    await page.screenshot({path:`/tmp/manifesto-fit-${width}x${height}.png`});
   }
  }
+ const verseBoxes = () => page.evaluate(() => [...document.querySelectorAll('.j-manifesto-verse')].map(v => {
+  const r = v.getBoundingClientRect(); return [v.style.maxWidth, Math.round(r.left), Math.round(r.width), Math.round(r.height)];
+ }));
+ // A desktop window narrowed to a phone gives back every held verse width,
+ // and widening it again refits exactly as before (2026-11-12).
+ await page.setViewportSize({width:1024,height:768}); await page.waitForTimeout(150);
+ const heldDesktop = await verseBoxes();
+ assert.ok(heldDesktop.some(([held]) => held), '1024x768 holds a line short of the navigation');
+ await page.setViewportSize({width:600,height:900}); await page.waitForTimeout(300);
+ assert.ok((await verseBoxes()).every(([held]) => !held), 'a phone width keeps no desktop line limits');
+ assert.equal(await page.evaluate(() => document.querySelector('.j-manifesto').style.getPropertyValue('--manifesto-fit-size')), '', 'nor the desktop size');
+ await page.setViewportSize({width:1024,height:768}); await page.waitForTimeout(300);
+ assert.deepEqual(await verseBoxes(), heldDesktop, 'back on the desktop the same lines are held, at the same size');
+ await page.setViewportSize({width:1920,height:1080}); await page.waitForTimeout(150);
  const before = await state();
  await page.evaluate(() => document.fonts.dispatchEvent(new Event('loadingdone')));
  await page.waitForTimeout(100); assert.equal((await state()).font,before.font,'font-ready recomputation is stable');
