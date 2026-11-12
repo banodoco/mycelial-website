@@ -22,6 +22,7 @@
     "serve.py",
     "site.webmanifest",
     "sitemap.xml",
+    "page-error.js",
     "visible-viewport.js"
   ],
   "trees": [
