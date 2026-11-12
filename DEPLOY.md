@@ -42,6 +42,17 @@ pre-push hook or custom hooks directory is configured. An existing hook
 should invoke this guard rather than be overwritten. The larger pre-commit
 hook is optional and is not installed by the snapshot builder.
 
+Stage `runtime-history.json` too: the builder appends each new snapshot to
+it (with its build time) and embeds the list in `runtime-release.js`, which
+is what lets the live page run an older retained build for bisecting:
+`?rt=<8-64 hex prefix>` selects that `runtime/<sha256>/` (only listed hashes,
+never another path) and shows a red badge with older/newer/live links;
+`?diag=1` (or `?diag=quiet`) loads the root-level `diag.js` flight recorder
+first. Both are inert without their parameter, and neither persists. Only
+the snapshot's module graph changes under `?rt=`; `index.html`, the root
+CSS and the root classic scripts are always the current ones. The owner's
+procedure is `docs/polish/hunt-howto.md`.
+
 For local development, `python3 serve.py` supplies `runtime-source.js` in
 place of the generated map, including for LAN clients. Source edits appear
 immediately. To inspect exactly what Pages will load, use
