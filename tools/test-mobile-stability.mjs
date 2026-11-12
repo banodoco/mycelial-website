@@ -143,7 +143,7 @@ row('M3c', 'simulated with the vendored swap rule, the scene never draws into rt
 /* ---- M4 ---- */
 const rend = await readFile(join(root, 'organism/renderer.js'), 'utf8');
 row('M4', 'the canvas is not multisampled: WebGLRenderer({ antialias: false, ... })', () => {
-  assert.match(rend, /new THREE\.WebGLRenderer\(\{ antialias: false, powerPreference: 'high-performance' \}\)/);
+  assert.match(rend, /new THREE\.WebGLRenderer\(\{ antialias: false, depth: false, powerPreference: 'high-performance' \}\)/);
 });
 
 /* ---- M5 ---- */

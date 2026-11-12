@@ -23,8 +23,12 @@ export function createRendererSetup({ panX, container, camY, camZ, targetY, camA
      pass covers every sample of every pixel with one value, so a 4x canvas
      resolves to exactly the single-sampled picture — and costs a 4x colour
      plus a 4x depth buffer the size of the screen (~40 MB at a phone's 2x
-     DPR) and a resolve every frame, for nothing. */
-  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+     DPR) and a resolve every frame, for nothing.
+     NO CANVAS DEPTH BUFFER EITHER (2026-11-12), for the same reason: the
+     full-screen pass that reaches the canvas does not depth-test, and every
+     scene draw (the warm-ups included) binds an offscreen target. Measured
+     at 2924x1454 that is a 17 MB depth/stencil buffer nothing read. */
+  const renderer = new THREE.WebGLRenderer({ antialias: false, depth: false, powerPreference: 'high-performance' });
   renderer.setSize(view.width, view.height);
   const pixelRatioPolicy = createPixelRatioPolicy(pinPr);
   renderer.setPixelRatio(pixelRatioPolicy.initial);

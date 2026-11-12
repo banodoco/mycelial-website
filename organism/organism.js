@@ -245,6 +245,11 @@ composer.addPass(bloom);
 // Keep first construction identical to syncRenderSizes(): the bloom spread is
 // intentionally authored in CSS pixels rather than drawing-buffer pixels.
 bloom.setSize(_cssSize.width, _cssSize.height);
+// Its eleven targets only ever take full-screen passes: no depth buffers
+// (three allocates one per target by default — 3 MB that nothing tests).
+for (const t of [bloom.renderTargetBright, ...bloom.renderTargetsHorizontal, ...bloom.renderTargetsVertical]) {
+  t.depthBuffer = false;
+}
 
 // Temporal accumulation (TAA). MSAA and the coverage fade can't fully stop
 // near-parallel lines a couple of pixels apart from beating against the pixel
@@ -353,6 +358,12 @@ const taaPass = new TemporalAccumulatePass(_dbSize.width, _dbSize.height);
 if (NOTAA) taaPass.enabled = false;
 composer.addPass(taaPass);
 composer.addPass(new OutputPass());
+// The composer sized its first target and handed every pass CSS size x
+// ratio, unrounded (1090.5 rows at 727 x 1.5); the drawing buffer is
+// floored. The scene's targets take the renderer's integer size, as every
+// later resize already gives them.
+composer.renderTarget1.setSize(_dbSize.width, _dbSize.height);
+taaPass.setSize(_dbSize.width, _dbSize.height);
 
 // Halton(2,3) offsets: a low-discrepancy walk over the pixel, so even a short
 // history covers the pixel area evenly instead of clumping like random would

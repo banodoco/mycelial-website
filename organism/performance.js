@@ -62,6 +62,32 @@ const CAL_PROJECTION = 1.35;
 // instead of keeping an answer the current rule would never have issued.
 const CAL_SAMPLE_WINDOW = 'intro';
 
+/* THE CEILING IS A CONSTANT, NOT A BUDGET (2026-11-12 — an 8 GB Mac where
+   every reload booted slower than the last). Every render target this page
+   keeps is screen-sized, so its GPU memory goes with the square of the pixel
+   ratio: a 1462x727 window at 2 is 4.25 MP of backing store and ~370 MB of
+   targets (a 4x HalfFloat colour + 4x depth renderbuffer, three more
+   HalfFloat textures, the canvas); at 1.5 it is 2.39 MP and 56% of that.
+   On a desktop that ceiling is 1.5, one constant rather than a memory
+   heuristic (navigator.deviceMemory is coarse, Chrome-only, and says
+   nothing about free memory). It also holds a remembered calibration of 2
+   to 1.5; one already at 1.5 or below is untouched. At 1.5 the 4x MSAA and the temporal accumulation still resolve
+   the fine gill lines; what is lost is the last notch of crispness, the
+   same trade the owner A/B'd as "noticeably smoother" (FLUIDITY below).
+   A phone's screen is small (390x844 at 2 is 1.3 MP), so a coarse pointer
+   keeps 2. `?pr=` still pins any ratio; the governor below still steps
+   down from here, never up. */
+export const DESKTOP_MAX_PR = 1.5;
+export const TOUCH_MAX_PR = 2;
+
+/** The ratio a display starts at: the pin, else the remembered verdict or
+ *  the screen's own, whichever is lower, under the device's ceiling. Pure. */
+export function initialPixelRatio({ pinPr = null, stored = null, dpr = 1, coarse = false }) {
+  if (pinPr !== null) return pinPr;
+  const ceiling = coarse ? TOUCH_MAX_PR : DESKTOP_MAX_PR;
+  return Math.min(stored !== null ? stored : dpr, dpr, ceiling);
+}
+
 /** Resolve and persist the display-specific pixel-ratio calibration. */
 export function createPixelRatioPolicy(pinPr) {
   const storeKey = (() => {
@@ -82,7 +108,10 @@ export function createPixelRatioPolicy(pinPr) {
   }
   return {
     stored,
-    initial: pinPr !== null ? pinPr : stored !== null ? stored : Math.min(devicePixelRatio, 2),
+    initial: initialPixelRatio({
+      pinPr, stored, dpr: devicePixelRatio,
+      coarse: typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches,
+    }),
     remember,
   };
 }
