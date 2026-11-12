@@ -149,6 +149,8 @@ import { visibleViewport, visibleSize } from '../visible-viewport.js';
 // The PreNetwork's shared ground data — world-space polylines extracted from
 // the REAL ground web, and the three points the hero spores land on. A leaf.
 import { LANDING_SITES, SKELETON } from './network-skeleton.js';
+// The page's error channel, for the adoption's fallbacks (a leaf too).
+import { reportPageError } from '../page-error.js';
 
 /* ---------------------------------------------------------------- *
  * COMPOSITION — the through-current. One aim per viewport mode.
@@ -1464,6 +1466,24 @@ const STATIC_HAZE =
  *  the crossfade out of this layer is only complementary if the ramp INTO it
  *  has finished, so the number belongs to both and can drift out of neither. */
 const ENTRY_MS = 900;
+
+/* THE ADOPTION IS BOUNDED (2026-11 — "the mushroom never appears").
+   The scene holds its composer from the moment it exists until the worker's
+   field is adopted (createHeroSporeField's deferred carry), so an adoption
+   that never settles is a scene that never draws again — with nothing in the
+   console. The reply is one message round trip: measured 5 ms in a headless
+   software-GL boot, so ADOPT_WAIT_MS is a stall budget, not a latency
+   budget — three hundred times the normal trip and still well inside the
+   3.05 s teardown after the strike (stopDelayAfterStrike), which settles
+   the adopter too. Past it the scene takes its own seeded copy, exactly as
+   workerFailed() does, and the growth is visible from that frame instead of
+   from never. HOLD_CEILING_MS is the scene-side last resort, counted from
+   the intro's release: if, for any reason this file has not thought of,
+   the hold is still on that long after the growth began, the composer is
+   released and the event is recorded. It is a little longer than the
+   teardown plus the watchdog, so it can only fire when both have failed. */
+const ADOPT_WAIT_MS = 1500;
+const HOLD_CEILING_MS = 7000;
 /** ...and its delay, which is the hero copy's own (hero.css: fade-on 0.9s
  *  ease 0.15s). index.html releases the copy in the same task as reveal()
  *  starts this ramp, so with the same duration, easing and delay the words
@@ -2261,6 +2281,11 @@ function createPreload() {
   let adoptWanted = false;
   let retiredWorker = null;   // see stop(): kept, idle, never terminated
   let releasedEarly = false;
+  // the adoption's bound (ADOPT_WAIT_MS) and the moment the growth was
+  // released, which the scene side's last-resort ceiling counts from
+  let adoptTimer = null;
+  let adoptAskedAt = -1;
+  let introReleasedAt = -1;
   // See sizeCanvas(): the ratio between THIS layer's device grid and the one
   // the scene's renderer will draw the same particles on. 1 whenever they
   // agree, which is every capture and every first visit to a retina desktop.
@@ -2514,6 +2539,9 @@ function createPreload() {
       else if (m.type === 'failed') workerFailed(m.message);
     };
     worker.onerror = (e) => workerFailed(e && e.message);
+    // a message that cannot be deserialised is a snapshot that will never
+    // arrive: the same answer as a worker that failed
+    worker.onmessageerror = () => workerFailed('a worker message could not be read');
     const box = measureCanvas();
     entryEpoch0 = epochMs();
     worker.postMessage({
@@ -2546,8 +2574,61 @@ function createPreload() {
     const from = nowEpoch + wait;
     worker.postMessage({ type: 'fade', from, ms: fadeMs });
     fadeFrom = performance.now() + wait;
-    adopter.begin({ fadeFromEpoch: from, fadeMs, epoch0: entryEpoch0 });
+    const begin = adopter.begin;
     adopter = null;
+    clearAdoptWatch();
+    begin({ fadeFromEpoch: from, fadeMs, epoch0: entryEpoch0 });
+  }
+
+  /** THE ONE FALLBACK DOOR for a scene that is waiting on the worker's
+   *  field. Every way the adoption can end without a snapshot — the
+   *  teardown, a worker error, a worker that never answers, a page that was
+   *  hidden past the bound, a scene-side ceiling — comes through here, and
+   *  here only: the scene takes its own seeded copy at once and its render
+   *  hold is released by its own begin. Exactly once: the adopter is
+   *  cleared before begin runs, so a second exit (or a snapshot that lands
+   *  late) finds nothing to settle and installSnapshot() ignores it. If the
+   *  worker is still drawing, its half fades on the same wall clock, so the
+   *  stream is never drawn at full strength twice. */
+  function settleAdopter(why) {
+    clearAdoptWatch();
+    if (!adopter) return false;
+    const { field, begin } = adopter;
+    adopter = null;
+    if (why) reportPageError(`[hero-spores] adoption fell back (${why})`);
+    field.preloadDriven = false;
+    if (releasedEarly) field.released = true;
+    const from = epochMs();
+    if (worker) {
+      worker.postMessage({ type: 'fade', from, ms: Math.max(1, fadeMs) });
+      fadeFrom = performance.now();
+    }
+    begin({ fadeFromEpoch: from, fadeMs: Math.max(1, fadeMs), epoch0: entryEpoch0 });
+    return true;
+  }
+
+  function clearAdoptWatch() {
+    if (adoptTimer !== null) { clearTimeout(adoptTimer); adoptTimer = null; }
+  }
+
+  /** Ask the worker for its field, with the bound armed. A timer that fires
+   *  late was itself stuck behind a blocked thread, and the snapshot may be
+   *  sitting in the same queue: such a timer gives the queue one more short
+   *  turn before it falls back. */
+  function requestAdoption() {
+    adoptAsked = true;
+    adoptAskedAt = performance.now();
+    worker.postMessage({ type: 'adopt' });
+    clearAdoptWatch();
+    const arm = (ms, due) => {
+      adoptTimer = setTimeout(() => {
+        adoptTimer = null;
+        if (!adopter) return;
+        if (performance.now() - due > 250 && ms > 100) { arm(100, performance.now() + 100); return; }
+        settleAdopter(`no snapshot ${Math.round(performance.now() - adoptAskedAt)} ms after the request`);
+      }, ms);
+    };
+    arm(ADOPT_WAIT_MS, adoptAskedAt + ADOPT_WAIT_MS);
   }
   // the worker's clock origin, so the scene-side copy can ride the same gust
   let entryEpoch0 = 0;
@@ -2562,11 +2643,7 @@ function createPreload() {
     if (worker) { worker.terminate(); worker = null; }
     mirror = null;
     showStatic();
-    if (adopter) {
-      const begin = adopter.begin;
-      adopter = null;
-      begin({ fadeFromEpoch: epochMs(), fadeMs: Math.max(1, fadeMs), epoch0: entryEpoch0 });
-    }
+    settleAdopter(`worker failed: ${message}`);
   }
 
   function boot() {
@@ -2673,6 +2750,12 @@ function createPreload() {
     onVisibility = () => {
       if (state.mode === 'worker') {
         if (worker) worker.postMessage({ type: 'visible', visible: !document.hidden });
+        // a hidden page's timers are throttled: a bound that came due while
+        // it was hidden is honoured on the way back, not a minute later
+        if (!document.hidden && adopter && adoptAskedAt >= 0
+            && performance.now() - adoptAskedAt > ADOPT_WAIT_MS) {
+          settleAdopter('no snapshot by the time the page was shown again');
+        }
         return;
       }
       if (document.hidden) stopLoop();
@@ -2720,8 +2803,13 @@ function createPreload() {
       // growth). The worker releases its own context and then idles, which
       // costs nothing; it is kept referenced so the collector never tears it
       // down at some later moment instead.
+      // A scene still waiting on the worker's field takes its own copy NOW:
+      // after the next line no snapshot can reach it, and a waiting scene
+      // holds its composer until one does (2026-11, the lost adoption).
+      settleAdopter('the prelude stopped before its snapshot arrived');
       worker.postMessage({ type: 'stop' });
       worker.onmessage = null;
+      worker.onmessageerror = null;
       retiredWorker = worker;
       worker = null;
     }
@@ -2791,6 +2879,7 @@ function createPreload() {
       };
     },
     preludeStrike() {
+      if (introReleasedAt < 0) introReleasedAt = performance.now();
       if (state.mode === 'worker') {
         if (worker) worker.postMessage({ type: 'strike' });
         releasedEarly = true;
@@ -2827,9 +2916,19 @@ function createPreload() {
      *  the scene adopts at handOff() itself. */
     adopt() {
       adoptWanted = true;
-      if (state.mode !== 'worker' || adoptAsked || !worker || !adopter) return;
-      adoptAsked = true;
-      worker.postMessage({ type: 'adopt' });
+      if (introReleasedAt < 0) introReleasedAt = performance.now();
+      if (state.mode !== 'worker' || adoptAsked || !adopter) return;
+      // a scene waiting on a worker that is already gone takes its own copy
+      if (!worker) { settleAdopter('no worker to adopt from'); return; }
+      requestAdoption();
+    },
+    /** The growth's release could not complete its prelude half (a throw
+     *  in journey/boot/handoff.js releaseIntro): the scene takes its own
+     *  copy and the prelude leaves on its normal teardown beat. */
+    preludeAbandon(why) {
+      if (introReleasedAt < 0) introReleasedAt = performance.now();
+      settleAdopter(why || 'abandoned');
+      if (state.live) setTimeout(stop, 400);
     },
     /** Run after the journey has positioned the camera, immediately before
      * the scene renders. The retained overlay follows the same world, not
@@ -2922,8 +3021,13 @@ function createPreload() {
           whenAdopted(begin) {
             adopter = { field, begin };
             if (!worker) workerFailed('worker gone before the scene arrived');
-            else if (adoptWanted) { adoptAsked = true; worker.postMessage({ type: 'adopt' }); }
+            else if (adoptWanted) requestAdoption();
           },
+          /** performance.now() of the growth's release, or -1 before it:
+           *  what the scene side's HOLD_CEILING_MS counts from. */
+          releasedAt() { return introReleasedAt; },
+          /** The scene side's last resort (see HOLD_CEILING_MS). */
+          settle(why) { return settleAdopter(why); },
         };
       }
       if (state.field) state.field.sceneReady = true;
@@ -3130,6 +3234,9 @@ export function createHeroSporeField(ctx, carried, fadeSeconds = 0) {
     // (organism/animation.js holdRender — the worker shares this GPU)
     if (typeof ctx.holdRender === 'function') ctx.holdRender(true);
     carried.whenAdopted(({ fadeFromEpoch, fadeMs: ms, epoch0 }) => {
+      // ONE release, owned here: a second begin (which the preload side
+      // already rules out) changes nothing
+      if (adopted) return;
       if (typeof ctx.holdRender === 'function') ctx.holdRender(false);
       adopted = true;
       fadeFrom = fadeFromEpoch - performance.timeOrigin;
@@ -3148,7 +3255,26 @@ export function createHeroSporeField(ctx, carried, fadeSeconds = 0) {
   // the organism's own breeze() — from here on there is one wind and one
   // copy of it, and the transitional stand-in above is out of the picture.
   addAnimator('hero-spore-drift', (t, dt) => {
-    if (!adopted) return;
+    if (!adopted) {
+      // THE LAST RESORT (HOLD_CEILING_MS): the growth was released long ago
+      // and this field is still waiting, so the composer is still held. Ask
+      // the preload side to settle (its fallback door reports and begins);
+      // if even that finds nothing to settle, release the hold here.
+      const at = carried && typeof carried.releasedAt === 'function' ? carried.releasedAt() : -1;
+      if (at >= 0 && performance.now() - at > HOLD_CEILING_MS) {
+        const settled = typeof carried.settle === 'function'
+          && carried.settle(`the scene was still held ${HOLD_CEILING_MS} ms after the growth began`);
+        if (!adopted) {
+          if (!settled) reportPageError('[hero-spores] render hold released by its ceiling');
+          if (typeof ctx.holdRender === 'function') ctx.holdRender(false);
+          adopted = true;
+          gain.value = OPACITY;
+          project();
+          inkFades();
+        }
+      }
+      if (!adopted) return;
+    }
     if (fading) {
       const p = Math.min(1, Math.max(0, (performance.now() - fadeFrom) / fadeLen));
       gain.value = OPACITY * p;

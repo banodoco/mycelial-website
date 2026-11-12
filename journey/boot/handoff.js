@@ -74,6 +74,7 @@ import { ownerOf, modalLive, targetOwnsKey } from '../ownership.js';
 import { NOTE } from './scene-note.js';
 import { prepareHeroGpu } from './hero-gpu.js';
 import { continueRailEntry } from './rail-entry.js';
+import { reportPageError } from '../../page-error.js';
 // The preload atmosphere's singleton (ESM cache: same instance the page
 // booted). Consulted for ONE thing — the prelude's ignition contract:
 // the normal release below waits for the prelude's convergence pulse to
@@ -294,8 +295,22 @@ export function createJourneyHandoff({ scene, entryQueue, note, journeyModule,
     // prelude draws on this thread). Not earlier: until this frame the scene
     // has nothing to show, and while it holds its frame the GPU belongs to
     // the prelude. Every route into the growth passes through this call.
-    scene.setGroundEntryLead?.(heroSpores.preludeLandingStatus().impactAgeSeconds);
-    heroSpores.adopt();
+    //
+    // THE LATCH IS SET BEFORE THE PRELUDE'S HALF RUNS, so that half must not
+    // be able to cancel the growth (2026-11): a throw in the adoption or the
+    // strike used to leave the latch set and intro.start() unreached, and
+    // failJourney's own cleanup call then returned at the latch — a blank
+    // stage for the life of the page. Each half is guarded on its own: a
+    // throw is reported on the page's error channel, the prelude takes its
+    // fallback (the scene adopts its own copy and the layer leaves), and the
+    // growth starts regardless. scene.intro.start() itself is not guarded:
+    // a scene that cannot start its own intro is a real startup failure and
+    // still reaches the caller's boundary.
+    let preludeError = null;
+    try {
+      scene.setGroundEntryLead?.(heroSpores.preludeLandingStatus().impactAgeSeconds);
+      heroSpores.adopt();
+    } catch (err) { preludeError = err; }
     document.body.classList.remove('scene-preparing');
     document.body.classList.add('scene-intro-live');
     // THE STRIKE: the prelude's convergence pulse arrives on this same
@@ -303,7 +318,12 @@ export function createJourneyHandoff({ scene, entryQueue, note, journeyModule,
     // to the real web's own converging draw-on. The normal path timed
     // this call to the pulse's arrival; the fast and fallback paths fire
     // it with the pulse mostly arrived.
-    heroSpores.preludeStrike();
+    try { heroSpores.preludeStrike(); } catch (err) { preludeError = preludeError || err; }
+    if (preludeError) {
+      reportPageError('[journey-v6] the prelude handoff threw; the growth starts without it', preludeError);
+      try { heroSpores.preludeAbandon('the prelude handoff threw'); }
+      catch (err) { reportPageError('[journey-v6] the prelude fallback threw', err); }
+    }
     scene.intro.start();
     performance.mark('hero-intro-start');
   }
