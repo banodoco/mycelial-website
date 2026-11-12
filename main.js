@@ -10,6 +10,7 @@
 // journey/site.css. Zero behaviour change intended anywhere in this move.
 
 import { CAPTURE, NOINTRO, INTROAT, HL, LIT, BODY_SERIF } from './flags.js';
+import { visibleViewport, visibleSize } from './visible-viewport.js';
 /* THREE.JS IS NO LONGER IN THIS FILE'S STATIC GRAPH (Lane B, 2B), and the
    three lines below are what used to put it there. Measured: the eager
    graph behind main.js was 1,796,214 bytes, of which 1,304,820 is
@@ -145,7 +146,8 @@ const entryQueue = createEntryQueue();
    the class of each is unchanged. What moved is WHEN, and for five of them
    that is the whole of this order's user-visible effect.
 
-   THE REGISTER — 14 listener sites, by class (16 until 2026-08-30; the
+   THE REGISTER — 13 listener sites, by class (16 until 2026-08-30, 14 until
+   the resize hook became a visible-viewport subscription; the
    callout entry below carries the two the Equip promotion deleted):
 
      PAGE      window error / unhandledrejection — the error CHANNEL is
@@ -156,7 +158,10 @@ const entryQueue = createEntryQueue();
      GATED     the `?introat` load hook — inside `if (introAt !== null)`
      PAGE      the canvas's webglcontextlost / webglcontextrestored pair,
                and the 2.5s grace timer the first one arms
-     PAGE      the window resize hook and its debounce timer
+     PAGE      the hero re-frame on a settled change of the visible viewport
+               (visibleViewport.subscribeSettled — a subscription, not a
+               listener site: the module owns the window/visualViewport
+               listeners and the 150 ms debounce, fix/visible-canvas)
      PAGE      the explore CTA's capture-phase click
      PAGE      the logo link's click
      PAGE      the three callouts' mouseenter / mouseleave and their tag
@@ -218,7 +223,7 @@ if (skipLink) {
     const target = document.querySelector(skipLink.getAttribute('href'));
     if (!target) return;
     e.preventDefault();
-    target.focus();
+    target.focus({ preventScroll: true });
   });
 }
 
@@ -590,7 +595,7 @@ function railRefresh() {
   const cta = document.querySelector('.nav-cta');
   // the nav content inset is the CEILING for the rail, not its home — see
   // railApply: the rail itself derives from the plume node
-  _rail.navRight = cta ? cta.getBoundingClientRect().right : innerWidth - 54;
+  _rail.navRight = cta ? cta.getBoundingClientRect().right : visibleSize().width - 54;
   /* MEASURE THE SETTLED TRUTH, NEVER THE ENTRANCE (2026-08-18 — Hannah: "a
      stutter and then they shift to the left a little bit"). The callout
      entrance animates letter-spacing (measured 4.224px -> 3.168px), so a
@@ -837,19 +842,20 @@ if (sceneApi) {
      branches asked for the same easing, so there is one call.
      THE ORDER IS STILL LOAD-BEARING: ease the camera FIRST and adopt SECOND —
      the order the old applyMode() ran in, kept deliberately, since adopt()
-     re-anchors the trackers the easing camera is about to project. */
-  let resizeTimer;
-  addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      const mode = heroMode.resolve();
-      sceneApi.setView(heroMode.viewFor(mode), 0.6);
-      if (mode !== heroMode.current()) heroMode.adopt(mode);
-      // re-measure the rail metrics (nav inset, tag widths, .co scale
-      // may all have changed with the breakpoint); the animator follows
-      // the easing camera on its own
-      railRefresh();
-    }, 150);
+     re-anchors the trackers the easing camera is about to project.
+     It listens to the VISIBLE viewport's settled tier (./visible-viewport.js):
+     a window resize publishes there, and so does a phone toolbar that settles
+     without one, once per burst, SETTLED_MS (150 ms, the debounce this
+     handler used to keep itself) after its last change — a restart-prone
+     re-ease must not run per step. */
+  visibleViewport.subscribeSettled(() => {
+    const mode = heroMode.resolve();
+    sceneApi.setView(heroMode.viewFor(mode), 0.6);
+    if (mode !== heroMode.current()) heroMode.adopt(mode);
+    // re-measure the rail metrics (nav inset, tag widths, .co scale
+    // may all have changed with the breakpoint); the animator follows
+    // the easing camera on its own
+    railRefresh();
   });
 }
 

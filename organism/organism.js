@@ -15,6 +15,7 @@ import { DRAW_GLSL, PULSE_GLSL } from './shaders.js';
 import { createRendererSetup, createViewportSync } from './renderer.js';
 import { NOTAA, TAA_CLASSIC, NOFADE, DBG, PIN_PR, CAPTURE } from '../flags.js';
 import { createRestCadence } from './rest-cadence.js';
+import { visibleViewport, visibleSize } from '../visible-viewport.js';
 
 // =====================================================================
 // TABLE OF CONTENTS (order as they appear below; M2 split the marked
@@ -239,7 +240,7 @@ const pinSceneTarget = () => {
   if (composer.readBuffer !== composer.renderTarget1) composer.swapBuffers();
 };
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.56, 0.45, 0.1);
+const bloom = new UnrealBloomPass(new THREE.Vector2(_cssSize.width, _cssSize.height), 0.56, 0.45, 0.1);
 composer.addPass(bloom);
 // Keep first construction identical to syncRenderSizes(): the bloom spread is
 // intentionally authored in CSS pixels rather than drawing-buffer pixels.
@@ -373,7 +374,58 @@ const _taaPrevQuat = new THREE.Quaternion();
 // animators run BEFORE taaFrame() has ever executed — projects through a real
 // lens rather than through an identity matrix.
 const _steadyProj = new THREE.Matrix4().copy(camera.projectionMatrix);
+/* A TOOLBAR SETTLING IS EASED, NOT SNAPPED (fix/visible-canvas). On a touch
+   device the visible height changes by the browser bars' height (~140 px on
+   an iPhone) with nothing else moving — at load, when Chrome iOS settles from
+   its large viewport, and whenever the bars collapse or return. The canvas
+   takes the new size at once (nothing may sit hidden under a toolbar), but at
+   a fixed vertical fov a new height is a new frame: the whole scene would
+   rescale and jump ~70 px in one frame. So for VIEW_EASE_S the camera keeps
+   rendering the OLD frame through a view offset — full frame = the old
+   height, window = the new canvas, shifted by however far the canvas top
+   moved — which is pixel-for-pixel the picture that was on screen, then eases
+   the full frame to the new one. camera.aspect rides the same ease, so
+   everything that composes against it (the director's portrait field, the
+   steady projection the DOM pins through) moves with the picture, and the
+   last frame clears the offset: the rest pose is exactly what a fresh load at
+   the new size renders. Desktop, fine pointers, width changes and anything
+   larger than a toolbar take the old immediate path, untouched. */
+const VIEW_EASE_S = 0.6;
+const VIEW_EASE_MAX_DH = 260;
+const coarsePointer = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : null;
+let viewEase = null;   // { w, h, H0, Y0, u, last }
+// Progress is advanced per drawn frame and capped at VIEW_EASE_STEP_S a frame,
+// so a long frame (the reallocation itself, a busy main thread) slows the
+// ease instead of skipping it: the picture never moves more than ~1/18 of the
+// re-frame between two frames.
+const VIEW_EASE_STEP_S = 1 / 45;
+function viewEaseProgress(e) {
+  const t = performance.now();
+  e.u = Math.min(1, e.u + Math.min(t - e.last, VIEW_EASE_STEP_S * 1000) / (VIEW_EASE_S * 1000));
+  e.last = t;
+  return e.u;
+}
+function viewEaseState(e, u) {
+  const k = u * u * (3 - 2 * u);
+  return { H: e.H0 + (e.h - e.H0) * k, Y: e.Y0 * (1 - k) };
+}
+function applyViewEase() {
+  if (!viewEase) return false;
+  const u = viewEaseProgress(viewEase);
+  if (u >= 1) {
+    camera.aspect = viewEase.w / viewEase.h;
+    camera.clearViewOffset();
+    viewEase = null;
+    return false;
+  }
+  const { H, Y } = viewEaseState(viewEase, u);
+  camera.aspect = viewEase.w / H;
+  camera.setViewOffset(viewEase.w, H, 0, Y, viewEase.w, viewEase.h);
+  return true;
+}
 function taaFrame() {
+  // a toolbar-height ease (see VIEW_EASE_S) sets this frame's aspect + offset
+  const easing = applyViewEase();
   // rebuild the clean projection, then push it off-centre by a subpixel step
   camera.updateProjectionMatrix();
   const db = renderer.getDrawingBufferSize(_taaDb);
@@ -397,6 +449,8 @@ function taaFrame() {
   // ~2.5 frames of history: the lightest touch that still holds the moiré
   // down, keeping the sway's motion trail well under a pixel
   taaPass.weight = 0.6 * Math.exp(-motion * 150);
+  // the frame itself is moving under a toolbar ease: history would ghost it
+  if (easing) taaPass.weight = 0;
   // NO PASS WHILE IT CANNOT CONTRIBUTE (2026-11 — Manifesto stutter, esp.
   // phones). Through a flight the weight sits near 0, yet the pass still ran
   // its 10-tap blend and history copy at full resolution every frame. Below
@@ -2110,7 +2164,9 @@ const TAP_ZETA = 0.14; // light damping: a few visible wobbles, settled in ~3s
     // a tap, not an orbit drag: barely moved, quickly released
     if (performance.now() - downT > 400) return;
     if (Math.hypot(e.clientX - downX, e.clientY - downY) > 7) return;
-    ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+    // the canvas covers the visible box, which need not start at client 0
+    const vp = visibleSize();
+    ndc.set(((e.clientX - vp.left) / vp.width) * 2 - 1, -((e.clientY - vp.top) / vp.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
     // one soft haptic tick where the platform offers one (Android; iOS
     // exposes no vibration API to the web, so it quietly does nothing there)
@@ -2169,6 +2225,7 @@ const animationLifecycle = createAnimationLifecycle({
     heroSpores.syncCamera(camera, _steadyProj);
   },
   render: () => { composer.render(); pinSceneTarget(); },
+  viewSize: visibleSize,
 });
 const { animators, addAnimator } = animationLifecycle;
 /** Register a per-frame callback `fn(t, dt)`, run in insertion order every
@@ -2368,17 +2425,41 @@ const RESIZE_SETTLE_MS = 150;
 {
   const applyResize = viewport.resize;
   let timer = null, pending = false, lastKey = null;
-  const sizeKey = () => `${innerWidth}x${innerHeight}@${devicePixelRatio}`;
+  let applied = visibleSize();
+  const sizeKey = () => { const v = visibleSize(); return `${v.width}x${v.height}+${v.top}@${devicePixelRatio}`; };
+  const apply = () => {
+    const prev = applied, next = visibleSize();
+    applied = next;
+    // The frame currently on screen, in the coordinates of the new canvas.
+    const live = viewEase ? viewEaseState(viewEase, viewEase.u) : { H: prev.height, Y: 0 };
+    const dh = next.height - prev.height;
+    const ease = !CAPTURE && coarsePointer && coarsePointer.matches
+      && Math.abs(next.width - prev.width) < 1 && Math.abs(dh) >= 1
+      && Math.abs(dh) <= VIEW_EASE_MAX_DH;
+    applyResize();
+    if (ease) {
+      viewEase = { w: next.width, h: next.height, H0: live.H, Y0: live.Y + (next.top - prev.top), u: 0, last: performance.now() };
+      applyViewEase();
+      camera.updateProjectionMatrix();
+    } else if (viewEase) {
+      viewEase = null;
+      camera.clearViewOffset();
+    }
+  };
   viewport.resize = () => {
     if (timer !== null) { pending = true; return; }
     const key = sizeKey();
-    if (key !== lastKey) { lastKey = key; applyResize(); }
+    if (key !== lastKey) { lastKey = key; apply(); }
     timer = setTimeout(() => {
       timer = null;
       if (pending) { pending = false; viewport.resize(); }
     }, RESIZE_SETTLE_MS);
   };
 }
+// The visible viewport publishes every change of the screen box, whether or
+// not the browser fired `resize` for it (../visible-viewport.js); the window
+// event stays as a second door, and the size key makes the pair one apply.
+visibleViewport.subscribe(viewport.resize);
 addEventListener('resize', viewport.resize);
 
 // The adaptive-resolution governor is owned by ./performance.js, beside the
@@ -2430,7 +2511,7 @@ if (!CAPTURE) {
     atRest: () => !!(globalThis.journey && globalThis.journey.atRest === true),
     covered: () => {
       const menu = document.querySelector('.j-menu.open');
-      return !!menu && menu.getBoundingClientRect().width >= innerWidth * 0.85;
+      return !!menu && menu.getBoundingClientRect().width >= visibleSize().width * 0.85;
     },
     frozen: () => animationLifecycle.isFrozen(),
   });
@@ -2501,7 +2582,8 @@ function cancelViewTransition() {
 function setView({ panX: p = 0, camY: cy = 2.05, camZ: cz = 8.8, targetY: ty = 2.5, fov: f = 38 } = {}, seconds = 0) {
   cancelViewTransition(); // a fresh call always supersedes an in-flight tween
 
-  camera.aspect = innerWidth / innerHeight;
+  { const vp = visibleSize(); camera.aspect = vp.width / vp.height; }
+  applyViewEase(); // a toolbar ease in progress keeps its own aspect
   camera.updateProjectionMatrix();
 
   const targetPos = new THREE.Vector3(0.15 + p, cy, cz);

@@ -145,6 +145,7 @@ import { createHeroMode, growthView } from '../journey/boot/hero-mode.js';
 // has to know it. (PIN_PR is parsed once, in ../flags.js — THE flag registry.)
 import { createPixelRatioPolicy } from './performance.js';
 import { PIN_PR, CAPTURE, INTROAT, NOINTRO, PRELUDE_THREAD } from '../flags.js';
+import { visibleViewport, visibleSize } from '../visible-viewport.js';
 // The PreNetwork's shared ground data — world-space polylines extracted from
 // the REAL ground web, and the three points the hero spores land on. A leaf.
 import { LANDING_SITES, SKELETON } from './network-skeleton.js';
@@ -452,7 +453,7 @@ function readView(heroMode) {
     camX: 0.15 + v.panX, camY: v.camY, camZ: v.camZ,
     tgtX: v.panX, tgtY: v.targetY,
     tanHalfFov: Math.tan(v.fov * Math.PI / 360),
-    aspect: innerWidth / innerHeight,
+    aspect: visibleSize().width / visibleSize().height,
   };
 }
 
@@ -1473,7 +1474,10 @@ const ENTRY_DELAY_MS = 150;
  *  every copy of the field is the same field. */
 const PRELUDE_SEED = 0x5be1;
 
-const LAYER_CSS = 'position:fixed;inset:0;z-index:0;pointer-events:none;'
+// The layer covers the visible viewport exactly as #stage does (hero.css):
+// inset 0 wherever the screen is the layout viewport.
+const LAYER_CSS = 'position:fixed;inset:0;top:var(--visible-top,0px);bottom:var(--visible-bottom,0px);'
+  + 'left:var(--visible-left,0px);right:var(--visible-right,0px);z-index:0;pointer-events:none;'
   // The stream has to add light to the frame the way the shed does, not
   // paint over it. plus-lighter IS addition; screen is the fallback for
   // engines that lack it and is close enough on a field this dim.
@@ -2246,6 +2250,7 @@ function createPreload() {
   let last = 0;
   let onVisibility = null;
   let onResize = null;
+  let offResize = null;
   let core = null;
   // the worker path's handle, its posted mirror of the landing state, and
   // the scene-side adopter waiting for the field (see handOff / adopt)
@@ -2378,9 +2383,10 @@ function createPreload() {
     // exactly the drift the key was introduced to prevent.
     const scenePr = createPixelRatioPolicy(PIN_PR).initial;
     pxScale = scenePr > 0 ? pr / scenePr : 1;
+    const vp = visibleSize();
     return {
-      width: Math.max(1, Math.round(innerWidth * pr)),
-      height: Math.max(1, Math.round(innerHeight * pr)),
+      width: Math.max(1, Math.round(vp.width * pr)),
+      height: Math.max(1, Math.round(vp.height * pr)),
       pxScale,
     };
   }
@@ -2400,10 +2406,11 @@ function createPreload() {
     if (hero) {
       const r = hero.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) {
-        x0 = (r.left / innerWidth) * 2 - 1;
-        x1 = (r.right / innerWidth) * 2 - 1;
-        y0 = 1 - (r.bottom / innerHeight) * 2;
-        y1 = 1 - (r.top / innerHeight) * 2;
+        const vp = visibleSize();
+        x0 = ((r.left - vp.left) / vp.width) * 2 - 1;
+        x1 = ((r.right - vp.left) / vp.width) * 2 - 1;
+        y0 = 1 - ((r.bottom - vp.top) / vp.height) * 2;
+        y1 = 1 - ((r.top - vp.top) / vp.height) * 2;
       }
     }
     return [x0, y0, x1, y1];
@@ -2650,11 +2657,11 @@ function createPreload() {
       core.setQuiet(measureCopyBox());
       if (state.reduced) draw(0);
     };
-    addEventListener('resize', onResize);
     // iPhone browser chrome can resize the visible viewport without a window
-    // resize. Keep the worker's anchor on the same measured rail as the scene;
-    // reframe preserves the current spore and re-aims its remaining flight.
-    globalThis.visualViewport?.addEventListener('resize', onResize);
+    // resize. The visible viewport publishes both (and the changes no event
+    // announces), so the worker's anchor stays on the same measured rail as
+    // the scene; reframe preserves the current spore and re-aims its flight.
+    offResize = visibleViewport.subscribe(onResize);
     // A hidden tab pays for nothing. rAF is already suspended by
     // every current engine when the document is hidden; parking the loop
     // explicitly also covers the cases where it is not (an occluded but
@@ -2697,8 +2704,8 @@ function createPreload() {
     // hand integration to whoever else holds this field
     if (state.field) state.field.preloadDriven = false;
     if (onResize) {
-      removeEventListener('resize', onResize);
-      globalThis.visualViewport?.removeEventListener('resize', onResize);
+      if (offResize) offResize();
+      offResize = null;
       onResize = null;
     }
     if (onVisibility) {

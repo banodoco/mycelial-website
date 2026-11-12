@@ -32,6 +32,7 @@ import {
 } from './route.js';
 import { HERO_INTRO_MS, DEEP_LINK_DETAIL_DELAY_MS } from './constants.js';
 import { STEADY, P as P_FLAG, POSE as POSE_FLAG, CAPTURE, ASPECT } from '../flags.js';
+import { visibleSize } from '../visible-viewport.js';
 import { startChapterEntry, snapChapterPlacements } from './chapter-entry.js';
 import { registerChapterInteractions } from './chapter-interactions.js';
 import { RUNTIME_CHAPTER_IDS } from './structure.js';
@@ -767,7 +768,7 @@ export function boot(opts = {}) {
   function restPoseOf(chapterId) {
     const p = restProgress(chapterId);
     const pose = poseAt(p, { pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: 38 },
-      director.heroPose, ASPECT ?? sceneApi.camera.aspect, innerWidth);
+      director.heroPose, ASPECT ?? sceneApi.camera.aspect, visibleSize().width);
     const fog = director.fogAt(p);
     return { position: pose.pos.clone(), target: pose.target.clone(), fov: pose.fov, roll: pose.roll || 0,
       fogNear: fog.near, fogFar: fog.far };
@@ -1011,7 +1012,7 @@ export function boot(opts = {}) {
     let pathLen = 0;
     for (let i = 0; i <= ROUTE_PACE_N; i++) {
       poseAt(fromP + (toP - fromP) * (i / ROUTE_PACE_N), _pacePose,
-        director.heroPose, aspect, innerWidth);
+        director.heroPose, aspect, visibleSize().width);
       if (i) { cum[i] = pathLen += _pacePose.pos.distanceTo(_pacePrev); }
       _pacePrev.copy(_pacePose.pos);
     }

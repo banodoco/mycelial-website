@@ -60,9 +60,17 @@
      ============================================================ */
 
   /* --- 3D stage: full bleed, behind everything --- */
+  /* THE SCENE AND THE UI SHARE ONE BOX: the visible viewport
+     (visible-viewport.js publishes --visible-*). On iOS the fixed inset:0
+     box can be the large viewport, ~140 px taller than the screen; these
+     offsets are 0 wherever the two agree, so this is inset:0 on desktop. */
   #stage {
     position: fixed;
     inset: 0;
+    top: var(--visible-top, 0px);
+    bottom: var(--visible-bottom, 0px);
+    left: var(--visible-left, 0px);
+    right: var(--visible-right, 0px);
     z-index: 0;
     animation: stage-bloom var(--hero-entry-duration) ease both;
   }
@@ -180,6 +188,10 @@
   .ui {
     position: fixed;
     inset: 0;
+    top: var(--visible-top, 0px);
+    bottom: var(--visible-bottom, 0px);
+    left: var(--visible-left, 0px);
+    right: var(--visible-right, 0px);
     z-index: 1;
     pointer-events: none;
     display: flex;
@@ -981,7 +993,8 @@
        under the nav. The copy drops ~16px and the camera lifts the specimen
        ~20px (viewFor in main.js), which splits the frame's air roughly
        evenly above and below the text block. */
-    .hero { padding: 7vh 7vw 0; }
+    /* 7% of the VISIBLE height (visible-viewport.js), not of iOS's large vh */
+    .hero { padding: calc(var(--visible-h, 100vh) * 0.07) 7vw 0; }
     h1 { font-size: clamp(1.95rem, 8.3vw, 2.8rem); margin-bottom: 1.1rem; }
     .sub { font-size: 0.98rem; margin-bottom: 1.8rem; }
     /* THE CTA LEAVES THE PHONE FRAME (2026-08-17, Hannah: "just remove the

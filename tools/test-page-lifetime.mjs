@@ -15,7 +15,7 @@
  *                             page-lifetime singleton and area A is the
  *                             evidence for that decision, not a decoration
  *                             on top of it.
- *   main.js                   fourteen listener sites, one removal site, and
+ *   main.js                   thirteen listener sites, one removal site, and
  *                             the page-lifetime register the file now carries
  *                             in its own header block.
  *   journey/transport.js      onWheel — READ ONLY, and the reason it is here
@@ -89,7 +89,7 @@
  *   * Nothing calls dispose() in production. Area E's three cycles run in a
  *     scenario this suite constructs. The whole Wave-3 family's limitation.
  *   * The live registration COUNT on a real page is not measured. Three of
- *     main.js's fourteen sites sit inside a loop over three callouts, so the
+ *     main.js's thirteen sites sit inside a loop over three callouts, so the
  *     site count and the live count differ and only the site count is
  *     asserted here. A live count needs an instrumented browser and belongs
  *     to the G1 gate owner.
@@ -546,12 +546,12 @@ pin('A5', 'ONE INSTALL PER PAGE MODULE, on the REAL flags.js: three imports unde
 /* ------------------------------------------------------------------ *
  * B — main.js's register, statically.                                  *
  * ------------------------------------------------------------------ */
-console.log('\nB — the register: the fourteen sites, the one removal, and the ungated QA key');
+console.log('\nB — the register: the thirteen sites, the one removal, and the ungated QA key');
 
 const ADD_RE = /\baddEventListener\s*\(/;
 const ANY_LISTENER_RE = /\b(?:add|remove)EventListener\s*\(/;
 
-pin('B1', 'the page register\'s listener SITES, keyed by file and trimmed code text — FOURTEEN, thirteen of them page wiring in main.js and the one BOUNDED capture beside its own remover in journey/boot/handoff.js — and the same scanner returns journey/backdrop.js\'s eight in the same call (D102)',
+pin('B1', 'the page register\'s listener SITES, keyed by file and trimmed code text — THIRTEEN, twelve of them page wiring in main.js and the one BOUNDED capture beside its own remover in journey/boot/handoff.js — and the same scanner returns journey/backdrop.js\'s eight in the same call (D102)',
   (i) => ({
     register: registerSites(i, ADD_RE),
     control: foreignSiteSet('journey/backdrop.js', i.backdrop, ANY_LISTENER_RE, { blankStrings: false })
@@ -580,12 +580,17 @@ pin('B1', 'the page register\'s listener SITES, keyed by file and trimmed code t
        shared, which is why that entry does NOT gain a duplicate. Note the
        shape this pin's key gives the change: a REMOVED pair with no
        corresponding ADDED pair, which is what a deletion looks like here and
-       is exactly what a site quietly relocating would NOT look like. */
+       is exactly what a site quietly relocating would NOT look like.
+
+       FOURTEEN -> THIRTEEN (fix/visible-canvas): main.js's window `resize`
+       hook is now `visibleViewport.subscribeSettled(...)`. The window and
+       visualViewport listeners it replaces live, once, in
+       visible-viewport.js; the hero re-frame is still page-lifetime and
+       still installed once. */
     register: [
       "main.js :: addEventListener('error', (e) => {",
       "main.js :: addEventListener('keydown', (e) => {",
       "main.js :: addEventListener('load', () => {",
-      "main.js :: addEventListener('resize', () => {",
       "main.js :: addEventListener('unhandledrejection', (e) => {",
       'journey/boot/handoff.js :: addEventListener(type, onIntroInput, { capture: true, passive });',
       "main.js :: canvas.addEventListener('webglcontextlost', (e) => {",
@@ -608,7 +613,7 @@ pin('B1', 'the page register\'s listener SITES, keyed by file and trimmed code t
       "journey/backdrop.js :: backdrop.removeEventListener('pointerup', onPointerUp);",
     ].sort(),
   },
-  'three of the fourteen sit inside a loop over three callouts, so the LIVE registration count on a real page is larger than fourteen. That count is not asserted anywhere in this suite and the header says why');
+  'three of the thirteen sit inside a loop over three callouts, so the LIVE registration count on a real page is larger than thirteen. That count is not asserted anywhere in this suite and the header says why');
 
 pin('B2', 'the page register has exactly ONE removal site across BOTH its files, and it is the intro capture\'s loop, in the module that owns the capture — the register\'s single BOUNDED registration, everything else being page-lifetime by design',
   (i) => registerSites(i, /\bremoveEventListener\s*\(/),

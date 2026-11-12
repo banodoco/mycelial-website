@@ -1,3 +1,4 @@
+import { visibleSize } from '../../visible-viewport.js';
 import { mobileLandingY } from '../layout/rail-geometry.js';
 import { LANDING_SITES } from '../../organism/network-skeleton.js';
 
@@ -172,8 +173,10 @@ const ANCHORS = {
 };
 
 // --- breakpoint detection: portrait phones/tablets get their own compositions ---
+// The frame is the visible viewport (../../visible-viewport.js), the one box
+// the canvas and the DOM share; on desktop it is innerWidth x innerHeight.
 function getMode() {
-  const w = innerWidth, h = innerHeight;
+  const { width: w, height: h } = visibleSize();
   const portrait = h > w;
   if (w <= 620 && portrait) return 'mobile';
   if (w <= 900 && portrait) return 'tablet';
@@ -185,14 +188,15 @@ function getMode() {
 // deskNarrow spans aspects 1.25–1.55: interpolate the framing with aspect so
 // the right-side callouts keep edge clearance all the way down to 4:3 iPads
 function viewFor(mode) {
+  const { width: frameW, height: frameH } = visibleSize();
   const v = { ...VIEWS[mode] };
   if (mode === 'deskNarrow') {
-    const t = Math.min(1, Math.max(0, (1.55 - innerWidth / innerHeight) / 0.3));
+    const t = Math.min(1, Math.max(0, (1.55 - frameW / frameH) / 0.3));
     v.panX = -1.27 + 0.3 * t;
     v.camZ = 12.3 + 0.9 * t;
   }
   if (mode === 'mobile') {
-    const t = Math.min(1, Math.max(0, (innerWidth / innerHeight - 0.44) / 0.16));
+    const t = Math.min(1, Math.max(0, (frameW / frameH - 0.44) / 0.16));
     // base 4.75 -> 4.50 (2026-08-17, Hannah's vertical rebalance: "too much
     // deadspace between the mushroom and text") — LOWERING the look-at
     // lifts the specimen on screen (measured ~55px per unit, and the sign
@@ -219,7 +223,7 @@ function viewFor(mode) {
     // A modest lift toward the tighter cap/copy framing: about thirteen CSS
     // pixels above the original rest. Only change the final pitch; the
     // landing's independently solved starting view stays anchored to Equip.
-    v.targetY -= 13 * 2 * v.camZ * Math.tan(v.fov * Math.PI / 360) / innerHeight;
+    v.targetY -= 13 * 2 * v.camZ * Math.tan(v.fov * Math.PI / 360) / frameH;
   }
   /* ONE LANDSCAPE HERO BALANCE FIELD. Physical screen inches are not a web
      layout input: display scaling and window chrome give the same laptop many
@@ -228,11 +232,11 @@ function viewFor(mode) {
      full 75px correction at 1200px, then holds—no device rectangle, no upper
      cutoff, and no one-pixel cliff. Converting pixels through the active FOV
      keeps the visible correction stable while deskNarrow changes distance. */
-  if (innerWidth > innerHeight && mode !== 'compact') {
-    let mix = (innerWidth - 1024) / (1200 - 1024);
+  if (frameW > frameH && mode !== 'compact') {
+    let mix = (frameW - 1024) / (1200 - 1024);
     mix = Math.max(0, Math.min(1, mix));
     mix = mix * mix * (3 - 2 * mix);
-    const worldPerPixel = 2 * v.camZ * Math.tan(v.fov * Math.PI / 360) / innerHeight;
+    const worldPerPixel = 2 * v.camZ * Math.tan(v.fov * Math.PI / 360) / frameH;
     v.panX -= 75 * mix * worldPerPixel;
   }
   /* The camera/target truck is the Mission boundary condition captured by the
@@ -243,7 +247,7 @@ function viewFor(mode) {
      EVERY MODE'S POSE IS A LIVE FUNCTION OF innerHeight, INCLUDING THE TWO
      THAT LOOK FIXED. The conversion below is correct and deliberate: a
      perspective camera at a fixed vertical FOV sees the same world height at
-     every viewport size, so world-per-pixel is that span over innerHeight,
+     every viewport size, so world-per-pixel is that span over the frame height,
      and dividing by it is what makes MISSION_RIGHT_PX deliver its authored
      number of CSS PIXELS at any frame height. What that costs is a stale
      pose: `panX` is spent in world units, so a viewport whose height changes
@@ -264,11 +268,11 @@ function viewFor(mode) {
        the owner capture plus the 7px residual in the exact-size re-shot) so
        tall phones keep their exact pose and short phones regain the centre. */
     const shortPhoneMix = Math.min(1, Math.max(0,
-      (innerWidth / innerHeight - 0.47) / 0.09));
+      (frameW / frameH - 0.47) / 0.09));
     missionShiftPx -= 28 * shortPhoneMix;
   }
   const missionWorldPerPixel = 2 * v.camZ * Math.tan(v.fov * Math.PI / 360)
-    / innerHeight;
+    / frameH;
   v.panX -= missionShiftPx * missionWorldPerPixel;
   return v;
 }
@@ -339,8 +343,9 @@ export function growthView(view, mode, progress) {
   const p = Math.max(0, Math.min(1, Number(progress) || 0));
   const ease = p * p * (3 - 2 * p);
   if (p === 1) return { ...view };
-  const landingPixelY = mobileLandingY(innerWidth, innerHeight);
-  const ndcY = 1 - 2 * landingPixelY / innerHeight;
+  const vp = visibleSize();
+  const landingPixelY = mobileLandingY(vp.width, vp.top + vp.height);
+  const ndcY = 1 - 2 * (landingPixelY - vp.top) / vp.height;
   // At panX=0 the landing and Equip share the viewport centre. The renderer
   // keeps its eye 0.15 units right of its target; include that in the pitch
   // solve so the prelude and real camera project the same world landing.

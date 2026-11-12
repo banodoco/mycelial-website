@@ -5,6 +5,7 @@
 // `ctx` (built in organism.js). The page's entry wiring lives in main.js;
 // the intro fast-forward is intro.js's accelerate() (M5).
 import * as THREE from 'three';
+import { visibleSize } from '../visible-viewport.js';
 
 // =====================================================================
 // 11. REGION HIGHLIGHTS — HUD callout hover glow
@@ -132,8 +133,10 @@ export function registerTrackers(ctx) {
       // and had NOT had it undone — that is what promoted the undo to scene
       // API. See organism.js's STEADY PROJECTION note.
       steadyProject(_trackV);
-      let sx = (_trackV.x * 0.5 + 0.5) * innerWidth;
-      let sy = (-_trackV.y * 0.5 + 0.5) * innerHeight;
+      // NDC -> client px through the canvas's own box (the visible viewport)
+      const vp = visibleSize();
+      let sx = vp.left + (_trackV.x * 0.5 + 0.5) * vp.width;
+      let sy = vp.top + (-_trackV.y * 0.5 + 0.5) * vp.height;
       /* THE ARROW POINTS ON SCREEN AT EVERY SIZE (2026-08-17, Hannah).
          The anchors are tuned per breakpoint MODE, but a mode covers a
          RANGE of aspects and the plume anchors deliberately ride near the
@@ -145,8 +148,9 @@ export function registerTrackers(ctx) {
          transform (main.js railApply parses it), so the whole annotation
          follows the clamped dot — nothing detaches. */
       const m = 14;
-      if (sx > innerWidth - m) sx = innerWidth - m; else if (sx < m) sx = m;
-      if (sy > innerHeight - m) sy = innerHeight - m; else if (sy < m) sy = m;
+      const x1 = vp.left + vp.width - m, y1 = vp.top + vp.height - m;
+      if (sx > x1) sx = x1; else if (sx < vp.left + m) sx = vp.left + m;
+      if (sy > y1) sy = y1; else if (sy < vp.top + m) sy = vp.top + m;
       tr.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
       tr.el.style.visibility = _trackV.z < 1 ? 'visible' : 'hidden';
     }
