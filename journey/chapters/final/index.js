@@ -1141,13 +1141,22 @@ export function createFinal(sceneApi) {
      side — the "weird lighting change" on Purpose -> Intro. Forward, the same
      web dim is hidden under the colony's kindle; backward nothing hides it.
      So on a fitted wrap departure the floor keeps its armed dim until the
-     camera is past RELIGHT_FROM of the lap, then blooms home to land with it
-     (>= 1.8 s for 10-90%, after the colony has gone dark). The camera's phase
+     camera is past RELIGHT_FROM of the lap, then blooms home across the
+     colony's dim-out, done at RELIGHT_TO (see below). The camera's phase
      is a smootherstep of lap time; inverting it gives a time-linear
      coordinate. Motes fade in from zero (no visibility flip) while it runs.
      Off a wrap departure (no published phase) this is null and nothing
      changes, so every rest and every other move is untouched. */
-  const RELIGHT_FROM = 0.42;
+  /* 2026-11 — A CROSSFADE, NOT A SEQUENCE. Blooming over the last 58% of the
+     lap left the field dark between the colony's exit and the bloom (frame
+     luma 59.6 -> 19.5 -> 34.4 at 640x400): a dip and a rebound, the "very
+     gentle shift in light". The bloom now rides out UNDER the colony's own
+     dim-out — 12% to 80% of the lap, 10-90% ~2.2 s, finished before landing
+     so nothing relights after the camera stops — and the lens bridges the
+     framing valley that remains (camera-blend.js LAP_HOME_LIFT). The 0.8 s
+     relight that started all this was a rate problem, not an overlap one. */
+  const RELIGHT_FROM = 0.12;
+  const RELIGHT_TO = 0.80;
   const MOTE_POP_FLIGHT = 0.004;
   function relightOf() {
     if (!(blending && retiring && retireScale < 1) || depArm === null) return null;
@@ -1159,7 +1168,7 @@ export function createFinal(sceneApi) {
       const m = (lo + hi) / 2;
       if (m * m * m * (m * (m * 6 - 15) + 10) < ph.e) lo = m; else hi = m;
     }
-    const x = Math.max(0, Math.min(1, (lo - RELIGHT_FROM) / (1 - RELIGHT_FROM)));
+    const x = Math.max(0, Math.min(1, (lo - RELIGHT_FROM) / (RELIGHT_TO - RELIGHT_FROM)));
     return x * x * (3 - 2 * x);
   }
   function restoreHeroDim() {
