@@ -13,6 +13,8 @@
  * Imports nothing: it only drives the renderer the scene already owns.
  * ==================================================================== */
 
+import { reportPageError } from '../../page-error.js';
+
 /** compileAsync, but for the program variant the frame actually draws.
  *  The scene is rendered into the composer's offscreen target, and three
  *  keys a program on its output (linear, no tone mapping into a target;
@@ -121,7 +123,10 @@ async function warmOnce(sceneApi, renderVariants, timeoutMs) {
         // variant draw's original diagnostic.
         drawError = error;
         controller.abort();
-        Promise.resolve(pending).catch(() => {});
+        // the abort is ours; anything else the compile says is still recorded
+        Promise.resolve(pending).catch((e) => {
+          if (!e || e.name !== 'AbortError') reportPageError('[hero-gpu] the variant compile failed after the draw did', e);
+        });
         throw error;
       }
       return pending;

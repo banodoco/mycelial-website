@@ -1,4 +1,5 @@
 import { PORTRAIT_SPRITE } from '../../../assets/contributor-portraits/manifest.js';
+import { reportPageError } from '../../../page-error.js';
 
 /** Starts the single sprite request used by every photo atlas.
  *
@@ -24,7 +25,7 @@ export function loadPortraitSprite(timeoutMs = 10000) {
        first atlas bake's drawImage. A refused decode still resolves — the
        bake then decodes as it always did. */
     image.onload = finish(() => {
-      const decoded = typeof image.decode === 'function' ? image.decode().catch(() => {}) : null;
+      const decoded = typeof image.decode === 'function' ? image.decode().catch((e) => reportPageError('[owned] portrait sprite decode refused (drawn undecoded)', e)) : null;
       Promise.resolve(decoded).then(() => resolve({ sheet: image }));
     });
     image.onerror = finish(() => reject(new Error('portrait sprite failed to load')));
