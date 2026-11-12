@@ -127,7 +127,7 @@ export function glideAnchor(from, to, aspect) {
    other hops (navigation-timing.js: never under 2.6 s). */
 export const GLIDE_MIN_SECONDS = 2.6;
 export const GLIDE_MAX_SECONDS = 6;
-export const GLIDE_SECONDS_PER_TRAVEL = 1.6;
+export const GLIDE_SECONDS_PER_TRAVEL = 1.8;
 function screenGround(pose, aspect) {
   const { f, U } = viewOf(pose);
   const R = { x: f.y * U.z - f.z * U.y, y: f.z * U.x - f.x * U.z, z: f.x * U.y - f.y * U.x };

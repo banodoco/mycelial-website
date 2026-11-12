@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { CONTENT } from '../content/content.js';
 import { manifestoPose, mobileFieldCenter, frameShiftAt, aerialPlacements, planAerialReveals, aerialRevealJob, aerialRevealAt, AERIAL_BODY_COUNT, AERIAL_SCALE_MIN, AERIAL_SCALE_MAX, CAMERA_SECONDS, SPIRAL_START_SECONDS, MOBILE_LIFT_SECONDS, MOBILE_OVERHEAD_TURN, lineSecondsFor, mobileReadingSchedule, revealSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, FIRST_LINE_SECONDS, LINE_BREATH_SECONDS, LINE_SECONDS_PER_WORD, TITLE_SECONDS } from '../journey/manifesto/pose.js';
-import { createGlide, sampleGlide, glideChannels } from '../journey/manifesto/glide.js';
+import { createGlide, sampleGlide } from '../journey/manifesto/glide.js';
 
 const from = { position: { x: 8, y: 3, z: 9 }, target: { x: 0, y: 2, z: 0 }, fov: 46 };
 for (const t of [0, 0.2, 0.8, SPIRAL_START_SECONDS]) {

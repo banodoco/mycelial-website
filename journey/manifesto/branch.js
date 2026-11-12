@@ -277,7 +277,6 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
   let u = 0;
   let elapsed = 0;
   let lastWall = null;   // see update(): the flight keeps wall time
-  let returnStart = 0;      // the climb fraction the Return was pressed at
   let entryFlight = null;
   // The way down is ONE glide (glide.js) on ONE clock: `glideT` seconds of
   // `glide.seconds`. Everything else the descent moves — the colony's clock
@@ -849,7 +848,6 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     // the words exhale first — they dissolve upward into the dark while the
     // camera begins to sink (see .is-returning in journey/site.css)
     root.classList.add('is-returning');
-    returnStart = u;
     direction = -1;
     paused = false;
     startGlide();
