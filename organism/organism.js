@@ -2406,27 +2406,6 @@ for (const object of mushroom.children) {
 // taaFrame() additionally holds the Halton jitter on one fixed sample so
 // the temporal accumulation converges to a single exact image instead of
 // cycling through the 8-sample orbit.
-/* THE FIRST FRAME DOES NOT LINK THE SCENE'S PROGRAMS (2026-11-12). start()
-   draws a frame at once, and a program's first draw reads back its uniforms
-   and attributes — ~600 synchronous calls for this scene's sixteen
-   programs, each of which waits for its link to finish. On a GPU process
-   that is busy (an 8 GB Mac under memory pressure) that wait was a 2 s task
-   at the end of this build. Linked here first, with KHR_parallel_shader_
-   compile polled rather than waited on, the same calls find every program
-   ready. The composer's target is bound so the variant compiled is the one
-   the frame draws (journey/boot/hero-gpu.js compileForFrame says why). A
-   compile that fails or is cut short only means the frame links the rest
-   itself, as before. */
-{
-  const previous = renderer.getRenderTarget();
-  let linked = null;
-  try {
-    renderer.setRenderTarget(composer.readBuffer);
-    linked = renderer.compileAsync(scene, camera);
-  } catch { /* the frame will link what it needs */ }
-  finally { renderer.setRenderTarget(previous); }
-  if (linked) await linked.catch(() => {});
-}
 animationLifecycle.start();
 
 // Sizing is owned by ./renderer.js; this file supplies only the list of things
