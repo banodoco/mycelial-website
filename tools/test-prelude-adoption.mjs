@@ -315,32 +315,4 @@ const asked = (w) => w.posted.filter((m) => m.type === 'adopt').length;
   }
 }
 
-/* I — release() on page exit (main.js's pagehide): the worker that owns the
-   OffscreenCanvas context is TERMINATED, whether it is still drawing or was
-   already retired by stop(); a waiting scene is still settled once; and a
-   second release is inert. */
-{
-  const { pre, worker, begins } = bootPreload();
-  pre.adopt();
-  pre.release();
-  assert.equal(worker.terminated, true, 'I: a live worker is terminated on release');
-  assert.equal(begins.length, 1, 'I: a scene waiting on the field is settled, once');
-  pre.release();
-  assert.equal(begins.length, 1, 'I: a second release begins nothing');
-}
-{
-  const { pre, worker } = bootPreload();
-  pre.stop();
-  assert.equal(worker.terminated, false, 'I: stop() alone keeps the idle worker (its documented trade)');
-  pre.release();
-  assert.equal(worker.terminated, true, 'I: release() ends a worker stop() retired');
-}
-{
-  const early = fakeWorker();
-  window.__preludeWorker = early;
-  createPreload().release();
-  assert.equal(early.terminated, true, 'I: an early worker nobody took is ended too');
-  assert.equal(window.__preludeWorker, null, 'I: and forgotten');
-}
-
-console.log('prelude adoption: every exit settles the waiting scene exactly once; release ends every prelude thread (A-I passed)');
+console.log('prelude adoption: every exit settles the waiting scene exactly once (A-H passed)');

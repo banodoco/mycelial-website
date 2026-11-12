@@ -49,11 +49,9 @@ const contextSurface = contextNote.show('ordinary note');
 const contextStart = mainSource.indexOf('  const canvas = sceneApi.renderer.domElement;');
 const contextEnd = mainSource.indexOf('\n}', contextStart);
 assert.ok(contextStart > 0 && contextEnd > contextStart);
-const page = { leaving: false };   // main.js's pagehide flag (LEAVING GIVES THE GPU BACK)
-new Function('sceneApi', 'note', 'NOTE', 'setTimeout', 'clearTimeout', 'page',
-  'with (page) {' + mainSource.slice(contextStart, contextEnd) + '}')(
+new Function('sceneApi', 'note', 'NOTE', 'setTimeout', 'clearTimeout', mainSource.slice(contextStart, contextEnd))(
   sceneApi, contextNote, { contextLost: 'context lost' },
-  (callback) => { const id = ++nextTimer; timers.set(id, callback); return id; }, id => timers.delete(id), page);
+  (callback) => { const id = ++nextTimer; timers.set(id, callback); return id; }, id => timers.delete(id));
 const lose = () => handlers.get('webglcontextlost')({ preventDefault() {} });
 const restore = () => handlers.get('webglcontextrestored')();
 const fire = () => { for (const [id, callback] of [...timers]) { timers.delete(id); callback(); } };
@@ -66,20 +64,6 @@ assert.equal(contextSurface.style.display, 'none', 'restoration clears the notic
 lose(); lose(); restore(); fire();
 assert.equal(contextSurface.style.display, 'none', 'duplicate losses leave no orphaned note timer');
 assert.equal(timers.size, 0);
-// The page's own release on pagehide: no restore asked for, no note, no
-// render gate touched — the page is going.
-{
-  page.leaving = true;
-  let asked = 0;
-  const rendered = rendering.length;
-  handlers.get('webglcontextlost')({ preventDefault() { asked++; } });
-  fire();
-  assert.equal(asked, 0, 'a deliberate loss on pagehide does not ask for a restore');
-  assert.equal(timers.size, 0, 'and arms no note');
-  assert.equal(rendering.length, rendered, 'and leaves the render gate alone');
-  assert.equal(contextSurface.style.display, 'none', 'nothing is shown');
-  page.leaving = false;
-}
 
 // Both orderings retain terminal errors: transient -> failure -> restore and
 // failure -> delayed transient -> restore. Diagnostics must survive both.

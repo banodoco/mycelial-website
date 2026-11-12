@@ -586,17 +586,11 @@ pin('B1', 'the page register\'s listener SITES, keyed by file and trimmed code t
        hook is now `visibleViewport.subscribeSettled(...)`. The window and
        visualViewport listeners it replaces live, once, in
        visible-viewport.js; the hero re-frame is still page-lifetime and
-       still installed once.
-
-       THIRTEEN -> FIFTEEN (hunt/gpu, 2026-11-12): pagehide loses every
-       WebGL context the page made, and pageshow reloads a page restored
-       from the back/forward cache with those contexts dead. Both PAGE. */
+       still installed once. */
     register: [
       "main.js :: addEventListener('error', (e) => {",
       "main.js :: addEventListener('keydown', (e) => {",
       "main.js :: addEventListener('load', () => {",
-      "main.js :: addEventListener('pagehide', () => {",
-      "main.js :: addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });",
       "main.js :: addEventListener('unhandledrejection', (e) => {",
       'journey/boot/handoff.js :: addEventListener(type, onIntroInput, { capture: true, passive });',
       "main.js :: canvas.addEventListener('webglcontextlost', (e) => {",
