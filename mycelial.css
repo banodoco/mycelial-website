@@ -220,7 +220,7 @@ body:has(.manifesto-static) .manifesto-static .sub { font-size: 17px; line-heigh
   .ui #site-nav { --header-left: 6vw; padding: 2.1rem var(--header-left); }
   .ui .logo { --brand-width: 180px; }
   .ui .logo .wordmark { font-size: 16px; }
-  .ui .hero { padding: 3.5vh 6vw 0; text-align: center;
+  .ui .hero { padding: calc(var(--visible-h, 100vh) * 0.035) 6vw 0; text-align: center;
     --hero-h1-size: clamp(2.65rem, 10.8vw, 4rem); --hero-h1-leading: .97; --hero-copy-gap: 1.3rem; }
   .ui .hero h1 { width: calc(100% + 6vw); margin: 0 -3vw var(--hero-copy-gap); text-wrap: balance; }
   .ui .hero h1 .hl { display: inline; white-space: normal; }

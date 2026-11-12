@@ -2699,9 +2699,10 @@ body:not(.free-cam) #stage canvas:active { cursor: default; }
        the copy stays at the house scale and simply sits tighter */
     .j-h { margin-bottom: 0.6rem; }
     .j-actions { margin-top: 1rem; }
-    .j-block.pos-bottom { bottom: 6vh; }
+    /* seated from the VISIBLE bottom, in visible-height units (visible-viewport.js) */
+    .j-block.pos-bottom { bottom: calc(var(--visible-bottom, 0px) + var(--visible-h, 100vh) * 0.06); }
     .j-block.pos-topright, .j-block.pos-topcentre { top: 8vh; top: 8dvh; }
-    .j-block.pos-bottomleft { bottom: 7vh; }
+    .j-block.pos-bottomleft { bottom: calc(var(--visible-bottom, 0px) + var(--visible-h, 100vh) * 0.07); }
     /* the fanned band is taller than a short frame; trim the feather's
        overhang so the scrim spends its height on the tiles, not the air */
     .j-rail-inner::before {
@@ -3713,6 +3714,11 @@ body:not(.free-cam) #stage canvas:active { cursor: default; }
   opacity: 0;
   transition: opacity 0.45s ease;
 }
+/* The row's seat is measured from the VISIBLE bottom: while the fixed box is
+   still the large viewport (iOS), --visible-bottom is the strip of it hidden
+   under the toolbar, and the margin lifts the row by exactly that. 0 wherever
+   the box is the screen, so the rule above is the whole geometry there. */
+.j-rail:not(.j-rail-column) { margin-bottom: var(--visible-bottom, 0px); }
 .j-rail.on,
 .j-rail:focus-within { opacity: 1; }
 .j-rail.on.dim { opacity: 0.1; }

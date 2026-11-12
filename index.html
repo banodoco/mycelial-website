@@ -392,6 +392,10 @@
         for (const type of ['resize', 'pageshow', 'load']) addEventListener(type, () => measureLift());
         vv?.addEventListener('resize', () => measureLift());
         vv?.addEventListener('scroll', () => measureLift());
+        // visible-viewport.js (the module definition of this same box, loaded
+        // after this script) announces every change it publishes, including
+        // the ones no browser event reports.
+        addEventListener('visibleviewportchange', () => measureLift());
         document.fonts.ready.then(() => measureLift());
         // iOS does not promise an event when its bars settle, so the first
         // seconds are also re-read once a frame; it stops on its own.
