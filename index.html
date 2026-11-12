@@ -367,8 +367,29 @@
         body.classList.add('hero-entry-ready');
         performance.mark('hero-entry-start');
       };
-      window.__heroEntryRelease = () => release();
-      setTimeout(() => requestAnimationFrame(release), ENTRY_WAIT_CAP);
+      // THE COPY ALSO WAITS FOR ITS WEB FONTS (fix/load-polish). The faces
+      // are font-display: swap, so a copy revealed while one was still in
+      // flight showed the fallback face and then re-set itself in Cormorant /
+      // DM Sans a moment later: the lines shifted (2 px up here, a layout
+      // shift of 0.012 on a 5 s font fetch) after they were already legible,
+      // which reads as the text loading twice. Whoever asks for the release
+      // (spores' first frame, the cap, a static prelude) now gets it as soon
+      // as the fonts the copy uses have settled, and never later than the
+      // cap. Fonts already in cache are settled by then, so the common
+      // release stays synchronous, in the caller's task.
+      const fontsSettled = () => {
+        if (!document.fonts) return Promise.resolve();
+        void hero.offsetHeight; // make sure layout has asked for the faces
+        return document.fonts.status === 'loaded' ? null : document.fonts.ready;
+      };
+      let capped = false;
+      const requestRelease = () => {
+        const wait = capped ? null : fontsSettled();
+        if (wait === null) release();
+        else wait.then(() => release(), () => release());
+      };
+      window.__heroEntryRelease = requestRelease;
+      setTimeout(() => requestAnimationFrame(() => { capped = true; release(); }), ENTRY_WAIT_CAP);
 
       // This is a visual shell, not a queue for unavailable navigation.
       // The live rail unlocks only after the journey readiness promise resolves.
