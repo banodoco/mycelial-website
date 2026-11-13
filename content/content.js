@@ -65,13 +65,21 @@ export const CONTENT = {
     // Stanzas drive the same text in the animated and static experiences.
     // 2026-11-12: the text is verse. One entry per stanza; `\n` separates its
     // verse lines, each of which starts on its own line (and ends on a held
-    // breath, content/manifesto-verse.js). `body` still reads as prose.
+    // breath, content/manifesto-verse.js). A blank line (`\n\n`) inside an
+    // entry is still one stanza, with no extra space, but its breath is a
+    // long one (about a second). `body` still reads as prose.
     lines: [
       "Spores on the wind.\nThreads through the soil.\nFood on the forest floor.",
-      "A painter wants to make a short film in her own style,\nso she trains a LoRA on years of her work.\nAn engineer she'll never meet\nbuilds a tool for sculpting in 3D.\nA year later, a stranger making a murder mystery\nsculpts a planet so small everyone on it is a suspect,\nits hills, trees and sky\nmade of her thick, unruly strokes.",
-      "Some dream of endless content and ever smarter machines.\nWe dream of a world that bustles with this kind of creative life,\none where people and models are deeply intertwined,\nwhere every finished work is the start of someone else's.",
-      "Mycelial aims to be the threads beneath it all,\nseeding, nourishing and connecting all that grows."
+      "A painter wants to make a short film in her own style,\nso she trains a LoRA on years of her work.\n\nAn engineer she'll never meet\nbuilds a tool for sculpting in 3D.\n\nA year later, a stranger making a murder mystery\nsculpts a planet so small everyone on it is a suspect,\nits hills, trees and sky\nmade of her thick, unruly strokes.",
+      "Some dream of endless content and ever smarter machines.",
+      "We dream of a world that bustles with this kind of creative life.",
+      "One where people and models are deeply intertwined,\nwhere every finished work is the start of someone else's,\neach one making its corner of the world a little more beautiful.",
+      "Mycelial aims to be the threads\nbeneath the open ecosystem that makes this possible,\nseeding, nourishing and connecting all that grows."
     ],
+    // Extra seconds the reveal holds after each stanza, on top of the usual
+    // breath between stanzas (one entry per stanza above; read by
+    // journey/manifesto/pose.js). The two short stanzas each stand alone.
+    holds: [0, 0, 1, 1, 0, 0],
     get body() { return this.lines.join(' ').replace(/\s*\n\s*/g, ' '); },
   },
   chapters: {

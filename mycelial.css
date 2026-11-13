@@ -798,6 +798,24 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
     text-shadow: 0 0 8px rgb(235 191 162 / .20);
   }
 }
+/* THE LIGHT GOES OUT OF "endless content and ever smarter machines"
+   (2026-11-12, owner request). The phrase inks on its own beats like body
+   text, then settles a shade dimmer and cooler than the lines around it,
+   with no warm glow: receding, never a highlight. Only its opacity moves
+   (from full to its resting value), once; its colour is static. Its words
+   arrive with a muted, cool version of the gold flush (.is-hollow, on the
+   layer variables below). Reduced motion and the static page show the
+   resting state. */
+.manifesto-concept.concept-hollow {
+  color: rgb(212, 209, 199);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, .62);
+  opacity: .86;
+}
+.j-manifesto-line.shown .concept-hollow {
+  animation: manifesto-hollow-settle 2.8s ease-in-out backwards;
+  animation-delay: calc(var(--w) * var(--stagger) + 1s);
+}
+@keyframes manifesto-hollow-settle { from { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .j-manifesto-line.shown .manifesto-concept,
   .j-manifesto-line.shown .manifesto-phrase-thread,
@@ -1134,6 +1152,12 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
     --ink-glow: 0 0 16px rgba(255, 186, 84, 0.5);
     --ink-blur: 5px;
     --fx-delay: calc(var(--w) * var(--stagger) - var(--reveal-lateness, 0s) - var(--act, 0s));
+  }
+  /* a receding phrase arrives in a cool grey light, without the glow */
+  .j-manifesto-line.shown .j-manifesto-word.is-hollow[data-w] {
+    --ink-gold: rgb(214, 212, 204);
+    --ink-halo: rgb(176, 176, 172);
+    --ink-glow: 0 0 0 transparent;
   }
   .j-manifesto-line.shown .j-manifesto-word.is-name[data-w] {
     --fx-d: 4.2s;

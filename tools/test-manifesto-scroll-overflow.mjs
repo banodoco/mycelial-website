@@ -25,7 +25,7 @@ try {
       const counts=CONTENT.manifesto.lines.map(stanza=>manifestoVerse(stanza).span);
       const box=document.querySelector('.j-manifesto-lines');
       const beats=[...box.children].map(line=>Math.max(...[...line.querySelectorAll('[style]')].map(e=>parseFloat(e.style.getPropertyValue('--w')) || 0)));
-      window.readingSchedule=mobileReadingSchedule(lineSecondsFor(counts),beats);
+      window.readingSchedule=mobileReadingSchedule(lineSecondsFor(counts,CONTENT.manifesto.holds),beats);
       window.readingTime=0;
       window.readingState=()=>({ height:box.clientHeight, extent:box.scrollHeight, top:box.scrollTop,
         firstTop:box.children[0].getBoundingClientRect().top,

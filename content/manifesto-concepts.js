@@ -3,7 +3,7 @@
 // stanza's spores, threads and food, and the story's LoRA and tool, share
 // the three pastel palettes; the closing links carry the same strands
 // (content/manifesto-links.js). Each word is matched in its own stanza only,
-// so "the threads beneath it all" in the last stanza stays plain. Every one
+// so "the threads" in the last stanza stays plain. Every one
 // takes the slow organism swell on its own reveal beat.
 const STRANDS = [
   { id: 'passage', word: 'spores', stanza: 0 },
@@ -14,8 +14,11 @@ const STRANDS = [
 ];
 // The kinship thread (and the imagination spectrum in branch.js) are dormant
 // treatments: no phrase of the current text selects them.
+// 2026-11-12: "endless content and ever smarter machines" recedes (hollow):
+// it inks like body text and settles a shade dimmer and cooler.
 const PHRASES = [
   { id: 'synthesis', phrase: 'thick unruly strokes' },
+  { id: 'hollow', phrase: 'endless content and ever smarter machines' },
   { id: 'kinship', phrase: 'open models and open tools' },
   { id: 'vitality', phrase: 'bustles with this kind of creative life' },
 ];

@@ -54,25 +54,31 @@ export const TITLE_SECONDS = 0;
    are the same number, so the authored rhythm is unchanged; with them the
    reading allowance includes the pauses. Priced per word, a stanza of eight
    verse lines would hand on before its own last word had begun. */
-export const FIRST_LINE_SECONDS = 2.0;
+// 2.0 -> 3.0 (2026-11-12, owner request): the first line starts a second later.
+export const FIRST_LINE_SECONDS = 3.0;
 export const LINE_BREATH_SECONDS = 1.2;
 export const LINE_SECONDS_PER_WORD = 0.125;
-export function lineSecondsFor(beatCounts) {
+/* AN AUTHORED HOLD AFTER A STANZA (2026-11-12). `holds` (seconds, one per
+   stanza; CONTENT.manifesto.holds) is added to the breath that follows that
+   stanza, so a short stanza can stand alone a moment longer. It is text,
+   kept with the text; everything here only reads it. */
+export function lineSecondsFor(beatCounts, holds = []) {
   const out = [];
   let t = FIRST_LINE_SECONDS;
   beatCounts.forEach((beats, i) => {
-    if (i > 0) t += LINE_BREATH_SECONDS + LINE_SECONDS_PER_WORD * beatCounts[i - 1];
+    if (i > 0) t += LINE_BREATH_SECONDS + LINE_SECONDS_PER_WORD * beatCounts[i - 1] + (holds[i - 1] || 0);
     out.push(+t.toFixed(2));
   });
   return out;
 }
-export function revealSecondsFor(beatCounts) {
-  const starts = lineSecondsFor(beatCounts);
+export function revealSecondsFor(beatCounts, holds = []) {
+  const starts = lineSecondsFor(beatCounts, holds);
   return Math.max(0, ...beatCounts.map((beats, i) =>
     starts[i] + Math.max(0, beats - 1) * WORD_STAGGER_SECONDS + WORD_REVEAL_SECONDS));
 }
 export const MANIFESTO_BEAT_COUNTS = CONTENT.manifesto.lines.map(stanza => manifestoVerse(stanza).span);
-export const CAMERA_SECONDS = revealSecondsFor(MANIFESTO_BEAT_COUNTS);
+export const MANIFESTO_HOLDS = CONTENT.manifesto.lines.map((_, i) => CONTENT.manifesto.holds?.[i] || 0);
+export const CAMERA_SECONDS = revealSecondsFor(MANIFESTO_BEAT_COUNTS, MANIFESTO_HOLDS);
 // Lead the next ink by up to two seconds, once the preceding paragraph is
 // fully readable. Ink beats and the camera endpoint stay exactly as authored.
 export function mobileReadingSchedule(starts, lastWordBeats) {

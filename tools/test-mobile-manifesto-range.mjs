@@ -10,14 +10,15 @@ const aspect = 390 / 844;
 // Stanzas in reveal beats, verse-line breaths included (content/manifesto-verse.js).
 const counts = CONTENT.manifesto.lines.map(stanza => manifestoVerse(stanza).span);
 const beats = counts.map((count, i) => i === 0 && CONTENT.manifesto.note ? count : count - 1);
-const reading = mobileReadingSchedule(lineSecondsFor(counts), beats);
+const holds = CONTENT.manifesto.holds;
+const reading = mobileReadingSchedule(lineSecondsFor(counts, holds), beats);
 for (let i = 1; i < counts.length; i++) {
   const previousVisible = reading.reveal[i - 1] + beats[i - 1] * WORD_STAGGER_SECONDS + WORD_VISIBLE_SECONDS;
   assert.ok(reading.admit[i] >= previousVisible, 'prior copy is visibly readable when scroll begins');
   assert.equal(reading.admit[i], Math.max(previousVisible, reading.reveal[i] - 2));
   assert.ok(reading.reveal[i] > reading.admit[i], 'scroll leads incoming copy after the preceding paragraph is readable');
 }
-assert.deepEqual(reading.reveal, lineSecondsFor(counts), 'original text reveal beats are unchanged');
+assert.deepEqual(reading.reveal, lineSecondsFor(counts, holds), 'original text reveal beats are unchanged');
 const inkKeys = readFileSync(new URL('../journey/site.css', import.meta.url), 'utf8').split('@keyframes j-manifesto-ink {')[1];
 assert.match(inkKeys, new RegExp(`${Math.round(WORD_VISIBLE_FRACTION * 100)}%\\s*\\{\\s*opacity:\\s*1;`), 'readability clock follows the actual CSS opacity key');
 // the reveal actually painted (mycelial.css replaces the keyframes by name)

@@ -33,7 +33,10 @@ nothing structural:
 - `site.links` / `site.social` `label`/`href`, `site.legal`
 - `manifesto.lines`: one entry per stanza; `\n` inside an entry breaks a
   verse line (its own line on every viewport, plus a short held pause in the
-  reveal). Accented words are matched by `content/manifesto-concepts.js` and
+  reveal). A blank line (`\n\n`) keeps the stanza together but makes that
+  pause a long one (about a second). `manifesto.holds` (seconds, one per
+  stanza) holds the reveal a little longer after a stanza.
+  Accented words are matched by `content/manifesto-concepts.js` and
   `content/manifesto-links.js`; renaming one of those words drops its accent.
 
 Pass condition: `node tools/build-static-content.mjs --check` exits zero. A

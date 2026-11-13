@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { CONTENT } from '../content/content.js';
-import { manifestoPose, mobileFieldCenter, frameShiftAt, aerialPlacements, planAerialReveals, aerialRevealJob, aerialRevealAt, AERIAL_BODY_COUNT, AERIAL_SCALE_MIN, AERIAL_SCALE_MAX, CAMERA_SECONDS, SPIRAL_START_SECONDS, MOBILE_LIFT_SECONDS, MOBILE_OVERHEAD_TURN, lineSecondsFor, mobileReadingSchedule, revealSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, FIRST_LINE_SECONDS, LINE_BREATH_SECONDS, LINE_SECONDS_PER_WORD, TITLE_SECONDS, MANIFESTO_BEAT_COUNTS } from '../journey/manifesto/pose.js';
+import { manifestoPose, mobileFieldCenter, frameShiftAt, aerialPlacements, planAerialReveals, aerialRevealJob, aerialRevealAt, AERIAL_BODY_COUNT, AERIAL_SCALE_MIN, AERIAL_SCALE_MAX, CAMERA_SECONDS, SPIRAL_START_SECONDS, MOBILE_LIFT_SECONDS, MOBILE_OVERHEAD_TURN, lineSecondsFor, mobileReadingSchedule, revealSecondsFor, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, FIRST_LINE_SECONDS, LINE_BREATH_SECONDS, LINE_SECONDS_PER_WORD, TITLE_SECONDS, MANIFESTO_BEAT_COUNTS, MANIFESTO_HOLDS } from '../journey/manifesto/pose.js';
 import { manifestoVerse } from '../content/manifesto-verse.js';
 import { createGlide, sampleGlide } from '../journey/manifesto/glide.js';
 
@@ -104,6 +104,11 @@ const gaps = LINE_SECONDS.slice(1).map((t, i) => t - LINE_SECONDS[i]);
 gaps.forEach((g, i) => assert.ok(Math.abs(g - (LINE_BREATH_SECONDS + LINE_SECONDS_PER_WORD * words[i])) < .01, `beat ${i + 2} follows a readable pause (${g.toFixed(2)} s)`));
 assert.ok(gaps[2] < gaps[1], 'the shortest sentence hands on sooner');
 assert.ok(LINE_SECONDS.at(-1) <= CAMERA_SECONDS - 5, 'the last line lands well inside the flight, not at its end');
+assert.equal(FIRST_LINE_SECONDS, 3, 'the first line starts a second later (2026-11-12)');
+// an authored hold lengthens only the breath after its own stanza
+const held = lineSecondsFor([10, 10, 10], [0, 1, 0]), plain = lineSecondsFor([10, 10, 10]);
+assert.deepEqual([held[0], +(held[1] - plain[1]).toFixed(2), +(held[2] - plain[2]).toFixed(2)], [plain[0], 0, 1]);
+assert.ok(Math.abs(revealSecondsFor([10, 10], [2]) - revealSecondsFor([10, 10]) - 2) < 1e-9);
 console.log('Manifesto motion: vertical lift, monotone 100° CCW spiral, camera-clock expansion, responsive cap scale and aligned reading beats pass.');
 
 // Execute the actual branch against small DOM/scene doubles: camera ownership,
@@ -196,7 +201,8 @@ assert.equal(document.activeElement, root.querySelector('.j-manifesto-panel'), '
 const liveVerse = CONTENT.manifesto.lines.map(stanza => manifestoVerse(stanza));
 const liveCounts = liveVerse.map(verse => verse.span);
 assert.deepEqual(MANIFESTO_BEAT_COUNTS, liveCounts, 'the camera prices the stanzas by the same beats');
-const lastReadingBeat = lineSecondsFor(liveCounts).at(-1);
+assert.deepEqual(MANIFESTO_HOLDS, CONTENT.manifesto.holds, 'the authored holds are the ones the camera reads');
+const lastReadingBeat = lineSecondsFor(liveCounts, MANIFESTO_HOLDS).at(-1);
 const lastWordFinish = lastReadingBeat + liveVerse.at(-1).beats.at(-1) * WORD_STAGGER_SECONDS + WORD_REVEAL_SECONDS;
 assert.equal(CAMERA_SECONDS, lastWordFinish);
 assert.equal(revealSecondsFor([10, 20]), lineSecondsFor([10, 20]).at(-1) + 19 * WORD_STAGGER_SECONDS + WORD_REVEAL_SECONDS);
@@ -375,10 +381,11 @@ assert.equal(resizeObservers.at(-1).observations.find(o => o.element === mobileB
 assert.ok(mobileRoot.classes.has('is-scroll-reading'));
 assert.equal(mobile.shownLines, 0, 'mobile begins with the same quiet opening as desktop');
 assert.ok(mobileBox.children.every(line => line.hidden), 'unrevealed mobile paragraphs contribute no empty scroll extent');
-for (let i = 0; i < 114; i++) mobile.update(1 / 60);
+// the opening is FIRST_LINE_SECONDS (3 s since 2026-11-12, a second later)
+for (let i = 0; i < FIRST_LINE_SECONDS * 60 - 6; i++) mobile.update(1 / 60);
 assert.equal(mobile.shownLines, 0, 'no immediate copy on mobile entry');
 for (let i = 0; i < 12; i++) mobile.update(1 / 60);
-assert.equal(mobile.shownLines, 1, 'first paragraph starts after the two-second opening');
+assert.equal(mobile.shownLines, 1, 'first paragraph starts after the opening');
 assert.equal(mobileBox.children.filter(line => !line.hidden).length, 1, 'only available copy participates in mobile layout');
 assert.ok(ownerOf(mobilePanel), 'reading surface owns touch, wheel and keys');
 mobileBox.clientHeight = 400;
@@ -415,7 +422,7 @@ mobileParagraphs.forEach((line, i) => {
 });
 for (let i = 0; i < 300; i++) mobile.update(1 / 60);
 assert.equal(mobileBox.scrollTop, 0, 'first paragraph remains centred');
-const mobileSchedule = mobileReadingSchedule(lineSecondsFor(liveCounts), liveCounts.map((n, i) => i === 0 && CONTENT.manifesto.note ? n : n - 1));
+const mobileSchedule = mobileReadingSchedule(lineSecondsFor(liveCounts, MANIFESTO_HOLDS), liveCounts.map((n, i) => i === 0 && CONTENT.manifesto.note ? n : n - 1));
 const secondStart = mobileSchedule.reveal[1];
 const readingAdvance = () => 200 - mobileParagraphs[0].getBoundingClientRect().top;
 const advanceMobileTo = seconds => {

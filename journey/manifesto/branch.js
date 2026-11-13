@@ -10,7 +10,7 @@ import { attachManifestoNote } from '../../manifesto-note.js';
 import { CONTENT } from '../../content/content.js';
 import { manifestoConcepts } from '../../content/manifesto-concepts.js';
 import { manifestoVerse } from '../../content/manifesto-verse.js';
-import { manifestoPose, mobileFieldCenter, isMobileManifesto, smoother, ascentAt, lineSecondsFor, mobileReadingSchedule, CAMERA_SECONDS, TITLE_SECONDS, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, WORD_VISIBLE_SECONDS } from './pose.js';
+import { manifestoPose, mobileFieldCenter, isMobileManifesto, smoother, ascentAt, lineSecondsFor, mobileReadingSchedule, CAMERA_SECONDS, MANIFESTO_HOLDS, TITLE_SECONDS, WORD_STAGGER_SECONDS, WORD_REVEAL_SECONDS, WORD_VISIBLE_SECONDS } from './pose.js';
 
 // The opening beat the navigation rides when the camera starts on Purpose's
 // own rest, and the longer departure when it starts from another section.
@@ -84,7 +84,7 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
     if (!inkWord(glyph, '', [ch], /\S/.test(ch) ? ch : '')) glyph.textContent = ch;
     title.appendChild(glyph);
   }
-  // The approved body is four stanzas of verse, with its animated words
+  // The approved body is six stanzas of verse, with its animated words
   // in the accessibility tree so the inline note is keyboard accessible.
   // One paragraph per entry of CONTENT.manifesto.lines; falls back to one
   // per sentence of the body.
@@ -144,6 +144,8 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       const destination = destinations.get(i);
       const endsThread = concept?.id === 'kinship' && i === concept.end;
       const trail = i < words.length - 1 && !(isName(i) && !isName(i + 1)) ? ' ' : '';
+      // A receding phrase arrives without the warm flush (mycelial.css).
+      if (concept?.id === 'hollow') span.classList.add('is-hollow');
       if (concept) {
         // The outer span keeps the existing ink/opacity clock. Only the inner
         // ink changes colour, so a paired pulse cannot reveal future words.
@@ -287,7 +289,8 @@ export function createManifestoBranch(sceneApi, { onTravelLock = () => {}, onRet
       .then(releaseFontPending);
   }
   // Stanzas are priced by their beats, verse-line breaths included (pose.js).
-  const lineSeconds = lineSecondsFor(sentences.map(s => manifestoVerse(s).span));
+  // ...and held where the content says a stanza stands alone (pose.js).
+  const lineSeconds = lineSecondsFor(sentences.map(s => manifestoVerse(s).span), MANIFESTO_HOLDS);
   const mobileSchedule = mobileReadingSchedule(lineSeconds, lastWordBeats);
   let readingStarts = lineSeconds, readingAdmissions = lineSeconds;
   let cameraSeconds = CAMERA_SECONDS;
