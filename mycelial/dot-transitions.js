@@ -1849,7 +1849,7 @@
       }
     };
     if (window.__deckIntro) window.__deckIntro.initialized = true;
-    if (!active() || still || !document.fonts) launchOpening();
+    if (!active() || still || !document.fonts || window.__deckIntro?.fontsReady) launchOpening();
     else {
       let started = false;
       const launch = () => { if (started) return; started = true; clearTimeout(ceiling); launchOpening(); };
