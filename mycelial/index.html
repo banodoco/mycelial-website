@@ -197,6 +197,7 @@
 <meta name="robots" content="noindex">
 <link rel="preload" href="../assets/fonts/deck/dm-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="../assets/fonts/deck/cormorant-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../assets/fonts/deck/cormorant-italic-latin.woff2" as="font" type="font/woff2" crossorigin>
 <style>
   /* The same Latin and Latin-ext face files previously served by Google Fonts. */
   @font-face { font-family: "Cormorant Garamond"; font-style: italic; font-weight: 400; font-display: swap; src: url(../assets/fonts/deck/cormorant-italic-latin-ext.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
@@ -286,6 +287,13 @@
   .vc-host .nb { white-space: nowrap; } /* "Open-source" never splits at its hyphen */
   /* The subtitle: quieter and smaller than the headline, set in even lines. */
   .vc-host .split .body { max-width: 23em; text-wrap: balance; }
+  /* If a critical font cannot load, keep the chosen fallback for this document.
+     A font arriving after the startup deadline must not rewrap visible copy. */
+  html.dt-type-fallback .slide :is(h1, .num, .body),
+  html.dt-type-fallback .slide :is(h1, .num, .body) *,
+  html.dt-type-fallback .vc-host :is(.vc-label, .vc-name),
+  html.dt-type-fallback .vc-host :is(.vc-label, .vc-name) * { font-family: Georgia, serif !important; }
+  html.dt-type-fallback .dt-name { font-family: system-ui, sans-serif; }
   /* A short window (a laptop's, under its browser's bars and the dock) draws the words smaller rather than pushing
      them up past the slide's top. */
   @media (min-width: 761px) and (min-height: 501px) {
@@ -2989,7 +2997,38 @@
 <script src="pays.js"></script>
 <script src="flowers.js"></script>
 <script src="flywheel.js"></script>
-<script>window.deckBoot();</script>
+<script>
+// The first layout must use the same fonts that the viewer will read. Hash
+// refreshes and motion-off visits skip the animated opening's font wait.
+// Keep all first entries behind this one deadline, before selecting a slide.
+(() => {
+  const intro = window.__deckIntro;
+  if (intro) intro.initialized = true; // The script watchdog no longer owns this controlled wait.
+  let started = false, deadline;
+  const launch = (ready) => {
+    if (started) return;
+    started = true;
+    clearTimeout(deadline);
+    if (!ready) document.documentElement.classList.add('dt-type-fallback');
+    if (intro) intro.fontsReady = true;
+    window.deckBoot(); // Reads the current hash, including changes made while fonts loaded.
+  };
+  const fonts = document.fonts;
+  if (!fonts?.load) { launch(false); return; }
+  deadline = setTimeout(() => launch(false), 8000);
+  try {
+    const needed = [
+      fonts.load('400 22px "DM Sans"', 'MYCELIAL'),
+      fonts.load('400 72px "Cormorant Garamond"', 'Mycelial'),
+      fonts.load('italic 400 16px "Cormorant Garamond"', '01'),
+      fonts.load('italic 500 72px "Cormorant Garamond"', 'Mycelial'),
+      fonts.load('400 20px "EB Garamond"', 'Mycelial')
+    ];
+    Promise.allSettled(needed).then((results) => launch(results.every((result) =>
+      result.status === 'fulfilled' && result.value.length > 0)));
+  } catch { launch(false); }
+})();
+</script>
 <script>
 // Diagnostic UI is intentionally independent of the animation clock.
 if (new URLSearchParams(location.search).has('debug')) (() => {
