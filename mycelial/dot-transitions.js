@@ -476,11 +476,11 @@
   const safeZone = (elements, key) => { try { return zone(elements(), key); } catch { return null; } };
   // The text block of a slide: its column, the label included.
   // Canonical copy is revealed by its ink: the real nodes stay opaque, unmasked
-  // and in place, and only their glyph colour spreads. Slides 3–5 and the wheel
-  // (9–11) share this one path; each kind names its own CSS class and variables.
+  // and in place, and only their glyph colour spreads. The opening, slides 3–5
+  // and the wheel (9–11) share this path; each kind names its own CSS variables.
   const stableCopy = (column) => !!inkOf(column);
   const inkOf = (column) => column.matches('.gap-copy') ? 'gap' : column.matches('.as-copy') ? 'as'
-    : column.closest('.fw-host') ? 'fw' : null;
+    : column.matches('.vc-copy') ? 'vc' : column.closest('.fw-host') ? 'fw' : null;
   const copyContent = (column) => column.matches('.gap-copy')
     ? column.querySelector(':scope > .gap-copy-content') : column;
   const lines = (s) => textOf(s).flatMap((col) => [...copyContent(col).children]);
@@ -906,9 +906,9 @@
       const alpha = at ? String(clamp(r / reach(el, at, bounds))) : hidden ? '0' : '1';
       // The same viewport origin, radius and soft edge as the clone mask. A
       // fixed background shares one circle across every wrapped fragment. The
-      // wheel has no per-colour alpha rules: its hidden endpoint is a spread of
-      // radius zero, so one mechanism covers hidden, partial and gathered.
-      const spreading = Boolean(at) || (hidden && kind === 'fw');
+      // opening and wheel have no per-colour alpha rules: their hidden endpoint
+      // is a spread of radius zero, covering hidden, partial and gathered.
+      const spreading = Boolean(at) || (hidden && (kind === 'fw' || kind === 'vc'));
       content.classList.toggle(`${kind}-spreading`, spreading);
       if (spreading) {
         content.style.setProperty(`--${kind}-x`, `${(at ? at.x : 0).toFixed(1)}px`);

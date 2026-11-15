@@ -1,4 +1,5 @@
-// Compare disposable copy layers with canonical text; slides 3 and 5 paint their semantic trees directly.
+// Compare disposable copy layers with canonical text; the opening, slides 3/5,
+// and the wheel paint their semantic trees directly.
 // Usage: node tools/deck/check-copy-parity.mjs [url] [phone|desktop|both]
 import { chromium } from 'playwright-core';
 import { existsSync } from 'node:fs';
@@ -15,8 +16,8 @@ if (!['phone', 'desktop', 'both'].includes(requestedProfile) || !/^https?:\/\//.
 const output = { base, limitPx, started: new Date().toISOString(), profiles: {}, failures: [] };
 const selectors = ['h1', '.body', '.num', '.fw-stat', '.fw-asks'];
 
-async function armCapture(page) {
-  await page.evaluate(selectors => {
+async function armCapture(page, expected) {
+  await page.evaluate(({ selectors, expected }) => {
     window.__deckParityObserver?.disconnect();
     window.__deckParityResult = null;
     const observe = () => {
@@ -49,38 +50,53 @@ async function armCapture(page) {
         }
       }
     }
-    const canonical = activeSlide?.querySelector('.gap-copy-content, .as-copy');
+    const canonical = activeSlide?.querySelector('.vc-copy, .gap-copy-content, .as-copy') ||
+      (activeSlide?.matches('.fw-host') ? activeSlide.querySelector(activeSlide.matches('.fw-raise')
+        ? ':scope > .split' : ':scope > .split > :first-child') : null);
+    const kind = canonical?.matches('.vc-copy') ? 'vc' : canonical?.matches('.as-copy') ? 'as'
+      : canonical?.matches('.gap-copy-content') ? 'gap' : 'fw';
     const canonicalPaint = canonical ? {
-      count: activeSlide.querySelectorAll('.gap-copy-content, .as-copy').length,
+      kind,
+      count: activeSlide.querySelectorAll('h1').length,
       hidden: canonical.classList.contains('dt-copy-hidden'),
-      masks: [canonical.parentElement, canonical, canonical.querySelector('h1')].map(el => getComputedStyle(el).maskImage),
-      lineCount: lineRects(canonical).length,
+      masks: [canonical.parentElement, canonical, canonical.querySelector('h1')]
+        .flatMap(el => [getComputedStyle(el).maskImage || 'none', getComputedStyle(el).webkitMaskImage || 'none']),
+      lineCount: lineRects(canonical.querySelector('h1')).length,
       opacity: Number(getComputedStyle(canonical).opacity),
-      alpha: Number(getComputedStyle(canonical).getPropertyValue(canonical.matches('.as-copy') ? '--as-copy-alpha' : '--gap-copy-alpha')),
+      alpha: Number(getComputedStyle(canonical).getPropertyValue(`--${kind}-copy-alpha`)),
+      spreading: canonical.classList.contains(`${kind}-spreading`),
     } : null;
     return { active, settled: !!activeSlide?.hasAttribute('data-settled'), overlayCount: overlays.length, canonicalPaint,
       comparisons, maxDeltaPx: Math.max(0, ...comparisons.map(item => item.maxDeltaPx)) };
     };
     window.__deckParityRead = observe;
-    const observer = new MutationObserver(records => {
-      const inserted = records.some(record => [...record.addedNodes].some(node => node.nodeType === 1 &&
-        (node.matches?.('.dt-copy-overlay') || node.querySelector?.('.dt-copy-overlay'))));
-      if (!inserted) return;
-      observer.disconnect();
-      requestAnimationFrame(() => { window.__deckParityResult = observe(); });
+    let scheduled = false;
+    const observer = new MutationObserver(() => {
+      if (scheduled) return;
+      const state = observe();
+      if (state.active !== expected || (!state.overlayCount && !state.canonicalPaint)) return;
+      scheduled = true;
+      requestAnimationFrame(() => {
+        scheduled = false;
+        const sample = observe();
+        if (sample.active !== expected) return;
+        window.__deckParityResult = sample;
+        observer.disconnect();
+      });
     });
     window.__deckParityObserver = observer;
-    // The outgoing slide can be canonical-only (slide 3), so observe the
-    // destination's insertions too rather than relying on outgoing clones.
-    observer.observe(document.body, { childList: true, subtree: true });
-  }, selectors);
+    // Canonical ink changes styles without inserting a clone. Observe the
+    // destination itself, including its in-flight reveal, on either paint path.
+    observer.observe(document.body, { childList: true, attributes: true,
+      attributeFilter: ['class', 'style'], subtree: true });
+  }, { selectors, expected });
 }
 
 async function readCapture(page, expected) {
   await page.waitForFunction(n => {
     const slide = document.querySelector('.slide.on');
     return [...document.querySelectorAll('.slide')].indexOf(slide) + 1 === n &&
-      (window.__deckParityResult !== null || slide?.hasAttribute('data-settled'));
+      (window.__deckParityResult?.active === n || slide?.hasAttribute('data-settled'));
   }, expected, { timeout: 20000 });
   return page.evaluate(() => window.__deckParityResult || window.__deckParityRead());
 }
@@ -97,7 +113,8 @@ async function runProfile(browser, profile) {
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
   }
   page.setDefaultTimeout(30000);
-  await page.goto(`${base.replace(/#.*$/, '')}?debug=1`, { waitUntil: 'load', timeout: 60000 });
+  const url = new URL(base); url.hash = ''; url.searchParams.set('debug', '1');
+  await page.goto(url.href, { waitUntil: 'load', timeout: 60000 });
   await page.waitForFunction(() => !document.documentElement.classList.contains('dt-intro'), null, { timeout: 60000 });
   const waitForSlide = async n => page.waitForFunction(expected => {
     const slide = [...document.querySelectorAll('.slide')].findIndex(element => element.classList.contains('on')) + 1;
@@ -107,12 +124,12 @@ async function runProfile(browser, profile) {
 
   // Re-enter the first slide so it is measured during navigation, then visit the rest.
   await page.keyboard.press('ArrowRight'); await waitForSlide(2);
-  await armCapture(page); await page.keyboard.press('ArrowLeft');
+  await armCapture(page, 1); await page.keyboard.press('ArrowLeft');
   const first = await readCapture(page, 1);
   const slides = [{ slide: 1, ...first, overlayObserved: first.overlayCount > 0 }];
   await waitForSlide(1);
   for (let n = 2; n <= 11; n++) {
-    await armCapture(page); await page.keyboard.press('ArrowRight');
+    await armCapture(page, n); await page.keyboard.press('ArrowRight');
     const sample = await readCapture(page, n);
     slides.push({ slide: n, ...sample, overlayObserved: sample.overlayCount > 0 });
     await waitForSlide(n);
@@ -121,7 +138,7 @@ async function runProfile(browser, profile) {
   return { profile, viewport: mobile ? '390x670 @3 DPR' : '1440x900 @1 DPR', slides,
     slidesWithoutOverlay: slides.filter(slide => !slide.overlayObserved).map(slide => slide.slide),
     failures: slides.filter(slide => {
-      if (slide.slide === 3 || slide.slide === 5) {
+      if ([1, 3, 5, 9, 10, 11].includes(slide.slide)) {
         const canonical = slide.canonicalPaint;
         return slide.overlayCount !== 0 || !canonical || canonical.count !== 1 || canonical.hidden ||
           canonical.masks.some(mask => mask !== 'none') || canonical.lineCount < 1 ||
