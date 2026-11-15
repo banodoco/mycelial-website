@@ -285,6 +285,23 @@
   .vc-host > .split { display: block; }
   .vc-host > .split > :first-child { position: relative; z-index: 2; width: fit-content; }
   .vc-host .nb { white-space: nowrap; } /* "Open-source" never splits at its hyphen */
+  /* Reveal the opening's real text, as on the wheel. A frozen clone can keep a
+     phone's earlier font size or width until the reveal swaps it for live copy. */
+  .vc-copy { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  .vc-host .vc-spreading .num, .vc-host .vc-spreading .num .act,
+  .vc-host .vc-spreading h1, .vc-host .vc-spreading h1 .nb, .vc-host .vc-spreading h1 em,
+  .vc-host .vc-spreading .body, .vc-host .vc-spreading .body .nb, .vc-host .vc-spreading .body b,
+  .vc-host .vc-spreading .vc-fn button {
+    color: transparent; -webkit-text-fill-color: transparent;
+    -webkit-background-clip: text; background-clip: text; background-attachment: fixed;
+    background-image: radial-gradient(circle at var(--vc-x, 0px) var(--vc-y, 0px),
+      rgb(var(--vc-ink)) var(--vc-inner, 0px), transparent var(--vc-outer, 0px));
+  }
+  .vc-host .vc-spreading .num { --vc-ink: 224 171 94; }
+  .vc-host .vc-spreading .num .act, .vc-host .vc-spreading .body { --vc-ink: 184 169 143; }
+  .vc-host .vc-spreading h1, .vc-host .vc-spreading .body b { --vc-ink: 239 230 214; }
+  .vc-host .vc-spreading h1 em { --vc-ink: 224 175 102; }
+  .vc-host .vc-spreading .vc-fn button { --vc-ink: 240 198 126; text-shadow: none; transition: none; }
   /* The subtitle: quieter and smaller than the headline, set in even lines. */
   .vc-host .split .body { max-width: 23em; text-wrap: balance; }
   /* If a critical font cannot load, keep the chosen fallback for this document.
@@ -1731,6 +1748,11 @@
     .vc-host .split .body { margin-top: .8rem; font-size: .92rem; line-height: 1.45; } /* quieter, so the ring keeps its room */
     .gp { width: min(100cqw, 100cqh); }
   }
+  /* Phone toolbars change height during entry. Keep the opening headline's
+     line breaks tied to width while the carousel uses the remaining height. */
+  @media (max-width: 600px) and (orientation: portrait) {
+    .vc-host .split h1 { font-size: clamp(1.6rem, 6.8vw, 2.4rem); }
+  }
   /* A phone on its side (or any short, wide window) keeps the wide compositions, drawn smaller: everything sits
      between the top edge and the deck's footer (one row: the wordmark, the progress bar, and the counter between
      its arrows), which takes the bottom ~56 px. */
@@ -1822,7 +1844,7 @@
   <section class="slide vc-host" data-v="f">
     <div class="num">01<span class="act">The opportunity</span></div>
     <div class="split">
-      <div>
+      <div class="vc-copy">
         <h1><span class="nb">Open-source</span> AI has unimaginable creative potential <em>waiting to be unlocked.</em></h1>
         <div class="body">The centuries-long shift from practical work towards human expression is accelerating. <span class="nb">Open-source</span> AI lets everyone take part&nbsp;— as artists, as builders, and in the economy<sup class="vc-fn"><button type="button" aria-expanded="false" aria-controls="vc-note" aria-label="Note: the creator economy">1</button></sup> growing around them.</div>
       </div>

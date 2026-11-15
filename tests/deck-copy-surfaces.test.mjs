@@ -28,9 +28,9 @@ class Element {
   remove(){this.removed=true;}
 }
 function fixture(debug=false){
-  const slides=[9,10,11].map(n=>{
-    const s=new Element('slide fw-host'+(n===11?' fw-raise':''));
-    const root=new Element(n===11?'split':'',s),heading=new Element('heading',root);
+  const slides=[9,10,11,1].map(n=>{
+    const s=new Element(n===1?'slide vc-host':'slide fw-host'+(n===11?' fw-raise':''));
+    const root=new Element(n===1?'vc-copy':n===11?'split':'',s),heading=new Element('heading',root);
     s.roots=[root];s.heading=heading;s.controls=n===11?new Element('fw-asks',root):null;
     if(n===9)s.roots.push(new Element('fw-stat',s));return s;
   });
@@ -62,12 +62,13 @@ function fixture(debug=false){
   return {...api,context,slides,timers,overlays,masks,recoveries,navigate};
 }
 const origin={x:120,y:120};
-// Wheel copy is revealed by ink on its real nodes: no mask, clone or visibility class ever touches them.
+// Opening and wheel copy stay on their real nodes through the entire reveal.
 const unmasked=root=>!root.classList.contains('dt-copy-hidden')&&!root.style.maskImage&&!root.style.webkitMaskImage;
-const ink=root=>root.classList.contains('fw-spreading')?root.style.getPropertyValue('--fw-outer'):'';
-const clean=root=>unmasked(root)&&!root.classList.contains('fw-spreading')&&!ink(root);
+const kind=root=>root.closest('.vc-host')?'vc':'fw';
+const ink=root=>root.classList.contains(`${kind(root)}-spreading`)?root.style.getPropertyValue(`--${kind(root)}-outer`):'';
+const clean=root=>unmasked(root)&&!root.classList.contains(`${kind(root)}-spreading`)&&!ink(root);
 const inkless=root=>unmasked(root)&&ink(root)==='0.0px';
-for(const [i,n] of [9,10,11].entries()){
+for(const [i,n] of [9,10,11,1].entries()){
   test(`slide ${n}: claims and inks its original nodes, never masks or clones`,()=>{
     const f=fixture(),ctx=f.navigate(i),s=f.slides[i],state=f.copy.hide(s,ctx,origin);
     for(const root of s.roots){assert.ok(inkless(root));assert.equal(f.copy.paint(root,origin,180,null,state),true);assert.equal(ink(root),'180.0px');assert.ok(unmasked(root));assert.equal(f.overlays.size,0);}
@@ -90,6 +91,23 @@ for(const [i,n] of [9,10,11].entries()){
     assert.ok(s.roots.every(inkless));assert.equal(f.overlays.size,0);
   });
 }
+test('opening copy preserves live heading and control nodes through layout and recovery',()=>{
+  const f=fixture(),ctx=f.navigate(3),s=f.slides[3],root=s.roots[0],heading=s.heading;
+  const footnote=new Element('vc-fn',root),button=new Element('button',footnote);
+  const state=f.copy.hide(s,ctx,origin,900);
+  // Responsive CSS can change while the opening owns the reveal. Paint must
+  // keep using those live nodes, without a frozen copy to swap at the endpoint.
+  heading.style.fontSize='25.6px';heading.style.width='327px';
+  for(const radius of [30,150,300]){
+    assert.equal(f.copy.paint(root,origin,radius,null,state),true);
+    assert.equal(f.overlays.size,0);assert.ok(unmasked(root));
+  }
+  [...f.timers.values()][0].fn();
+  assert.deepEqual(f.recoveries,['recover']);assert.ok(clean(root));
+  assert.equal(s.heading,heading);assert.equal(footnote.children[0],button);
+  assert.equal(heading.style.fontSize,'25.6px');assert.equal(heading.style.width,'327px');
+  assert.equal(button.removed,false);assert.equal(f.overlays.size,0);
+});
 test('obsolete navigation cannot hide, paint, show, retire, or reconcile current text',()=>{
   const f=fixture(),old=f.navigate(0),s=f.slides[0],first=f.copy.hide(s,old,origin);
   old.close();const next=f.navigate(0,1),fresh=f.copy.hide(s,next,origin);
