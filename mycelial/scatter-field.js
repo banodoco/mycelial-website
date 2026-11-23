@@ -941,6 +941,7 @@
   const root = document.querySelector('[data-scatter-field]');
   if (!root) return;
   const slide = root.closest('.slide');
+  root.setAttribute('aria-label', 'Creative needs meet four barriers: Discover, Set Up, Configure and Create. Many available capabilities remain difficult to turn into finished work.');
   const originalCanvas = root.querySelector('.sf-dust');
   const originalSnapshot = root.snapshot?.bind(root);
   const canvas = document.createElement('canvas');
@@ -1180,6 +1181,17 @@
       g.font='10px "EB Garamond",Georgia,serif';g.letterSpacing='0px';
       g.fillText(String(j+1).padStart(2,'0'),x,baseline-17);
     });
+    // The source dots are the creator's starting needs, not a fifth barrier.
+    // Share the same label baseline so the full journey reads left to right.
+    const sourceX=w*(narrow?.08:.11);
+    const sourceBaseline=yBottom+(short?18:narrow?22:25);
+    g.fillStyle=alpha('#e4bf8a',opacity*.94);
+    g.textAlign='center';g.letterSpacing='1.4px';
+    g.font=`${narrow?10:12}px "DM Sans",Arial,sans-serif`;
+    g.fillText('NEED',sourceX,sourceBaseline);
+    g.fillStyle=alpha('#9b8262',opacity*.65);
+    g.letterSpacing='0px';g.font='10px "EB Garamond",Georgia,serif';
+    g.fillText('00',sourceX,sourceBaseline-17);
     g.restore();
 
     // The gallery's real sampled pixels fold into the filament field.
