@@ -122,7 +122,7 @@ try {
     // Actual navigation capture at 25 fps, re-timed using motion estimation
     // to 50 fps for a much smoother preview. No slide content is synthesized:
     // optical flow fills intermediate motion from the recorded browser frames.
-    execFileSync('ffmpeg', [
+    if (process.env.DECK_SMOOTH === '1') execFileSync('ffmpeg', [
       '-hide_banner', '-loglevel', 'error', '-y', '-ss', '3.1', '-i', raw,
       '-vf', 'scale=800:500:flags=lanczos,minterpolate=fps=50:mi_mode=mci:mc_mode=obmc:me_mode=bidir,scale=1120:700:flags=lanczos,format=yuv420p',
       '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19',
