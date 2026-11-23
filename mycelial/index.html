@@ -1854,6 +1854,35 @@
   @media (max-width: 760px) and (orientation: landscape) and (max-height: 330px) {
     .pa-side { translate: 0 -16px; }
   }
+
+  /* Slide 2 — a dense field of creative possibilities progressively frays.
+     Retains Mycelial's palette, typography, text progression and slide engine. */
+  html[data-ver="f"] .sf-host.ff-layout { justify-content:flex-start; padding-top:clamp(50px,7.5vh,90px); }
+  html[data-ver="f"] .sf-host.ff-layout > .num { margin-bottom:clamp(14px,2vh,24px); }
+  html[data-ver="f"] .sf-host.ff-layout > .split { display:block; }
+  html[data-ver="f"] .sf-host.ff-layout > .split > :first-child { width:100%;max-width:1100px; }
+  html[data-ver="f"] .sf-host.ff-layout h1 { max-width:23ch; font-size:clamp(34px,min(4.3vw,7vh),66px); line-height:1.055; }
+  .sf.ff-active { z-index:2; }
+  .sf.ff-active .sf-whisper, .sf.ff-active .sf-card, .sf.ff-active .sf-legend { opacity:0 !important; visibility:hidden;pointer-events:none!important; }
+  .ff-canvas {position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
+  .ff-hits {position:absolute;inset:0;z-index:3;pointer-events:none}
+  .ff-hit {position:absolute;transform:translate(-50%,-50%);width:28px;height:28px;border:0;border-radius:50%;padding:0;appearance:none;background:transparent;cursor:pointer;pointer-events:auto}
+  .ff-hit:focus-visible { outline:1px solid #efcc8e;outline-offset:2px;box-shadow:0 0 18px #e0ab5e99 }
+  .ff-note { position:absolute;left:13%;top:24%;z-index:4;display:flex;flex-direction:column;gap:4px;
+    width:min(360px,55vw);padding:11px 14px 13px;background:#15100bea;border-left:2px solid #c7a06e;
+    box-shadow:0 12px 40px #0009;opacity:0;transform:translateY(8px);pointer-events:none;
+    transition:opacity .23s ease,transform .23s ease; }
+  .ff-note.is-on {opacity:1;transform:none}
+  .ff-note-kind {font:400 11px/1.2 "DM Sans",Arial,sans-serif;letter-spacing:.09em;color:#ac8d63}
+  .ff-note-name {font:italic 500 22px/1.1 "Cormorant Garamond",Georgia,serif;color:#efc68a}
+  .ff-note-detail {font:400 15px/1.35 "EB Garamond",Georgia,serif;color:#c3b39f}
+  @media(max-width:760px){
+    html[data-ver="f"] .sf-host.ff-layout { justify-content:flex-start;padding-top:clamp(40px,7vh,62px);padding-bottom:80px; }
+    html[data-ver="f"] .sf-host.ff-layout h1 {font-size:clamp(29px,7.25vw,43px);max-width:100%}
+    .ff-note {left:6%;top:37%;width:88%;max-width:330px;}
+  }
+  @media (prefers-reduced-motion:reduce){.ff-note{transition:none}}
+
 </style>
 </head>
 <body>
@@ -1894,7 +1923,7 @@
     </div>
   </section>
 
-  <section class="slide sf-host" data-v="f">
+  <section class="slide sf-host ff-layout" data-v="f">
     <div class="sf" data-scatter-field aria-label="An orbiting field of specialist upscalers, LoRAs, tools, LUTs, workflows, Q&A threads and practical guides">
       <div class="sf-stage"><canvas class="sf-dust" aria-hidden="true"></canvas></div>
       <div class="sf-whisper" aria-hidden="true"><span class="sf-where"></span><span class="sf-name"></span></div>
