@@ -973,7 +973,7 @@
     ['DISCOVER','Find the right model, tool or workflow across scattered repositories and discussions.'],
     ['SET UP','Resolve dependencies, hardware, model downloads and installation conflicts.'],
     ['CONFIGURE','Learn the right settings, prompting and control techniques for a useful result.'],
-    ['COMBINE','Connect incompatible outputs and iterate across multiple tools in one creative process.']
+    ['CREATE','Turn connected capabilities into a finished creative work.']
   ];
   const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v));
   const ease=t=>t*t*(3-2*t);
@@ -982,8 +982,8 @@
   const alpha=(hex,a)=>`rgba(${hexRgb(hex).join(',')},${clamp(a).toFixed(3)})`;
   const point=(a,b,t)=>a+(b-a)*t;
   const N=42;
-  let w=0,h=0,dpr=1,geom=[],sources=[],raf=0,last=0,elapsed=0,clock=0,mode='inactive',start=0;
-  let visit=null, hovered=-1, pinned=-1, pointerLeave=0, pulseId=0, pulses=[], launchAt=0, shadow=0;
+  let w=0,h=0,dpr=1,geom=[],sources=[],artwork=[],raf=0,last=0,elapsed=0,clock=0,mode='inactive',start=0;
+  let visit=null, hovered=-1, pinned=-1, highlightAt=0, pointerLeave=0, pulseId=0, pulses=[], launchAt=0, shadow=0;
   // Every dot keeps its own resource identity until it is replaced.
   const assignments=Array.from({length:N},(_,i)=>(i*13)%catalogue.length);
   const reborn=Array(N).fill(-100);
@@ -994,7 +994,8 @@
   const canvasArea=()=>({ left:root.getBoundingClientRect().left, top:root.getBoundingClientRect().top });
   const stopIndex=(i)=>{const x=hash(i*17+6);return x<.29?0:x<.56?1:x<.78?2:x<.93?3:4;};
   const activeItem=i=>catalogue[assignments[i]];
-  const gateX=()=>[.345,.49,.635,.78].map(x=>w*x);
+  // Four evenly spaced checkpoints, with Create nearest the endpoint.
+  const gateX=()=>[.345,.51,.675,.84].map(x=>w*x);
   const stops=()=>gateX();
   const layout=()=>{
     const box=root.getBoundingClientRect(),nw=box.width,nh=box.height;
@@ -1007,7 +1008,7 @@
     const narrow=w<700,top=narrow?h*.50:h*.47,bottom=narrow?h*.835:h*.85;
     geom=Array.from({length:N},(_,i)=>{
       const u=(i+.5)/N;
-      const y=top+u*(bottom-top)+(hash(i*41+9)-.5)*(narrow?8:12);
+      const y=top+u*(bottom-top); // evenly spaced left-hand dots
       const x0=w*(narrow?.08:.11)+(hash(i*33+2)-.5)*Math.min(w*.012,12);
       const xf=w*(narrow?.95:.925);
       const end=stopIndex(i);
@@ -1053,11 +1054,15 @@
     note.querySelector('.ff-note-kind').textContent=item.where;
     note.querySelector('.ff-note-name').textContent=item.name;
     note.querySelector('.ff-note-detail').textContent=item.detail;
+    // Hover details belong to the selected dot, below the main headline.
+    note.style.left=clamp(geom[i].x0+25,w*.11,w*.26)+'px';
+    note.style.top=clamp(geom[i].y-87,h*.37,h*.70)+'px';
     note.classList.add('is-on');
     hits.children[i]?.setAttribute('aria-label',`Selected: ${item.name}`);
   }
   const inspect=(i,lock)=>{
     if(!owned()||mode!=='rest')return;
+    if(i!==hovered&&i!==pinned)highlightAt=clock;
     hovered=i;if(lock)pinned=i;
     displayText(i);
     pulses.push({id:i,at:clock-0.08,duration:2.9,inspection:true});
@@ -1124,6 +1129,8 @@
     g.beginPath();g.arc(x,y,r,0,Math.PI*2);g.fillStyle=alpha(c,a);g.fill();
   };
   const buildAt=(t)=>clamp(t);
+  // Never highlight beyond a strand's actual stopping point.
+  const terminal=strand=>strand.end===4?.85:Math.max(.03,(strand.end+1)/5-.025);
   const latest=()=>Math.max(0,(now()-start)/1000);
   const draw=()=>{
     if(!w||!h)return;
