@@ -97,6 +97,7 @@ test('sampled artwork is passed to the new entrance without outward-starfield du
   assert.match(addon,/const dest=position\(strand,/);
 });
 test('stages, hovered paths and Create bursts respect their destination',()=>{
+  assert.match(addon,/g\.fillText\('NEED',sourceX,sourceBaseline\)/);
   assert.match(addon,/g\.fillText\(gates\[j\]\[0\],x,baseline\)/);
   assert.doesNotMatch(addon,/a world of possibilities|only a fraction reaches the artist/);
   assert.match(addon,/const terminal=strand=>/);
