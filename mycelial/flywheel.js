@@ -848,7 +848,7 @@
       else if (['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'].includes(key)) opacity = 0;
       else if (key === 'community') opacity = smooth(k01(T.labels, 0.6)) * pa;
       else if (key === 'open') opacity = short ? 0 : reach;
-      else if (key === 'ai' || key === 'creative') opacity = short ? 0 : smooth(clamp((reach - 0.3) / 0.55));
+      else if (key === 'ai' || key === 'creative') opacity = (tall || short) ? 0 : smooth(clamp((reach - 0.3) / 0.55));
       else if (short && ['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'].includes(key)) opacity = 0;
       else opacity = ql * pa;
       setOp(labels[key], opacity);
