@@ -74,6 +74,9 @@
     ["guide", "Field notes · Banodoco", "Test the motion before the long render", "Atom.p’s image-shift prototype checks the move before committing to full animation."],
   ];
 
+  // The filament view uses the same editorial examples and their descriptions.
+  root.filamentItems = ITEMS.map(([type, where, name, detail]) => [type, where, name, detail]);
+
   // Seeded, so the field has the same shape on every visit.
   let seed = 20261015;
   const rnd = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
@@ -805,9 +808,11 @@
     card.style.transitionDuration = '';
     if (ctx.from === 0 && !motionOff() && !ctx.rest && !ctx.direct) dissolve(ctx);
     start(!ctx.rest, ctx);
+    window.FilamentField?.enter(ctx.from === 0 ? 'enter-collage' : ctx.from === 2 ? 'enter-gap' : 'rest', ctx);
     return promise;
   };
   const sceneExit = (ctx) => {
+    window.FilamentField?.exit(ctx);
     clearHighlights(); // dismiss immediately, before the reverse picture handoff
     if (ctx.to === 0 && ctx.back && !motionOff()) {
       const promise = completion(ctx, (fn) => { reverseFinish = fn; }, () => endRewind());
@@ -820,6 +825,7 @@
     stop();
   };
   const sceneRestore = (ctx) => {
+    window.FilamentField?.restore(ctx);
     if (rewind) endRewind();
     if (ctx.to !== 1) return true;
     if (motes.length || slide.classList.contains('sf-arrive')) {
