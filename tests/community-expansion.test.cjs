@@ -131,3 +131,33 @@ test('outer world is a complete ellipse and hit flash only affects its target or
   assert.ok(ellipses.every(e => Math.abs(e.end-e.start-2*Math.PI) < 1e-9), 'no half-arcs');
   scope.paintRoles(mock, [720,360,190,190], {time:6,opacity:1,impacts:[0,1,0,0,0]});
 });
+
+
+test('wide desktop viewport can never invert the middle ring at its top and bottom', () => {
+  // The former outerY*.79 calculation could reduce the middle vertical radius
+  // below ry as soon as the outer ring was clamped near 1.14*ry.
+  const cases = [
+    { ring: [960, 425, 237, 237], viewport: { width: 1920, height: 900 } },
+    { ring: [960, 500, 237, 237], viewport: { width: 1920, height: 1080 } },
+    { ring: [1280, 600, 273, 273], viewport: { width: 2560, height: 1440 } },
+    { ring: [960, 480, 250, 250], viewport: { width: 1920, height: 900 } },
+    { ring: [720, 352, 190, 190], viewport: { width: 1440, height: 900 } },
+    { ring: [195, 330, 105, 105], viewport: { width: 390, height: 844 } },
+    { ring: [422, 130, 152, 49], viewport: { width: 844, height: 390, short: true } },
+  ];
+  for (const { ring, viewport } of cases) {
+    const [cx, cy, rx, ry] = ring;
+    const tall = viewport.width < viewport.height;
+    const z = scope.geometry(ring, tall, viewport);
+    const minInnerY = Math.max(viewport.short ? 9 : tall ? 12 : 17, ry * .12);
+    const minOuterY = Math.max(viewport.short ? 9 : tall ? 11 : 14, ry * .10);
+    assert.ok(z.openRy - ry >= minInnerY - 1e-9,
+      'middle ring top/bottom overlaps inner ring at ' + JSON.stringify(viewport));
+    assert.ok(z.outerRy - z.openRy >= minOuterY - 1e-9,
+      'outer ring top/bottom overlaps middle ring at ' + JSON.stringify(viewport));
+    assert.ok(z.rx < z.openRx && z.openRx < z.outerRx);
+    // The rings must remain concentric after viewport clamping.
+    assert.equal(z.cx, cx);
+    assert.equal(z.cy, cy);
+  }
+});
