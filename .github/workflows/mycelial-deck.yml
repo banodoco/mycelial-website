@@ -31,3 +31,14 @@ jobs:
           node --check mycelial/flywheel.js
       - name: Run deck regression suite
         run: npm run test:deck
+      - name: Install browser harness
+        run: npm ci --no-audit --no-fund
+      - name: Validate live slide transitions and capture desktop/mobile frames
+        run: node tools/deck/check-community-expansion.mjs
+      - name: Preserve visual QA frames
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slide9-community-visuals
+          path: .artifacts/slide9-community/
+          if-no-files-found: warn
