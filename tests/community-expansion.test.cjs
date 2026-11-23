@@ -129,3 +129,27 @@ test('a single nine-second orbit hits each orb once, including across delayed fr
   assert.deepEqual(Array.from(scope.orbitHits(3, 4.9, 2.4)), [1]);
   assert.deepEqual(Array.from(scope.orbitHits(4.9, 3, 2.4)), []);
 });
+
+
+test('wide desktop, phone and landscape rings never cross vertically', () => {
+  // Regression: .72 * capped reachRy could make the middle ring smaller than the inner one.
+  const cases = [
+    { ring:[960,425,237,237], view:{width:1920,height:900,top:80,bottom:655} },
+    { ring:[960,500,237,237], view:{width:1920,height:1080,top:88,bottom:785} },
+    { ring:[1280,600,273,273], view:{width:2560,height:1440,top:100,bottom:1030} },
+    { ring:[720,360,185,185], view:{width:1440,height:900,top:80,bottom:685} },
+    { ring:[195,330,105,105], view:{width:390,height:844,top:76,bottom:570} },
+    { ring:[422,130,152,49], view:{width:844,height:390,top:55,bottom:230,short:true} },
+  ];
+  for (const {ring,view} of cases) {
+    const tall = view.width < view.height;
+    const z = scope.geometry(ring,tall,view);
+    const innerGap = Math.max(view.short ? 9 : tall ? 12 : 17, ring[3] * .12);
+    const outerGap = Math.max(view.short ? 9 : tall ? 11 : 14, ring[3] * .10);
+    assert.ok(z.openRy-z.ry >= innerGap - 1e-9,
+      'middle ring crosses community ring at ' + view.width + 'x' + view.height);
+    assert.ok(z.reachRy-z.openRy >= outerGap - 1e-9,
+      'outer ring crosses ecosystem ring at ' + view.width + 'x' + view.height);
+    assert.ok(z.rx < z.openRx && z.openRx < z.reachRx);
+  }
+});

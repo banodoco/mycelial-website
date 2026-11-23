@@ -38,9 +38,16 @@
     const spaceBelow = viewport ? (viewport.bottom ?? viewport.height) - cy - 12 : ry * 2.4;
     const availableVertical = Math.max(ry * 1.35, Math.min(spaceAbove, spaceBelow));
     const reachRx = Math.max(rx * 1.85, Math.min(rx * (tall ? 2.7 : 4.8), maxHorizontal));
-    const reachRy = Math.max(ry * 1.32, Math.min(ry * (tall ? 2.10 : 2.45), availableVertical));
+    // Preserve nesting despite a constrained viewport: the previous
+    // middleRy = min(.72 * reachRy, ...) could dip BELOW the inner radius.
+    const innerGapY = Math.max(viewport?.short ? 9 : tall ? 12 : 17, ry * .12);
+    const outerGapY = Math.max(viewport?.short ? 9 : tall ? 11 : 14, ry * .10);
+    const preferredReachRy = Math.max(ry * 1.32,
+      Math.min(ry * (tall ? 2.10 : 2.45), availableVertical));
+    const reachRy = Math.max(preferredReachRy, ry + innerGapY + outerGapY);
     const openRx = Math.min(reachRx * .67, rx * (tall ? 1.50 : 1.75));
-    const openRy = Math.min(reachRy * .72, ry * (tall ? 1.40 : 1.50));
+    const openRy = Math.max(ry + innerGapY,
+      Math.min(reachRy - outerGapY, ry * (tall ? 1.40 : 1.50)));
     return {cx, cy, rx, ry, openRx, openRy, reachRx, reachRy};
   };
   const labelPositions = (ring, tall = false, scale = 1, viewport = null) => {

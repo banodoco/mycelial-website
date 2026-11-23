@@ -487,7 +487,14 @@
   const T_HAND = { lens: 0, ring: 0.85, art: 1.15, artT: 1.5, grpT: 1.55, grp: 1.4, link: 2.0, labels: 1.8, motes: 2.4, chips: 2.6 };
   let T = T_FRESH, hand = null, minkAt = null; // minkAt: where she was last painted in the lens, where her flight leaves from
   const k01 = (t0, d) => clamp((ta - t0) / d);
-  window.AstridFlywheel = { glow: (s) => { const st = stages[s]; return st && { x: st.ring[0], y: st.ring[1], r: 40 * st.k }; } };
+  window.AstridFlywheel = {
+    glow: (s) => { const st = stages[s]; return st && { x: st.ring[0], y: st.ring[1], r: 40 * st.k }; },
+    // Read-only fitted ring geometry for real desktop-viewport regression QA.
+    scopeGeometry: () => ({
+      ring: stages[0]?.ring.slice() || null,
+      viewport: scopeViewport && { ...scopeViewport },
+    }),
+  };
   // How far each card has come out (it follows the move from 9; drawing fresh on 10 or 11, it comes last).
   const cardOut = () => smooth(clamp((m - 0.42) / 0.58));
   const chipQ = (i) => (m >= 1 ? 1 : smooth(clamp((m - 0.42 - i * 0.04) / 0.5))) * smooth(k01(T.chips + i * 0.15, 0.6));

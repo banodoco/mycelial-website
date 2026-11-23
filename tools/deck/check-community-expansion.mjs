@@ -45,6 +45,13 @@ const snapshot = async (page, name) => {
     const b = scopeLabels[2]; // Wider creative world
     const host = document.querySelector('.slide.on');
     const main = host?.querySelector('h1')?.getBoundingClientRect();
+    const fitted = window.AstridFlywheel?.scopeGeometry?.();
+    const portrait = innerWidth <= 760 && innerHeight > innerWidth;
+    const rings = fitted?.ring && fitted.viewport &&
+      window.MycelialCommunityExpansion?.geometry(fitted.ring, portrait, fitted.viewport);
+    const verticalRingGaps = rings ? [
+      rings.openRy - rings.ry, rings.reachRy - rings.openRy
+    ] : null;
     const visible = [...document.querySelectorAll('.fw-scope')].filter((el) => Number(el.style.opacity) > 0.4);
     const roles = [...document.querySelectorAll('.fw-role')].filter((el) => Number(el.style.opacity) > 0.4);
     const roleRects = roles.map(el => ({ label: el.textContent, r: el.getBoundingClientRect() }));
@@ -76,6 +83,7 @@ const snapshot = async (page, name) => {
       roleCount: roles.length,
       roleOverlaps,
       clippedRoles,
+      verticalRingGaps,
     };
   }, name));
 };
@@ -144,6 +152,20 @@ try {
   await snapshot(hero, 'desktop-main-slide9');
   await hero.close();
 
+  // Browser CSS viewport sizes, rather than physical monitor diagonal, are the
+  // cause of the ring inversion. Test both real 1920px desktop arrangements.
+  for (const [w, h] of [[1920, 900], [1920, 1080]]) {
+    const wide = await browser.newPage({
+      viewport:{width:w,height:h}, deviceScaleFactor:1, reducedMotion:'reduce',
+    });
+    record(wide, 'wide-' + w + 'x' + h);
+    await wide.goto(base + '#9', {waitUntil:'domcontentloaded'});
+    await wide.waitForFunction(() => window.deckNav?.to === 8);
+    await sleep(1100);
+    await snapshot(wide, 'desktop-' + w + 'x' + h + '-slide9');
+    await wide.close();
+  }
+
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 }, deviceScaleFactor: 1,
     isMobile: true, hasTouch: true, reducedMotion: 'reduce',
@@ -169,6 +191,8 @@ try {
     if (!o.hasScope) throw new Error('Missing community expansion on ' + o.shot);
     if (o.overlappingText.length) throw new Error('Label overlaps headline on ' + o.shot + ': ' + o.overlappingText.join(', '));
     if (o.clippedLabels.length) throw new Error('Clipped ecosystem labels on ' + o.shot + ': ' + o.clippedLabels.join(', '));
+    if (o.currentSlide === 9 && (!o.verticalRingGaps || o.verticalRingGaps.some(gap => gap <= 0)))
+      throw new Error('Ring outlines overlap vertically on ' + o.shot + ': ' + JSON.stringify(o.verticalRingGaps));
     if (o.currentSlide === 9 && o.roleCount !== 5) throw new Error('Missing community roles on ' + o.shot + ': ' + o.roleCount);
     if (o.currentSlide === 9 && o.visibleScopeLabels.length !== 3)
       throw new Error('Expected exactly three ecosystem labels on ' + o.shot + ': ' + o.visibleScopeLabels.join(' / '));
