@@ -58,6 +58,7 @@
     open: tag('fw-scope fw-scope-open', 'WIDER OPEN-SOURCE AI ECOSYSTEM'),
     ai: tag('fw-scope fw-scope-world', 'WIDER AI WORLD'),
     creative: tag('fw-scope fw-scope-world', 'CREATIVE WORLD'),
+    ...Object.fromEntries((Scope?.ROLES || []).map((name, i) => ['role' + i, tag('fw-role', name)])),
   };
   // Our four initiatives, as small versions of the homepage's cards: its own words, links and real images
   // (content/content.js, assets/cards/). They sit on a layer of their own above the slides so their links can
@@ -343,7 +344,7 @@
   };
   const rightOf = (s) => {
     const out = [];
-    if (!tall && s === 0) R.groups[s].forEach(([x], j) => out.push([x + R.grpR[s] + 16, labels[`g${j}`].offsetWidth + 6]));
+    // Former builder-cluster labels no longer constrain the five-orb scene.
     return out;
   };
   const build = (s, f) => {
@@ -534,6 +535,10 @@
   const rev = (h) => line([...h.pts].reverse());
   // A mote's whole route, reused while the picture geometry holds.
   const route = (mo) => {
+    if (mo.kind === 'role') {
+      const a = Scope.ROLE_ANGLES[mo.i];
+      return line(arc(a, a + TAU / Scope.ROLES.length, -lane() * .5));
+    }
     if (mo.kind === 'in') { // an artist, round the top, out to a group
       const a = entryTh(mo.a), b = exitTh(mo.b) + TAU;
       return join(artThread(mo.a), line(arc(a, b, 0)), grpThread(mo.b));
@@ -558,6 +563,10 @@
 
   // Where a drifting dot from slide 8 is headed: a point on an artist's circle, or one of a group's dots.
   const target = (t) => {
+    if (t.kind === 'role') {
+      const p = Scope.rolePositions(cur.ring, tall)[t.i], r = Scope.roleRadius(k, tall) * .55;
+      return [p.x + Math.cos(t.a) * r, p.y + Math.sin(t.a) * r];
+    }
     if (t.kind === 'art') { const [x, y] = cur.artists[t.i], r = cur.artR; return [x + Math.cos(t.a) * r, y + Math.sin(t.a) * r]; }
     const [x, y] = cur.groups[t.j], r = cur.grpR, cl = clouds[t.j];
     if (t.rim !== undefined) { const d = cl.rim[t.rim]; return [x + Math.cos(d.a) * r * d.r, y + Math.sin(d.a) * r * d.r]; }
@@ -565,8 +574,11 @@
   };
   const assign = (people, cx) => { // the nearest of the apps' people, side by side, go to each artist and each group
     const tg = [];
-    cur.artists.forEach((_, i) => { for (let n = 0; n < 9; n++) tg.push({ kind: 'art', i, a: -Math.PI / 2 + (n / 9) * TAU, side: -1 }); });
-    clouds.forEach((cl, j) => { cl.rim.forEach((_, n) => tg.push({ kind: 'grp', j, rim: n, side: 1 })); cl.core.forEach((_, n) => tg.push({ kind: 'grp', j, core: n, side: 1 })); });
+    // Retarget incoming people from slide 8 into the five semantic role-orbs.
+    if (Scope) Scope.rolePositions(cur.ring, tall).forEach((p, i) => {
+      for (let n = 0; n < 8; n++)
+        tg.push({ kind: 'role', i, a: n / 8 * TAU, side: p.x < cx ? -1 : 1 });
+    });
     const pool = people.map((p) => ({ ...p, side: p.x < cx ? -1 : 1, tgt: null }));
     for (const t of tg) {
       const [tx, ty] = target(t);
@@ -662,14 +674,17 @@
         }
       });
       halo(cx, cy, Math.max(rx, ry) * 1.15, 0.035 * qr * bright);
-      for (let i = 0; i < nb; i++) {
+      for (let i = 0; i < nb; i += (pa > .6 ? 4 : 1)) {
         const th = (i / nb) * TAU + spin, rel = (((th - a0) % TAU) + TAU) % TAU, reach = Math.min(rel, TAU - rel) / Math.PI;
         if (reach > qr) continue;
         const [x, y] = ell(th, -lane());
-        dot(x, y, 0.9 * Math.max(0.7, k), NODE, (i % 6 === 0 ? 0.7 : 0.32) * bright);
+        dot(x, y, 0.9 * Math.max(0.7, k), NODE, (i % 6 === 0 ? 0.7 : 0.32) * bright * (pa > .6 ? .5 : 1));
       }
     }
 
+    // Five distinct role-orbs on the live community wheel, fading with stage 9.
+    if (Scope) Scope.paintRoles(g, cur.ring, { tall, scale: k, time: ta,
+      opacity: pa * smooth(k01(T.grp - .15, .65)) });
     // Astrid at the hub: the lens traces from its tips, the mink inside; faint spokes out to the ring.
     const hq = hand ? easeIO(clamp(ta / 1.25)) : 1;
     const ql = hand ? 1 : ease(k01(T.lens, 1.0));
@@ -707,38 +722,8 @@
       cur.cards.forEach((c) => { const [ex, ey] = ell(c[2] * RAD); const h = line(bez({ x: cx, y: cy }, { x: lerp(cx, ex, 0.4), y: lerp(cy, ey, 0.4) }, { x: lerp(cx, ex, 0.7), y: lerp(cy, ey, 0.7) }, { x: ex, y: ey }, 12)); stroke(h, 0, h.total, 0.6 * LW, THREAD, 0.16 * cq); });
     }
 
-    // The artists: their circles and glyphs, and threads into the ring.
-    if (pa > 0.003) cur.artists.forEach(([x, y], i) => {
-      const q = ease(k01(T.art + i * 0.07, 0.6)) * pa;
-      if (q <= 0) return;
-      const r = cur.artR, f = flashes.art[i];
-      halo(x, y, r * 1.6, (0.06 + 0.22 * f) * q * bright);
-      g.lineWidth = 1.3 * LW; g.strokeStyle = `rgba(${THREAD},${(0.9 * q).toFixed(3)})`;
-      g.beginPath(); g.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + TAU * q); g.stroke();
-      glyph(i, x, y, r, q);
-      const qt = ease(k01(T.artT + i * 0.05, 0.7));
-      if (qt > 0) {
-        const h = artThread(i);
-        stroke(h, 0, h.total * qt, 0.85 * LW, THREAD, 0.5 * bright * pa);
-        node(h.pts[0][0], h.pts[0][1], 0.75, q);
-        if (qt > 0.5) node(at(h, h.total * 0.5).x, at(h, h.total * 0.5).y, 0.6, smooth(clamp((qt - 0.5) * 4)) * pa);
-        if (qt >= 1) node(h.pts[h.pts.length - 1][0], h.pts[h.pts.length - 1][1], 0.55, pa);
-      }
-    });
-
-    // Everyone else: threads out of the ring, clouds of people, and the links between the groups.
-    if (pa > 0.003) cur.groups.forEach(([x, y], j) => {
-      const qt = ease(k01(T.grpT + j * 0.1, 0.7));
-      if (qt > 0) { const h = grpThread(j); stroke(h, 0, h.total * qt, 0.85 * LW, THREAD, 0.5 * bright * pa); node(h.pts[0][0], h.pts[0][1], 0.6, pa); if (qt > 0.5) node(at(h, h.total * 0.5).x, at(h, h.total * 0.5).y, 0.6, smooth(clamp((qt - 0.5) * 4)) * pa); }
-      const q = k01(T.grp + j * 0.12, 0.6) * pa;
-      if (q <= 0) return;
-      const r = cur.grpR, f = flashes.grp[j], cl = clouds[j];
-      halo(x, y, r * 1.5, (0.07 + 0.25 * f) * q * bright);
-      cl.rim.forEach((d, n) => { const qq = clamp(q * 2.2 - n / cl.rim.length); if (qq > 0) { const px = x + Math.cos(d.a) * r * d.r, py = y + Math.sin(d.a) * r * d.r; halo(px, py, 4.5 * Math.max(0.6, k), 0.3 * qq); dot(px, py, 1.45 * d.s * Math.max(0.65, k), NODE, (0.8 + 0.2 * f) * qq * bright); } });
-      cl.core.forEach((d) => { const px = x + d.x * r, py = y + d.y * r; if (d.b) halo(px, py, 6 * Math.max(0.6, k), 0.45 * q); dot(px, py, 1.6 * d.s * Math.max(0.65, k), CORE, (0.85 + 0.15 * f) * q * bright); });
-    });
-    const qk = ease(k01(T.link, 0.6));
-    if (qk > 0 && pa > 0.003) for (let j = 0; j < 2; j++) { const h = linkThread(j); stroke(h, 0, h.total * qk, 0.7 * LW, THREAD, 0.4 * pa); if (qk >= 1) node(at(h, h.total / 2).x, at(h, h.total / 2).y, 0.7, pa); }
+    // The original seven artist glyphs and three clustered builder groups were
+    // removed, not layered underneath the five legible community actor-orbs.
 
     // From slide 8: the apps' communities drifting out to become the artists and the groups.
     if (hand && !hand.done) {
@@ -775,6 +760,7 @@
 
     // Motes in flight, each with a short tail; where one lands, its node lights.
     for (const mo of motes) {
+      if (['in', 'eq', 'hop'].includes(mo.kind)) continue; // no legacy clutter
       const h = routeFor(mo), u = clamp((ta - mo.t0) / mo.dur), plug = mo.kind === 'relay' || mo.kind === 'arrival';
       const d = (plug ? u : 0.8 * u + 0.2 * smooth(u)) * h.total;
       const tail = 64 * Math.max(0.6, k) * (plug ? 1 : 1 + 0.3 * boost);
@@ -851,9 +837,15 @@
       }
     }
     const pa = nine(), reach = scopeQ();
+    if (Scope) Scope.rolePositions(cur.ring, tall).forEach((p, i) => {
+      const radius = Scope.roleRadius(k, tall);
+      put(labels['role' + i], p.x, p.y + radius + (tall ? 4 : 7) * k, .5, 0);
+    });
     for (const key in labels) {
       let opacity;
       if (key === 'astrid') opacity = smooth(k01(T.lens + 0.6, 0.5)) * lensA();
+      else if (key.startsWith('role')) opacity = pa * smooth(k01(T.grp - .1, .6));
+      else if (['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'].includes(key)) opacity = 0;
       else if (key === 'community') opacity = smooth(k01(T.labels, 0.6)) * pa;
       else if (key === 'open') opacity = short ? 0 : reach;
       else if (key === 'ai' || key === 'creative') opacity = short ? 0 : smooth(clamp((reach - 0.3) / 0.55));
@@ -1020,12 +1012,10 @@
 
   // ---- Motion -------------------------------------------------------------------------------------
   const spawn = () => {
-    const r = Math.random(), a = Math.floor(Math.random() * 7), b = Math.floor(Math.random() * 3);
-    // On 9 the community circulates between its artists and groups.
-    const mo = r < 0.5 ? { kind: 'in', a, b } : r < 0.84 ? { kind: 'eq', a, b } : { kind: 'hop', b: Math.floor(Math.random() * 2) };
-    mo.t0 = ta;
+    // A sparse shared circulation instead of criss-crossing group-to-group trails.
+    const mo = { kind: 'role', i: Math.floor(Math.random() * 5), t0: ta };
     const len = routeFor(mo).total;
-    mo.dur = clamp(len / ((150 + 70 * boost) * Math.max(0.5, k)), 1.4, 7);
+    mo.dur = clamp(len / (180 * Math.max(.5, k)), 1.4, 3.2);
     motes.push(mo);
   };
   let operation = null, textClear = null;
