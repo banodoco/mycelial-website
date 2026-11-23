@@ -405,10 +405,14 @@
         const glow = 1 + ((0.09 + 0.6 * clamp(q.p / 1.6)) - 1) * e;
         const alpha = glow * q.a * (rewind ? smooth(clamp(rewind.t / 0.35)) : clamp((5.6 - m.age) / 2));
         if (alpha <= 0.01) { if (rewind) left.push(m); continue; }
-        ctx.globalAlpha = alpha;
-        const tint = m.inks[Math.round(e * INK_STEPS)]; // from its colour in the picture to its colour as a star
-        if (tint !== ink) { ink = tint; ctx.fillStyle = ink; }
-        ctx.fillRect(x - mw / 2, y - mh / 2, mw, mh);
+        // Filament canvas draws the same motes on paths *toward* the strands.
+        // The old starfield's outward flight must not leak through on entry.
+        if (!root.filamentSuppressMotes || rewind) {
+          ctx.globalAlpha = alpha;
+          const tint = m.inks[Math.round(e * INK_STEPS)];
+          if (tint !== ink) { ink = tint; ctx.fillStyle = ink; }
+          ctx.fillRect(x - mw / 2, y - mh / 2, mw, mh);
+        }
         left.push(m);
       }
       motes = left;
@@ -552,6 +556,16 @@
     shift = { x: mid.x - cx, y: mid.y - cy, age: -0.6 };
     aim();
     motes = tileMotes(base);
+    // The same sampled artwork pixels become the entrance material of the
+    // filament field instead of flying out into the old perspective starfield.
+    // The original motes stay available for the slide 2 -> 1 reversal.
+    const fieldBox=root.getBoundingClientRect();
+    const stride=Math.max(1,Math.ceil(motes.length/1350));
+    root.filamentArtwork=motes.filter((m,i)=>i%stride===0).map((m,i)=>({
+      id:i,x:m.sx0+base.left-fieldBox.left,y:m.sy0+base.top-fieldBox.top,
+      color:m.inks[0],size:Math.min(5,Math.max(1.1,m.cw*.65)),delay:m.delay,
+    }));
+    root.filamentSuppressMotes=!!window.FilamentField;
   };
   // A mote leaves the picture in its own colour and arrives in the field as a star of the same hue, lighter and softer
   // like the field's own kinds, so a dark film still comes apart into light rather than into the black.
@@ -812,6 +826,7 @@
     return promise;
   };
   const sceneExit = (ctx) => {
+    if (ctx.to === 0) root.filamentSuppressMotes = false; // give the sampled pixels back to the gallery
     window.FilamentField?.exit(ctx);
     clearHighlights(); // dismiss immediately, before the reverse picture handoff
     if (ctx.to === 0 && ctx.back && !motionOff()) {
