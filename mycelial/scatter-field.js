@@ -984,6 +984,7 @@
   const point=(a,b,t)=>a+(b-a)*t;
   const N=42;
   let w=0,h=0,dpr=1,geom=[],sources=[],artwork=[],raf=0,last=0,elapsed=0,clock=0,mode='inactive',start=0;
+  let flow={labelY:0,lineTop:0,lineBottom:0,dotsTop:0,dotsBottom:0,headlineBottom:0};
   let visit=null, hovered=-1, pinned=-1, highlightAt=0, pointerLeave=0, pulseId=0, pulses=[], launchAt=0, shadow=0;
   // Every dot keeps its own resource identity until it is replaced.
   const assignments=Array.from({length:N},(_,i)=>(i*13)%catalogue.length);
@@ -995,9 +996,30 @@
   const canvasArea=()=>({ left:root.getBoundingClientRect().left, top:root.getBoundingClientRect().top });
   const stopIndex=(i)=>{const x=hash(i*17+6);return x<.29?0:x<.56?1:x<.78?2:x<.93?3:4;};
   const activeItem=i=>catalogue[assignments[i]];
-  // Four evenly spaced checkpoints, with Create nearest the endpoint.
-  const gateX=()=>[.345,.51,.675,.84].map(x=>w*x);
+  // Need and the four stages form five evenly spaced beats across the width.
+  const sourceX=()=>w*(w<700?.08:.11);
+  const gateX=()=>{
+    const origin=sourceX(),last=w*(w<700?.86:.87);
+    return [1,2,3,4].map(i=>origin+(last-origin)*i/4);
+  };
   const stops=()=>gateX();
+  // Fit the filaments into the *actual* room below the headline, not a
+  // fixed percentage of the viewport. This removes the large dead band that
+  // appeared on both desktop and portrait mobile.
+  const verticalFlow=(box)=>{
+    const narrow=w<700,short=h<500;
+    const headline=slide.querySelector('.split h1');
+    const measured=headline?.getBoundingClientRect().bottom-box.top;
+    const headlineBottom=Number.isFinite(measured)&&measured>0&&measured<h*.7?measured:h*.27;
+    const labelY=headlineBottom+(short?21:Math.max(32,Math.min(48,h*.055)));
+    const lineTop=labelY+(short?18:29);
+    const lineBottom=h-(short?40:narrow?76:61);
+    // Very short landscape viewports may not fit the whole field. Compress
+    // in that case, while preserving an actual line below the labels.
+    const available=Math.max(44,lineBottom-lineTop);
+    return {headlineBottom,labelY,lineTop,lineBottom:lineTop+available,
+      dotsTop:lineTop+(short?5:8),dotsBottom:lineTop+available-(short?5:8)};
+  };
   const layout=()=>{
     const box=root.getBoundingClientRect(),nw=box.width,nh=box.height;
     if(nw<1||nh<1)return;
@@ -1006,13 +1028,13 @@
     if(canvas.width!==bw)canvas.width=bw;if(canvas.height!==bh)canvas.height=bh;
     canvas.style.width=w+'px';canvas.style.height=h+'px';
     g.setTransform(dpr,0,0,dpr,0,0);
-    const narrow=w<700,short=h<500;
-    const top=short?h*.40:narrow?h*.50:h*.47;
-    const bottom=short?h*.73:narrow?h*.835:h*.85;
+    flow=verticalFlow(box);
+    const narrow=w<700;
+    const top=flow.dotsTop,bottom=flow.dotsBottom;
     geom=Array.from({length:N},(_,i)=>{
       const u=(i+.5)/N;
       const y=top+u*(bottom-top); // evenly spaced left-hand dots
-      const x0=w*(narrow?.08:.11)+(hash(i*33+2)-.5)*Math.min(w*.012,12);
+      const x0=sourceX()+(hash(i*33+2)-.5)*Math.min(w*.012,12);
       const xf=w*(narrow?.95:.925);
       const end=stopIndex(i);
       const nodes=Array.from({length:6},(_,k)=>{
@@ -1160,9 +1182,8 @@
     if(originalCanvas)originalCanvas.style.opacity=mode==='enter-collage'&&artwork.length?'0':String(1-dusting);
     root.classList.toggle('ff-active',mode!=='inactive');
 
-    const gatesX=stops(),short=h<500;
-    const yTop=short?h*.39:narrow?h*.475:h*.46;
-    const yBottom=short?h*.75:narrow?h*.86:h*.88;
+    const gatesX=stops(),yTop=flow.lineTop,yBottom=flow.lineBottom;
+    const labelY=flow.labelY;
     // A subdued, architectural frame that belongs to the same family as the deck's network artwork.
     g.save();g.lineWidth=.7;
     gatesX.forEach((x,j)=>{
@@ -1171,27 +1192,24 @@
       grad.addColorStop(0,alpha('#d5a368',0));grad.addColorStop(.20,alpha('#d5a368',fade));
       grad.addColorStop(.80,alpha('#d5a368',fade*.8));grad.addColorStop(1,alpha('#d5a368',0));
       g.strokeStyle=grad;g.beginPath();g.moveTo(x,yTop);g.lineTo(x,yBottom);g.stroke();
-      // All four evenly spaced labels share a baseline beneath the threads.
-      const baseline=yBottom+(short?18:narrow?22:25);
+      // Five stage names now sit on one baseline just above the filaments.
       g.fillStyle=alpha(j===3?'#f0c98d':'#d6ba90',opacity*.94);
       g.font=`${narrow?10:12}px "DM Sans",Arial,sans-serif`;
       g.textAlign='center';g.letterSpacing='1.4px';
-      g.fillText(gates[j][0],x,baseline);
+      g.fillText(gates[j][0],x,labelY);
       g.fillStyle=alpha('#9b8262',opacity*.65);
       g.font='10px "EB Garamond",Georgia,serif';g.letterSpacing='0px';
-      g.fillText(String(j+1).padStart(2,'0'),x,baseline-17);
+      g.fillText(String(j+1).padStart(2,'0'),x,labelY-17);
     });
-    // The source dots are the creator's starting needs, not a fifth barrier.
-    // Share the same label baseline so the full journey reads left to right.
-    const sourceX=w*(narrow?.08:.11);
-    const sourceBaseline=yBottom+(short?18:narrow?22:25);
+    // Need is the origin, not a barrier; align it with the four steps.
+    const needX=sourceX();
     g.fillStyle=alpha('#e4bf8a',opacity*.94);
     g.textAlign='center';g.letterSpacing='1.4px';
     g.font=`${narrow?10:12}px "DM Sans",Arial,sans-serif`;
-    g.fillText('NEED',sourceX,sourceBaseline);
+    g.fillText('NEED',needX,labelY);
     g.fillStyle=alpha('#9b8262',opacity*.65);
     g.letterSpacing='0px';g.font='10px "EB Garamond",Georgia,serif';
-    g.fillText('00',sourceX,sourceBaseline-17);
+    g.fillText('00',needX,labelY-17);
     g.restore();
 
     // The gallery's real sampled pixels fold into the filament field.
@@ -1371,12 +1389,18 @@
   root.snapshot = snapshot; // Late handoffs still inherit the filament geometry.
   const observer=new ResizeObserver(()=>{layout();if(mode!=='inactive')wake();});
   observer.observe(root);
+  const heading=slide.querySelector('.split h1');
+  if(heading)observer.observe(heading);
+  // A late font load changes headline height without changing the canvas box.
+  document.fonts?.addEventListener?.('loadingdone',()=>{layout();if(mode!=='inactive')wake();});
   addEventListener('deck-motion',()=>{if(owned())begin('rest',visit);});
   addEventListener('deck-overview',()=>{if(document.getElementById('overview')?.classList.contains('on')){
     if(raf)cancelAnimationFrame(raf);raf=0;
   }else if(owned()&&mode!=='inactive')wake();});
   document.addEventListener('visibilitychange',()=>{if(document.hidden){if(raf)cancelAnimationFrame(raf);raf=0;}else if(mode!=='inactive')wake();});
-  window.FilamentField={enter:begin,exit:leave,restore,snapshot,ready:()=>mode!=='inactive'};
+  window.FilamentField={enter:begin,exit:leave,restore,snapshot,
+    layoutMetrics:()=>({...flow,sourceX:sourceX(),gatesX:stops(),height:h}),
+    ready:()=>mode!=='inactive'};
   layout();
   if (slide.classList.contains('on')) begin('rest', window.deckNav || { rest:true, direct:true });
 })();
