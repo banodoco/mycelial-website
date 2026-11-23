@@ -1,8 +1,7 @@
 // Version F, slides 9–11: the community's flywheel, one picture evolving across three slides.
-// 9, "The community": the artists on the left, everyone else (model trainers, workflow and infrastructure
-// builders, toolmakers) on the right, joined by a gold ring that turns round Astrid (the lens with the mink).
-// Bright motes fly from the artists over the top of the ring to all the others (inspire), and from the
-// others back under it to the artists and down between each other (equip): a calm, clockwise circulation.
+// 9, "The community": artists, model trainers, workflow and infrastructure builders and toolmakers
+// live within the Banodoco ring around Astrid. A porous open-source AI orbit expands around them;
+// separate outward branches reach the AI and creative worlds. The original collaboration loop stays live.
 // 10, "How we accelerate it": the artists and the groups go into the circle, the lens folds into a quiet
 // glowing core while the mink flies out to her own card, the circle contracts a little and then opens out
 // bigger, and six cards come out round it as small versions of the homepage's cards (Arca Gidan, ArtCompute,
@@ -14,6 +13,8 @@
 (() => {
   const hosts = [...document.querySelectorAll('.fw-host')];
   const M = window.AstridMink;
+  // Optional expanding orbit uses the same canvas and lifecycle as the wheel.
+  const Scope = window.MycelialCommunityExpansion;
   if (hosts.length !== 3 || !M) return;
   const html = document.documentElement;
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -53,6 +54,10 @@
     g2: tag('fw-who fw-l', 'toolmakers'),
     inspire: tag('fw-verb', 'inspire'),
     equip: tag('fw-verb', 'equip'),
+    community: tag('fw-scope fw-scope-community', 'OUR COMMUNITY'),
+    open: tag('fw-scope fw-scope-open', 'WIDER OPEN-SOURCE AI ECOSYSTEM'),
+    ai: tag('fw-scope fw-scope-world', 'WIDER AI WORLD'),
+    creative: tag('fw-scope fw-scope-world', 'CREATIVE WORLD'),
   };
   // Our four initiatives, as small versions of the homepage's cards: its own words, links and real images
   // (content/content.js, assets/cards/). They sit on a layer of their own above the slides so their links can
@@ -241,17 +246,17 @@
   const WIDE = {
     ring: [[835, 360, 237, 237], [835, 471, 300, 118], [835, 455, 545, 292]], // cx, cy, rx, ry
     lens: [[835, 367, 112, 176], [835, 471, 30, 48], [835, 455, 30, 48]], // cx, cy, w, h
-    artR: [39, 10, 10],
-    artists: [ // brush, camera, pencil, film, palette, picture, music: two staggered columns, clear of each other
-      [[205, 180], [335, 240], [205, 300], [335, 360], [205, 420], [335, 480], [205, 540]],
+    artR: [23, 10, 10],
+    artists: [ // Seven artistic practices are now WITHIN the same community ring.
+      [[650, 236], [724, 266], [639, 311], [717, 345], [640, 385], [717, 424], [650, 479]],
       Array(7).fill([835, 471]),
       Array(7).fill([835, 455]),
     ],
-    grpR: [40, 10, 10],
-    groups: [[[1316, 182], [1348, 366], [1316, 550]], Array(3).fill([835, 471]), Array(3).fill([835, 455])],
-    artistsLabel: [[270, 122], [835, 471], [835, 455]],
-    inspire: [[835, 74], [835, 471], [835, 455]],
-    equip: [[835, 640], [835, 471], [835, 455]],
+    grpR: [25, 10, 10],
+    groups: [[[1011, 247], [1009, 365], [1011, 482]], Array(3).fill([835, 471]), Array(3).fill([835, 455])],
+    artistsLabel: [[710, 181], [835, 471], [835, 455]],
+    inspire: [[835, 150], [835, 471], [835, 455]],
+    equip: [[835, 563], [835, 471], [835, 455]],
     // The six cards: centre, and where each plugs into the ring (degrees, clockwise from 3 o'clock).
     cards: [
       { at: [[835, 360], [302, 262], 'ring'], th: [205, 205, 232] }, // Arca Gidan: top-left
@@ -270,17 +275,17 @@
   const TALL = {
     ring: [[200, 330, 118, 118], [200, 410, 118, 150], [200, 402, 132, 250]],
     lens: [[200, 334, 60, 94], [200, 410, 16, 26], [200, 402, 16, 26]],
-    artR: [19, 6, 6],
-    artists: [ // two staggered rows along the top, the first on the right (where its thread meets the ring)
-      [[350, 82], [300, 132], [250, 82], [200, 132], [150, 82], [100, 132], [50, 82]],
+    artR: [10, 6, 6],
+    artists: [ // A compact portrait rendering, again fully inside the inner wheel.
+      [[145, 263], [131, 292], [158, 305], [129, 330], [160, 351], [133, 374], [148, 401]],
       Array(7).fill([200, 400]),
       Array(7).fill([200, 410]),
     ],
-    grpR: [22, 6, 6],
-    groups: [[[312, 548], [200, 572], [88, 548]], Array(3).fill([200, 400]), Array(3).fill([200, 410])],
-    artistsLabel: [[200, 38], [200, 400], [200, 410]],
-    inspire: [[350, 330], [200, 400], [200, 410]],
-    equip: [[52, 330], [200, 400], [200, 410]],
+    grpR: [14, 6, 6],
+    groups: [[[269, 276], [269, 332], [269, 390]], Array(3).fill([200, 400]), Array(3).fill([200, 410])],
+    artistsLabel: [[143, 238], [200, 400], [200, 410]],
+    inspire: [[210, 226], [200, 400], [200, 410]],
+    equip: [[200, 430], [200, 400], [200, 410]],
     cards: [ // 10's are preview cards, placed in viewport pixels by tallTen(); on 11 they are icons on the halo
       { at: [[200, 330], 'ring', 'ring'], th: [232, 232, 240] },
       { at: [[200, 330], 'ring', 'ring'], th: [270, 270, 270] },
@@ -290,7 +295,7 @@
       { at: [[200, 330], 'ring', 'ring'], th: [90, 90, 90] },
     ],
     cw: [40, 170, 170],
-    span: [[8, 392, 20, 640], [56, 344, 236, 584], [44, 356, 128, 676]],
+    span: [[8, 392, 82, 565], [56, 344, 236, 584], [44, 356, 128, 676]],
   };
   // Where the artists' threads meet the ring, and the others' (degrees); a phone turns them a quarter.
   const ENTRY = [189, 186, 183, 180, 177, 174, 171], EXIT = [-14, 0, 14];
@@ -467,6 +472,10 @@
   const chipQ = (i) => (m >= 1 ? 1 : smooth(clamp((m - 0.42 - i * 0.04) / 0.5))) * smooth(k01(T.chips + i * 0.15, 0.6));
   // The artists and the groups, with "inspire" and "equip", belong to 9: they go into the circle on the way to 10.
   const nine = () => 1 - smooth(clamp(tall ? m / 0.25 : (m - 0.08) / 0.42));
+  // Shared motion progress, including the dedicated reverse 9->8 handoff.
+  const scopeQ = () => Scope ? Scope.visibility({
+    time: ta, morph: m, motesAt: T.motes, tall, reversingTo8: !!unhanding,
+  }) : 0;
   // The lens folds into the core as the mink leaves it for her card; she flies from 9's centre to the Astrid card.
   const lensA = () => 1 - smooth(clamp((m - 0.25) / 0.4));
   // She sets off for her card as the stage starts to change, and flies with it, into her seat as her card comes whole.
@@ -638,6 +647,9 @@
     const [cx, cy, rx, ry] = cur.ring;
     const spokes = 1 - smooth(clamp(m / 0.3)); // the lens's own threads, gone as she leaves the centre for her corner
     const pa = nine();
+
+    // The wider network sits BELOW the existing wheel, without a second scene.
+    if (Scope) Scope.paint(g, cur.ring, { tall, scale: k, time: ta, visibility: scopeQ() });
 
     // The ring: two strands traced from the artists' side round both ways; beads on the inner one turn with it.
     const qr = ease(k01(T.ring, 1.1));
@@ -824,13 +836,27 @@
     put(labels.astrid, lens[0] + M.LENS.x * cell * (1 - clamp(m)), lens[1] - lens[3] / 2 - lerp(22 * k, 13, clamp(m)), 0.5, 0.5); // over the lens, wherever she sits
     put(labels.artists, cur.artistsLabel[0], cur.artistsLabel[1], 0.5, 0.5);
     cur.groups.forEach(([x, y], j) => {
-      if (tall) put(labels[`g${j}`], x, y + cur.grpR + 5, 0.5, 0);
+      // All builders are within the community; place their labels underneath.
+      if (m < 0.5 || tall) put(labels[`g${j}`], x, y + cur.grpR + 5 * k, 0.5, 0);
       else put(labels[`g${j}`], x + cur.grpR + 16 * k, y, 0, 0.5);
     });
     put(labels.inspire, cur.inspire[0], cur.inspire[1], 0.5, 0.5);
     put(labels.equip, cur.equip[0], cur.equip[1], 0.5, 0.5);
-    const pa = nine();
-    for (const key in labels) setOp(labels[key], key === 'astrid' ? smooth(k01(T.lens + 0.6, 0.5)) * lensA() : ql * pa);
+    if (Scope) {
+      const positions = Scope.labelPositions(cur.ring, tall, k);
+      for (const key of ['community', 'open', 'ai', 'creative'])
+        put(labels[key], positions[key][0], positions[key][1], 0.5, 0.5);
+    }
+    const pa = nine(), reach = scopeQ();
+    for (const key in labels) {
+      let opacity;
+      if (key === 'astrid') opacity = smooth(k01(T.lens + 0.6, 0.5)) * lensA();
+      else if (key === 'community') opacity = smooth(k01(T.labels, 0.6)) * pa;
+      else if (key === 'open') opacity = reach;
+      else if (key === 'ai' || key === 'creative') opacity = smooth(clamp((reach - 0.3) / 0.55));
+      else opacity = ql * pa;
+      setOp(labels[key], opacity);
+    }
     // Stage 9 has no cards or flying mink. Retire their layer even if a
     // reverse morph reaches its endpoint between two rendered frames.
     if (m === 0 && !morph) {
