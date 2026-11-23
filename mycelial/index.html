@@ -1197,6 +1197,9 @@
     .fw-scope-community { font-size: 9px; letter-spacing: .12em; }
     .fw-role { width: 66px; font-size: 9px; line-height: 1.1; letter-spacing: 0; }
   }
+  @media (orientation: landscape) and (max-height: 500px) {
+    .fw-role { width: 50px; font-size: 9px; line-height: 1.05; letter-spacing: 0; }
+  }
   /* Slides 10 and 11: our four initiatives as small versions of the homepage's cards, on their own layer above the
      slides so their links can be clicked (flywheel.js places them and lets them take clicks only while they're out). */
   .fw-cards { position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0; transition: opacity .5s ease; }
