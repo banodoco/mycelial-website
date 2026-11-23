@@ -65,6 +65,20 @@ try{
   if(!selected)throw Error('Click on capability did not display details');
   await page.screenshot({path:join(output,'desktop-slide2-selected.png'),animations:'disabled'});
   observations.push({step:'slide2',...slide2,selected});
+  // The rare successful filament must create a visible bloom (and emit once).
+  await page.evaluate(()=>{
+    window.__filamentBloomEvents=[];
+    document.querySelector('[data-scatter-field]').addEventListener('filament-create',
+      event=>window.__filamentBloomEvents.push(event.detail));
+  });
+  // Stable seed: strand 12 is one of the four paths reaching Create.
+  const successful=await page.locator('.ff-hit').nth(12).boundingBox();
+  if(!successful)throw Error('Create-bound dot is missing');
+  await page.mouse.click(successful.x+successful.width/2,successful.y+successful.height/2);
+  await page.waitForFunction(()=>window.__filamentBloomEvents?.some(event=>event.strand===12),{timeout:7000});
+  await sleep(140);
+  await page.screenshot({path:join(output,'desktop-create-bloom.png'),animations:'disabled'});
+  observations.push({step:'create-bloom',events:await page.evaluate(()=>window.__filamentBloomEvents)});
   // Blank-space click must navigate forward, not open an invisible old starfield card.
   await page.mouse.click(1198,440);
   await page.waitForFunction(()=>window.deckNav?.to===2,{timeout:15000});
