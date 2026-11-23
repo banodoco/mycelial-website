@@ -37,10 +37,24 @@
     const top = short ? Math.max(55, height * .15) : tall ? Math.max(76, height * .09) : Math.max(79, height * .10);
     const bottom = short ? height * .58 : tall ? height * .68 : height * .755;
     const maxY = Number.isFinite(height) ? Math.min(cy - top, bottom - cy) : ry * 2.12;
-    const outerY = Math.max(ry * 1.14,
+    // The available vertical space can be far smaller than the horizontal
+    // space on large desktop/zoomed viewports. Previously openRy was bounded
+    // by outerY * .79; when outerY hit its 1.14 * ry fallback, that made the
+    // *middle* ring 0.90 * ry, physically crossing inside the community ring.
+    //
+    // Treat nesting as an invariant rather than an accidental consequence of
+    // viewport caps. Reserve enough clear space for the on-ring role orbs and
+    // for the dotted middle / inner outer-world strokes.
+    const innerGapY = Math.max(short ? 10 : tall ? 16 : 24, ry * .12);
+    const outerGapY = Math.max(short ? 10 : tall ? 14 : 18, ry * .10);
+    const preferredOuterY = Math.max(ry * 1.14,
       Math.min(ry * (tall ? 2.0 : short ? 1.85 : 2.05), Math.max(ry * 1.16, maxY)));
+    // If the vertical envelope is too small for all three rings, give the
+    // exterior oval the minimum additional space instead of crossing orbs.
+    const outerY = Math.max(preferredOuterY, ry + innerGapY + outerGapY);
     const openRx = Math.min(rx * (tall ? 1.46 : short ? 1.55 : 1.72), outerX * .81);
-    const openRy = Math.min(ry * (tall ? 1.43 : short ? 1.3 : 1.34), outerY * .79);
+    const openRy = Math.max(ry + innerGapY,
+      Math.min(ry * (tall ? 1.43 : short ? 1.3 : 1.34), outerY - outerGapY));
     return {
       cx, cy, rx, ry,
       openRx, openRy,
