@@ -1,7 +1,7 @@
 // Browser and screenshot QA for the integrated community expansion.
 // Runs against a local copy of the deck, not a mockup.
 import { chromium } from 'playwright-core';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -45,6 +45,15 @@ const snapshot = async (page, name) => {
     const host = document.querySelector('.slide.on');
     const main = host?.querySelector('h1')?.getBoundingClientRect();
     const visible = [...document.querySelectorAll('.fw-scope')].filter((el) => Number(el.style.opacity) > 0.4);
+    const roles = [...document.querySelectorAll('.fw-role')].filter((el) => Number(el.style.opacity) > 0.4);
+    const roleRects = roles.map(el => ({ label: el.textContent, r: el.getBoundingClientRect() }));
+    const roleOverlaps = roleRects.flatMap((a, i) =>
+      roleRects.slice(i + 1).filter(b =>
+        a.r.left < b.r.right - 1 && a.r.right > b.r.left + 1 &&
+        a.r.top < b.r.bottom - 1 && a.r.bottom > b.r.top + 1
+      ).map(b => a.label + ' / ' + b.label));
+    const clippedRoles = roleRects.filter(({r}) => r.left < 1 || r.right > innerWidth-1 ||
+      r.top < 1 || r.bottom > innerHeight-48).map(x => x.label);
     const clippedLabels = visible.filter((el) => {
       const r = el.getBoundingClientRect();
       return r.left < 2 || r.right > innerWidth - 2;
@@ -62,6 +71,9 @@ const snapshot = async (page, name) => {
       worldOpacity: Number(b?.style.opacity || 0),
       overlappingText: overlaps,
       clippedLabels,
+      roleCount: roles.length,
+      roleOverlaps,
+      clippedRoles,
     };
   }, name));
 };
@@ -74,8 +86,9 @@ try {
   });
 
   const desktopContext = await browser.newContext({
-    viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1,
-    recordVideo: { dir: output, size: { width: 1440, height: 900 } },
+    // Smaller browser render reduces frame drops under software WebGL on CI.
+    viewport: { width: 1120, height: 700 }, deviceScaleFactor: 1,
+    recordVideo: { dir: output, size: { width: 1120, height: 700 } },
   });
   const desktop = await desktopContext.newPage();
   record(desktop, 'desktop');
@@ -103,7 +116,31 @@ try {
   const desktopVideo = desktop.video();
   await desktop.close();
   await desktopContext.close();
-  if (desktopVideo) await desktopVideo.saveAs(join(output, 'community-8-9-10-9-8.webm'));
+  if (desktopVideo) {
+    const raw = join(output, 'community-8-9-10-9-8.webm');
+    await desktopVideo.saveAs(raw);
+    // Actual navigation capture at 25 fps, re-timed using motion estimation
+    // to 50 fps for a much smoother preview. No slide content is synthesized:
+    // optical flow fills intermediate motion from the recorded browser frames.
+    execFileSync('ffmpeg', [
+      '-hide_banner', '-loglevel', 'error', '-y', '-ss', '3.1', '-i', raw,
+      '-vf', 'scale=800:500:flags=lanczos,minterpolate=fps=50:mi_mode=mci:mc_mode=obmc:me_mode=bidir,scale=1120:700:flags=lanczos,format=yuv420p',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19',
+      '-movflags', '+faststart', join(output, 'community-8-9-10-9-8-smooth.mp4')
+    ], { timeout: 210000 });
+  }
+
+  // Separate high-resolution genuine slide still, independent of the video.
+  const hero = await browser.newPage({
+    viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1,
+    reducedMotion: 'reduce'
+  });
+  record(hero, 'hero');
+  await hero.goto(base + '#9', { waitUntil: 'domcontentloaded' });
+  await hero.waitForFunction(() => window.deckNav?.to === 8);
+  await sleep(1200);
+  await snapshot(hero, 'desktop-main-slide9');
+  await hero.close();
 
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 }, deviceScaleFactor: 1,
@@ -130,6 +167,9 @@ try {
     if (!o.hasScope) throw new Error('Missing community expansion on ' + o.shot);
     if (o.overlappingText.length) throw new Error('Label overlaps headline on ' + o.shot + ': ' + o.overlappingText.join(', '));
     if (o.clippedLabels.length) throw new Error('Clipped ecosystem labels on ' + o.shot + ': ' + o.clippedLabels.join(', '));
+    if (o.currentSlide === 9 && o.roleCount !== 5) throw new Error('Missing community roles on ' + o.shot + ': ' + o.roleCount);
+    if (o.currentSlide === 9 && o.roleOverlaps.length) throw new Error('Overlapping role labels on ' + o.shot + ': ' + o.roleOverlaps.join(', '));
+    if (o.currentSlide === 9 && o.clippedRoles.length) throw new Error('Clipped role labels on ' + o.shot + ': ' + o.clippedRoles.join(', '));
   }
   const at9 = observations.filter((o) => o.currentSlide === 9);
   for (const o of at9) {
