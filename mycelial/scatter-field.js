@@ -1067,8 +1067,12 @@
     if(i!==hovered&&i!==pinned)highlightAt=clock;
     hovered=i;if(lock)pinned=i;
     displayText(i);
-    pulses.push({id:i,at:clock-0.08,duration:2.9,inspection:true});
-    pulses=pulses.slice(-12);
+    // Pointer hover naturally precedes click. Pinning the same source must
+    // not launch a second pulse (and a second Create explosion).
+    if(!pulses.some(p=>p.inspection&&p.id===i&&clock-p.at<p.duration)){
+      pulses.push({id:i,at:clock-0.08,duration:2.9,inspection:true});
+      pulses=pulses.slice(-12);
+    }
     wake();
   };
   const release=i=>{
