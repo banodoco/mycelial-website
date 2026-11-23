@@ -82,7 +82,7 @@ for(const [w,h] of [[1280,720],[390,844],[812,375]]){
   });
 }
 test('barrier assignment is deterministic, not misrepresented as an empirical funnel',()=>{
-  for(const name of ['DISCOVER','SET UP','CONFIGURE','CREATE'])
+  for(const name of ['DISCOVERED','SET UP','OPTIMISED','CREATED'])
     assert.ok(addon.includes("'"+name+"'"));
   assert.match(addon,/Visual attrition is illustrative/);
   assert.match(addon,/const hash=/);
@@ -97,7 +97,7 @@ test('sampled artwork is passed to the new entrance without outward-starfield du
   assert.match(addon,/const dest=position\(strand,/);
 });
 test('stages, hovered paths and Create bursts respect their destination',()=>{
-  assert.match(addon,/g\.fillText\('NEED',needX,labelY\)/);
+  assert.match(addon,/g\.fillText\('REQUIRED',needX,labelY\)/);
   assert.match(addon,/g\.fillText\(gates\[j\]\[0\],x,labelY\)/);
   assert.match(addon,/const labelY=headlineBottom\+/);
   assert.doesNotMatch(addon,/a world of possibilities|only a fraction reaches the artist/);
