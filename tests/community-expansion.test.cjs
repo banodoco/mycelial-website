@@ -88,3 +88,44 @@ test('five named actor-orbs replace the earlier dense role diagram', () => {
   assert.match(fw, /Scope\.paintRoles\(g, cur\.ring/);
   assert.match(fw, /\['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'\]\.includes\(key\)\) opacity = 0/);
 });
+
+
+test('all five role-orb centres lie EXACTLY on the inner ellipse', () => {
+  for (const tall of [false, true]) {
+    const ring = [340, 260, 108, 82];
+    const positions = scope.rolePositions(ring, tall);
+    assert.equal(positions.length, 5);
+    for (const p of positions) {
+      const equation = ((p.x-ring[0])/ring[2])**2 + ((p.y-ring[1])/ring[3])**2;
+      assert.ok(Math.abs(equation - 1) < 1e-10, 'role must be on the ring, not inset');
+    }
+  }
+});
+
+test('three clear labels and full outer oval fit viewport limits', () => {
+  const labels = scope.labelPositions([720,370,130,110], false, .8, {
+    width: 1440, height: 900, top: 78, bottom: 680,
+  });
+  assert.deepEqual(Object.keys(labels).sort(), ['community','open','world']);
+  const z = scope.geometry([720,370,130,110], false, {
+    width:1440,height:900,top:78,bottom:680
+  });
+  assert.ok(z.rx < z.openRx && z.openRx < z.reachRx);
+  assert.ok(z.ry < z.openRy && z.openRy < z.reachRy);
+  assert.ok(z.reachRx > 520, 'wider creative world should fill most desktop width');
+  assert.ok(z.reachRx < 680, 'outer ellipse must stay inside desktop bounds');
+  assert.ok(z.reachRy < 300, 'outer ellipse must avoid copy and count');
+});
+
+test('a single nine-second orbit hits each orb once, including across delayed frames', () => {
+  const period = scope.ORBIT_PERIOD, segment = period / 5;
+  assert.equal(period, 9);
+  assert.equal(scope.orbitAngle(0, 0), -Math.PI/2);
+  assert.deepEqual(Array.from(scope.orbitHits(-.1, 0, 0)), [0]);
+  assert.deepEqual(Array.from(scope.orbitHits(.1, segment+.01, 0)), [1]);
+  assert.deepEqual(Array.from(scope.orbitHits(.1, segment*3+.01, 0)), [1,2,3]);
+  assert.deepEqual(Array.from(scope.orbitHits(8.9, 9.01, 0)), [0]);
+  assert.deepEqual(Array.from(scope.orbitHits(9.2, 9.3, 0)), []);
+  assert.deepEqual(Array.from(scope.orbitHits(3, 4.9, 2.4)), [1]);
+  assert.deepEqual(Array.from(scope.orbitHits(4.9, 3, 2.4)), []);
+});

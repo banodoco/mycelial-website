@@ -40,8 +40,9 @@ const record = (page, tag) => {
 const snapshot = async (page, name) => {
   await page.screenshot({ path: join(output, name + '.png'), animations: 'disabled' });
   observations.push(await page.evaluate((shot) => {
-    const a = document.querySelector('.fw-scope-open');
-    const b = document.querySelector('.fw-scope-world');
+    const scopeLabels = [...document.querySelectorAll('.fw-scope')];
+    const a = scopeLabels[1]; // Open-source ecosystem
+    const b = scopeLabels[2]; // Wider creative world
     const host = document.querySelector('.slide.on');
     const main = host?.querySelector('h1')?.getBoundingClientRect();
     const visible = [...document.querySelectorAll('.fw-scope')].filter((el) => Number(el.style.opacity) > 0.4);
@@ -69,6 +70,7 @@ const snapshot = async (page, name) => {
       hasScope: Boolean(window.MycelialCommunityExpansion),
       outerOpacity: Number(a?.style.opacity || 0),
       worldOpacity: Number(b?.style.opacity || 0),
+      visibleScopeLabels: scopeLabels.filter(el => Number(el.style.opacity) > .85).map(el => el.textContent),
       overlappingText: overlaps,
       clippedLabels,
       roleCount: roles.length,
@@ -168,18 +170,15 @@ try {
     if (o.overlappingText.length) throw new Error('Label overlaps headline on ' + o.shot + ': ' + o.overlappingText.join(', '));
     if (o.clippedLabels.length) throw new Error('Clipped ecosystem labels on ' + o.shot + ': ' + o.clippedLabels.join(', '));
     if (o.currentSlide === 9 && o.roleCount !== 5) throw new Error('Missing community roles on ' + o.shot + ': ' + o.roleCount);
+    if (o.currentSlide === 9 && o.visibleScopeLabels.length !== 3)
+      throw new Error('Expected exactly three ecosystem labels on ' + o.shot + ': ' + o.visibleScopeLabels.join(' / '));
     if (o.currentSlide === 9 && o.roleOverlaps.length) throw new Error('Overlapping role labels on ' + o.shot + ': ' + o.roleOverlaps.join(', '));
     if (o.currentSlide === 9 && o.clippedRoles.length) throw new Error('Clipped role labels on ' + o.shot + ': ' + o.clippedRoles.join(', '));
   }
   const at9 = observations.filter((o) => o.currentSlide === 9);
   for (const o of at9) {
-    // On a phone in short landscape, the outer labels are hidden deliberately
-    // to avoid crowding the existing tiny flywheel. The orbit remains painted.
-    if (o.shot === 'short-landscape-slide9') {
-      if (o.outerOpacity !== 0 || o.worldOpacity !== 0)
-        throw new Error('Short landscape should suppress peripheral labels');
-    } else if (o.outerOpacity < 0.9)
-      throw new Error('Outer circle invisible in ' + o.shot);
+    if (o.outerOpacity < .9 || o.worldOpacity < .9)
+      throw new Error('Three concentric scales must remain visible in ' + o.shot);
   }
   const at10 = observations.find((o) => o.shot === 'desktop-9-to-10');
   if (!at10 || at10.outerOpacity > 0.08) throw new Error('Outer circle did not fold before slide 10');
