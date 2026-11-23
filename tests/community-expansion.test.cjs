@@ -73,3 +73,18 @@ test('the live deck includes the renderer before flywheel and retains the 8-11 t
   assert.match(flywheel, /deckRegisterScene\(\[8, 9, 10\]/);
   assert.match(flywheel, /window\.AstridFlowers\.prepareReturn\(ctx\)/);
 });
+
+test('five named actor-orbs replace the earlier dense role diagram', () => {
+  assert.equal(scope.ROLES.length, 5);
+  assert.equal(new Set(scope.ROLES).size, 5);
+  const ring = [200, 300, 118, 118];
+  for (const tall of [false, true]) {
+    const positions = scope.rolePositions(ring, tall);
+    assert.equal(positions.length, 5);
+    assert.ok(positions.every(p => Number.isFinite(p.x) && Number.isFinite(p.y)));
+    assert.ok(positions.every(p => ((p.x-200)/118)**2 + ((p.y-300)/118)**2 <= 1.001));
+  }
+  const fw = readFileSync(join(__dirname, '../mycelial/flywheel.js'), 'utf8');
+  assert.match(fw, /Scope\.paintRoles\(g, cur\.ring/);
+  assert.match(fw, /\['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'\]\.includes\(key\)\) opacity = 0/);
+});

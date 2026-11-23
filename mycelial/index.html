@@ -1188,9 +1188,14 @@
   .fw-scope-community { color: #f0c67e; letter-spacing: .19em; }
   .fw-scope-open { color: #d3b787; }
   .fw-scope-world { color: #ac9d83; }
+  .fw-role { width: clamp(72px, 7.2vw, 110px); white-space: normal;
+    font: 500 clamp(10px, .84vw, 12px)/1.16 "DM Sans", system-ui, sans-serif;
+    letter-spacing: .025em; color: #f0d3a0; text-align: center;
+    text-shadow: 0 1px 7px #0d0a07, 0 0 12px #0d0a07; }
   @media (max-width: 760px) {
     .fw-scope { font-size: 9px; letter-spacing: .07em; }
     .fw-scope-community { font-size: 9px; letter-spacing: .12em; }
+    .fw-role { width: 66px; font-size: 9px; line-height: 1.1; letter-spacing: 0; }
   }
   /* Slides 10 and 11: our four initiatives as small versions of the homepage's cards, on their own layer above the
      slides so their links can be clicked (flywheel.js places them and lets them take clicks only while they're out). */
@@ -2041,7 +2046,7 @@
   </section>
 
     <section class="slide fw-host" data-v="f">
-    <div class="fw-alt" role="img" aria-label="Banodoco's artists, model trainers, workflow builders and toolmakers form one living flywheel around Astrid; it connects into the wider open-source AI ecosystem and extends toward the wider AI and creative worlds"></div>
+    <div class="fw-alt" role="img" aria-label="Five community groups—artists, model trainers, workflow builders, toolmakers and knowledge sharers—circulate around Astrid. A wider open-source AI network and two distinct outward paths expand beyond."></div>
     <p class="fw-stat"><b aria-label="23,932"><span aria-hidden="true">23,932</span></b> people · Banodoco Discord · <a href="https://discord.gg/NnFxGvx94b" target="_blank" rel="noopener">Join →</a></p>
     <div class="num">09<span class="act">The community</span></div>
     <div class="split">
