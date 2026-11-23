@@ -1231,12 +1231,27 @@
       for(const p of pulses){
         const thread=geom[p.id];if(!thread)continue;
         const time=clamp((clock-p.at)/p.duration);
-        const travel=(thread.end===4?1:(thread.end+1)/5+.025);
-        const along=travel*ease(time),pnt=position(thread,along);
-        const dissipate=time>.76?1-ease((time-.76)/.24):1;
+        const success=thread.end===4;
+        const travel=terminal(thread);
+        const along=travel*ease(clamp(time/(success?.82:1))),pnt=position(thread,along);
+        const fadeAt=success?.82:.76;
+        const dissipate=time>fadeAt?1-ease((time-fadeAt)/(1-fadeAt)):1;
         const a=(p.inspection?.97:.82)*dissipate*opacity;
         dot(pnt.x,pnt.y,p.inspection?4.3:2.8,thread.color,a,true);
-        if(time>.77&&thread.end<4){
+        if(success&&time>=.82){
+          // An earned burst at Create; blocked journeys only dissolve.
+          const burst=clamp((time-.82)/.18),peak=1-ease(burst),origin=position(thread,travel);
+          dot(origin.x,origin.y,6+14*ease(burst),'#ffdfa1',opacity*peak*.58,true);
+          g.strokeStyle=alpha('#ffdfa1',opacity*peak*.66);
+          g.lineWidth=1.1;g.beginPath();g.arc(origin.x,origin.y,4+29*ease(burst),0,Math.PI*2);g.stroke();
+          for(let j=0;j<13;j++){
+            const angle=(j/13+hash(p.id*71)*.11)*Math.PI*2;
+            const rad=(5+32*ease(burst))*(.75+.5*hash(p.id*31+j*53));
+            dot(origin.x+Math.cos(angle)*rad,origin.y+Math.sin(angle)*rad,
+              .85+hash(j*31+p.id)*.7,thread.color,opacity*peak*.88,false);
+          }
+        }
+        if(time>.77&&!success){
           for(let j=0;j<4;j++){
             const dx=(hash(p.id*13+j*31)-.5)*36*(time-.74)*4;
             const dy=(hash(p.id*41+j*11)-.5)*34*(time-.74)*4;
@@ -1253,13 +1268,18 @@
     clock+=dt;
     if(mode==='rest'&&!motionOff()&&owned()){
       if(clock>=launchAt){
-        const id=Math.floor(hash(++pulseId*617+77)*N);
+        let id=Math.floor(hash(++pulseId*617+77)*N);
+        // Periodic illustrative success, not an empirical conversion funnel.
+        if(pulseId%8===0){
+          const successes=geom.filter(s=>s.end===4);
+          if(successes.length)id=successes[Math.floor(hash(pulseId*37)*successes.length)].id;
+        }
         pulses.push({id,at:clock,duration:2.2+hash(pulseId*77)*1.6,inspection:false});
         launchAt=clock+.37+hash(pulseId*37)*.45;
 
       }
       for(const p of pulses){
-        if(p.inspection||p.replaced||clock-p.at<p.duration)continue;
+        if(p.inspection||p.replaced||clock-p.at<p.duration||p.id===hovered||p.id===pinned)continue;
         p.replaced=true;
         assignments[p.id]=(assignments[p.id]+17)%catalogue.length;
         reborn[p.id]=clock;
@@ -1280,6 +1300,7 @@
   };
   const begin=(m,ctx)=>{
     visit=ctx;mode=motionOff()||ctx?.rest||ctx?.direct?'rest':m;
+    artwork=m==='enter-collage'&&Array.isArray(root.filamentArtwork)?root.filamentArtwork:[];
     start=now();last=start;clock=0;pulseId=0;pulses=[];launchAt=.4;
     hovered=-1;pinned=-1;note.classList.remove('is-on');
     layout();
@@ -1296,12 +1317,13 @@
     if(mode==='inactive')return;
     if(raf)cancelAnimationFrame(raf);raf=0;
     mode=ctx?.to===0?'exit-collage':ctx?.to===2?'exit-gap':'inactive';
-    start=now();pulses=[];hovered=pinned=-1;note.classList.remove('is-on');
+    artwork=[];start=now();pulses=[];hovered=pinned=-1;note.classList.remove('is-on');
     if(mode==='inactive'&&originalCanvas)originalCanvas.style.opacity='1';
     draw();wake();
   };
   const restore=ctx=>{
     if(ctx?.to===1){begin('rest',ctx);} else{
+      artwork=[];
       if(raf)cancelAnimationFrame(raf);raf=0;mode='inactive';
       if(originalCanvas)originalCanvas.style.opacity='1';
       note.classList.remove('is-on');
