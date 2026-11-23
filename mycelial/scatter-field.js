@@ -1051,6 +1051,38 @@
     if(hovered===i)hovered=-1;
     if(hovered<0&&pinned<0)note.classList.remove('is-on');
   };
+  // Visual dots are only ~6px apart. 28px buttons overlap and later
+  // siblings steal clicks. Resolve the nearest actual dot on one pointer
+  // surface; keep the labelled buttons as independent keyboard targets.
+  const nearest=(event)=>{
+    if(!owned()||mode!=='rest')return -1;
+    const rect=canvasArea();
+    const x=event.clientX-rect.left,y=event.clientY-rect.top;
+    let best=-1,distance=(event.pointerType==='touch'?27:15)**2;
+    geom.forEach((strand,i)=>{
+      const dx=x-strand.x0,dy=y-strand.y;
+      const d=dx*dx+dy*dy;
+      if(d<distance){distance=d;best=i;}
+    });
+    return best;
+  };
+  hits.addEventListener('pointermove',e=>{
+    if(e.pointerType==='touch')return;
+    const selected=nearest(e);
+    if(selected===hovered)return;
+    if(hovered>=0)release(hovered);
+    if(selected>=0)inspect(selected,false);
+  });
+  hits.addEventListener('pointerleave',()=>{
+    if(hovered>=0)release(hovered);
+  });
+  hits.addEventListener('click',e=>{
+    const selected=nearest(e);
+    if(selected<0)return; // blank space still turns the deck
+    e.preventDefault();e.stopPropagation();
+    if(pinned===selected){pinned=-1;hovered=-1;note.classList.remove('is-on');}
+    else inspect(selected,true);
+  });
   // Click empty space or Escape to return to the quiet field.
   slide.addEventListener('pointerdown',e=>{
     if(!e.target.closest('.ff-hit')&&pinned>=0){pinned=-1;hovered=-1;note.classList.remove('is-on');}
