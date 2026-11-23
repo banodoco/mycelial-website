@@ -1,8 +1,7 @@
 // Version F, slides 9–11: the community's flywheel, one picture evolving across three slides.
-// 9, "The community": the artists on the left, everyone else (model trainers, workflow and infrastructure
-// builders, toolmakers) on the right, joined by a gold ring that turns round Astrid (the lens with the mink).
-// Bright motes fly from the artists over the top of the ring to all the others (inspire), and from the
-// others back under it to the artists and down between each other (equip): a calm, clockwise circulation.
+// 9, "The community": artists, model trainers, workflow and infrastructure builders and toolmakers
+// live within the Banodoco ring around Astrid. A porous open-source AI orbit expands around them;
+// separate outward branches reach the AI and creative worlds. The original collaboration loop stays live.
 // 10, "How we accelerate it": the artists and the groups go into the circle, the lens folds into a quiet
 // glowing core while the mink flies out to her own card, the circle contracts a little and then opens out
 // bigger, and six cards come out round it as small versions of the homepage's cards (Arca Gidan, ArtCompute,
@@ -14,6 +13,8 @@
 (() => {
   const hosts = [...document.querySelectorAll('.fw-host')];
   const M = window.AstridMink;
+  // Optional expanding orbit uses the same canvas and lifecycle as the wheel.
+  const Scope = window.MycelialCommunityExpansion;
   if (hosts.length !== 3 || !M) return;
   const html = document.documentElement;
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -53,6 +54,11 @@
     g2: tag('fw-who fw-l', 'toolmakers'),
     inspire: tag('fw-verb', 'inspire'),
     equip: tag('fw-verb', 'equip'),
+    community: tag('fw-scope fw-scope-community', 'OUR COMMUNITY'),
+    open: tag('fw-scope fw-scope-open', 'WIDER OPEN-SOURCE AI ECOSYSTEM'),
+    ai: tag('fw-scope fw-scope-world', 'WIDER AI WORLD'),
+    creative: tag('fw-scope fw-scope-world', 'CREATIVE WORLD'),
+    ...Object.fromEntries((Scope?.ROLES || []).map((name, i) => ['role' + i, tag('fw-role', name)])),
   };
   // Our four initiatives, as small versions of the homepage's cards: its own words, links and real images
   // (content/content.js, assets/cards/). They sit on a layer of their own above the slides so their links can
@@ -241,17 +247,17 @@
   const WIDE = {
     ring: [[835, 360, 237, 237], [835, 471, 300, 118], [835, 455, 545, 292]], // cx, cy, rx, ry
     lens: [[835, 367, 112, 176], [835, 471, 30, 48], [835, 455, 30, 48]], // cx, cy, w, h
-    artR: [39, 10, 10],
-    artists: [ // brush, camera, pencil, film, palette, picture, music: two staggered columns, clear of each other
-      [[205, 180], [335, 240], [205, 300], [335, 360], [205, 420], [335, 480], [205, 540]],
+    artR: [23, 10, 10],
+    artists: [ // Seven artistic practices are now WITHIN the same community ring.
+      [[650, 236], [724, 266], [639, 311], [717, 345], [640, 385], [717, 424], [650, 479]],
       Array(7).fill([835, 471]),
       Array(7).fill([835, 455]),
     ],
-    grpR: [40, 10, 10],
-    groups: [[[1316, 182], [1348, 366], [1316, 550]], Array(3).fill([835, 471]), Array(3).fill([835, 455])],
-    artistsLabel: [[270, 122], [835, 471], [835, 455]],
-    inspire: [[835, 74], [835, 471], [835, 455]],
-    equip: [[835, 640], [835, 471], [835, 455]],
+    grpR: [25, 10, 10],
+    groups: [[[1011, 247], [1009, 365], [1011, 482]], Array(3).fill([835, 471]), Array(3).fill([835, 455])],
+    artistsLabel: [[710, 181], [835, 471], [835, 455]],
+    inspire: [[835, 150], [835, 471], [835, 455]],
+    equip: [[835, 563], [835, 471], [835, 455]],
     // The six cards: centre, and where each plugs into the ring (degrees, clockwise from 3 o'clock).
     cards: [
       { at: [[835, 360], [302, 262], 'ring'], th: [205, 205, 232] }, // Arca Gidan: top-left
@@ -270,17 +276,17 @@
   const TALL = {
     ring: [[200, 330, 118, 118], [200, 410, 118, 150], [200, 402, 132, 250]],
     lens: [[200, 334, 60, 94], [200, 410, 16, 26], [200, 402, 16, 26]],
-    artR: [19, 6, 6],
-    artists: [ // two staggered rows along the top, the first on the right (where its thread meets the ring)
-      [[350, 82], [300, 132], [250, 82], [200, 132], [150, 82], [100, 132], [50, 82]],
+    artR: [10, 6, 6],
+    artists: [ // A compact portrait rendering, again fully inside the inner wheel.
+      [[145, 263], [131, 292], [158, 305], [129, 330], [160, 351], [133, 374], [148, 401]],
       Array(7).fill([200, 400]),
       Array(7).fill([200, 410]),
     ],
-    grpR: [22, 6, 6],
-    groups: [[[312, 548], [200, 572], [88, 548]], Array(3).fill([200, 400]), Array(3).fill([200, 410])],
-    artistsLabel: [[200, 38], [200, 400], [200, 410]],
-    inspire: [[350, 330], [200, 400], [200, 410]],
-    equip: [[52, 330], [200, 400], [200, 410]],
+    grpR: [14, 6, 6],
+    groups: [[[269, 276], [269, 332], [269, 390]], Array(3).fill([200, 400]), Array(3).fill([200, 410])],
+    artistsLabel: [[143, 238], [200, 400], [200, 410]],
+    inspire: [[210, 226], [200, 400], [200, 410]],
+    equip: [[200, 430], [200, 400], [200, 410]],
     cards: [ // 10's are preview cards, placed in viewport pixels by tallTen(); on 11 they are icons on the halo
       { at: [[200, 330], 'ring', 'ring'], th: [232, 232, 240] },
       { at: [[200, 330], 'ring', 'ring'], th: [270, 270, 270] },
@@ -290,7 +296,7 @@
       { at: [[200, 330], 'ring', 'ring'], th: [90, 90, 90] },
     ],
     cw: [40, 170, 170],
-    span: [[8, 392, 20, 640], [56, 344, 236, 584], [44, 356, 128, 676]],
+    span: [[8, 392, 82, 565], [56, 344, 236, 584], [44, 356, 128, 676]],
   };
   // Where the artists' threads meet the ring, and the others' (degrees); a phone turns them a quarter.
   const ENTRY = [189, 186, 183, 180, 177, 174, 171], EXIT = [-14, 0, 14];
@@ -338,7 +344,7 @@
   };
   const rightOf = (s) => {
     const out = [];
-    if (!tall && s === 0) R.groups[s].forEach(([x], j) => out.push([x + R.grpR[s] + 16, labels[`g${j}`].offsetWidth + 6]));
+    // Former builder-cluster labels no longer constrain the five-orb scene.
     return out;
   };
   const build = (s, f) => {
@@ -388,6 +394,13 @@
     tall = W <= 760 && H > W;
     short = !tall && H <= 500;
     R = tall ? TALL : short ? SHORT : WIDE;
+    // The short landscape wheel gets its own compact, readable names.
+    if (Scope) {
+      const compact = ['Artists', 'Models', 'Workflows', 'Tools', 'Knowledge'];
+      Scope.ROLES.forEach((name, i) => {
+        labels['role' + i].textContent = short ? compact[i] : name;
+      });
+    }
     // Type first (it sets the labels' widths), from the room there is; then the picture round it.
     const kBase = tall ? Math.min((W - 24) / 400, (H * 0.6) / 640) : Math.min((W / 2 - 64) / 795, (H * 0.64) / 600);
     root.style.fontSize = `${clamp(22 * (tall ? kBase * 0.55 : kBase), tall ? 10.5 : 12.5, 22).toFixed(1)}px`;
@@ -397,6 +410,12 @@
     wordsBottom = colOf(hosts[1]).getBoundingClientRect().bottom;
     // Each slide fits its own picture: 10's is the bigger one, the wheel grown with the initiatives round it.
     stages = [build(0, fit(0)), build(1, fit(1)), build(2, fit(2))];
+    // A wide, flatter inner oval gives the five roles a clear horizontal
+    // separation on a phone turned sideways, without moving the copy.
+    if (short) {
+      const r = stages[0].ring;
+      r[2] = Math.max(r[2], Math.min(W * .19, r[3] * 2.35));
+    }
     // On 11 the halo opens tall enough to pass well above the label's node (the room the deck's small Mycelial mark
     // once took there; the mark now forms large and faint behind the words, inside the halo).
     const lab = hosts[2].querySelector('.num');
@@ -467,6 +486,10 @@
   const chipQ = (i) => (m >= 1 ? 1 : smooth(clamp((m - 0.42 - i * 0.04) / 0.5))) * smooth(k01(T.chips + i * 0.15, 0.6));
   // The artists and the groups, with "inspire" and "equip", belong to 9: they go into the circle on the way to 10.
   const nine = () => 1 - smooth(clamp(tall ? m / 0.25 : (m - 0.08) / 0.42));
+  // Shared motion progress, including the dedicated reverse 9->8 handoff.
+  const scopeQ = () => Scope ? Scope.visibility({
+    time: ta, morph: m, motesAt: T.motes, tall, reversingTo8: !!unhanding,
+  }) : 0;
   // The lens folds into the core as the mink leaves it for her card; she flies from 9's centre to the Astrid card.
   const lensA = () => 1 - smooth(clamp((m - 0.25) / 0.4));
   // She sets off for her card as the stage starts to change, and flies with it, into her seat as her card comes whole.
@@ -525,6 +548,10 @@
   const rev = (h) => line([...h.pts].reverse());
   // A mote's whole route, reused while the picture geometry holds.
   const route = (mo) => {
+    if (mo.kind === 'role') {
+      const a = Scope.ROLE_ANGLES[mo.i];
+      return line(arc(a, a + TAU / Scope.ROLES.length, -lane() * .5));
+    }
     if (mo.kind === 'in') { // an artist, round the top, out to a group
       const a = entryTh(mo.a), b = exitTh(mo.b) + TAU;
       return join(artThread(mo.a), line(arc(a, b, 0)), grpThread(mo.b));
@@ -549,6 +576,10 @@
 
   // Where a drifting dot from slide 8 is headed: a point on an artist's circle, or one of a group's dots.
   const target = (t) => {
+    if (t.kind === 'role') {
+      const p = Scope.rolePositions(cur.ring, tall)[t.i], r = Scope.roleRadius(k, tall) * .55;
+      return [p.x + Math.cos(t.a) * r, p.y + Math.sin(t.a) * r];
+    }
     if (t.kind === 'art') { const [x, y] = cur.artists[t.i], r = cur.artR; return [x + Math.cos(t.a) * r, y + Math.sin(t.a) * r]; }
     const [x, y] = cur.groups[t.j], r = cur.grpR, cl = clouds[t.j];
     if (t.rim !== undefined) { const d = cl.rim[t.rim]; return [x + Math.cos(d.a) * r * d.r, y + Math.sin(d.a) * r * d.r]; }
@@ -556,8 +587,11 @@
   };
   const assign = (people, cx) => { // the nearest of the apps' people, side by side, go to each artist and each group
     const tg = [];
-    cur.artists.forEach((_, i) => { for (let n = 0; n < 9; n++) tg.push({ kind: 'art', i, a: -Math.PI / 2 + (n / 9) * TAU, side: -1 }); });
-    clouds.forEach((cl, j) => { cl.rim.forEach((_, n) => tg.push({ kind: 'grp', j, rim: n, side: 1 })); cl.core.forEach((_, n) => tg.push({ kind: 'grp', j, core: n, side: 1 })); });
+    // Retarget incoming people from slide 8 into the five semantic role-orbs.
+    if (Scope) Scope.rolePositions(cur.ring, tall).forEach((p, i) => {
+      for (let n = 0; n < 8; n++)
+        tg.push({ kind: 'role', i, a: n / 8 * TAU, side: p.x < cx ? -1 : 1 });
+    });
     const pool = people.map((p) => ({ ...p, side: p.x < cx ? -1 : 1, tgt: null }));
     for (const t of tg) {
       const [tx, ty] = target(t);
@@ -639,6 +673,9 @@
     const spokes = 1 - smooth(clamp(m / 0.3)); // the lens's own threads, gone as she leaves the centre for her corner
     const pa = nine();
 
+    // The wider network sits BELOW the existing wheel, without a second scene.
+    if (Scope) Scope.paint(g, cur.ring, { tall, scale: k, time: ta, visibility: scopeQ() });
+
     // The ring: two strands traced from the artists' side round both ways; beads on the inner one turn with it.
     const qr = ease(k01(T.ring, 1.1));
     if (qr > 0) {
@@ -650,14 +687,17 @@
         }
       });
       halo(cx, cy, Math.max(rx, ry) * 1.15, 0.035 * qr * bright);
-      for (let i = 0; i < nb; i++) {
+      for (let i = 0; i < nb; i += (pa > .6 ? 4 : 1)) {
         const th = (i / nb) * TAU + spin, rel = (((th - a0) % TAU) + TAU) % TAU, reach = Math.min(rel, TAU - rel) / Math.PI;
         if (reach > qr) continue;
         const [x, y] = ell(th, -lane());
-        dot(x, y, 0.9 * Math.max(0.7, k), NODE, (i % 6 === 0 ? 0.7 : 0.32) * bright);
+        dot(x, y, 0.9 * Math.max(0.7, k), NODE, (i % 6 === 0 ? 0.7 : 0.32) * bright * (pa > .6 ? .5 : 1));
       }
     }
 
+    // Five distinct role-orbs on the live community wheel, fading with stage 9.
+    if (Scope) Scope.paintRoles(g, cur.ring, { tall, scale: k, time: ta,
+      opacity: pa * smooth(k01(T.grp - .15, .65)) });
     // Astrid at the hub: the lens traces from its tips, the mink inside; faint spokes out to the ring.
     const hq = hand ? easeIO(clamp(ta / 1.25)) : 1;
     const ql = hand ? 1 : ease(k01(T.lens, 1.0));
@@ -695,38 +735,8 @@
       cur.cards.forEach((c) => { const [ex, ey] = ell(c[2] * RAD); const h = line(bez({ x: cx, y: cy }, { x: lerp(cx, ex, 0.4), y: lerp(cy, ey, 0.4) }, { x: lerp(cx, ex, 0.7), y: lerp(cy, ey, 0.7) }, { x: ex, y: ey }, 12)); stroke(h, 0, h.total, 0.6 * LW, THREAD, 0.16 * cq); });
     }
 
-    // The artists: their circles and glyphs, and threads into the ring.
-    if (pa > 0.003) cur.artists.forEach(([x, y], i) => {
-      const q = ease(k01(T.art + i * 0.07, 0.6)) * pa;
-      if (q <= 0) return;
-      const r = cur.artR, f = flashes.art[i];
-      halo(x, y, r * 1.6, (0.06 + 0.22 * f) * q * bright);
-      g.lineWidth = 1.3 * LW; g.strokeStyle = `rgba(${THREAD},${(0.9 * q).toFixed(3)})`;
-      g.beginPath(); g.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + TAU * q); g.stroke();
-      glyph(i, x, y, r, q);
-      const qt = ease(k01(T.artT + i * 0.05, 0.7));
-      if (qt > 0) {
-        const h = artThread(i);
-        stroke(h, 0, h.total * qt, 0.85 * LW, THREAD, 0.5 * bright * pa);
-        node(h.pts[0][0], h.pts[0][1], 0.75, q);
-        if (qt > 0.5) node(at(h, h.total * 0.5).x, at(h, h.total * 0.5).y, 0.6, smooth(clamp((qt - 0.5) * 4)) * pa);
-        if (qt >= 1) node(h.pts[h.pts.length - 1][0], h.pts[h.pts.length - 1][1], 0.55, pa);
-      }
-    });
-
-    // Everyone else: threads out of the ring, clouds of people, and the links between the groups.
-    if (pa > 0.003) cur.groups.forEach(([x, y], j) => {
-      const qt = ease(k01(T.grpT + j * 0.1, 0.7));
-      if (qt > 0) { const h = grpThread(j); stroke(h, 0, h.total * qt, 0.85 * LW, THREAD, 0.5 * bright * pa); node(h.pts[0][0], h.pts[0][1], 0.6, pa); if (qt > 0.5) node(at(h, h.total * 0.5).x, at(h, h.total * 0.5).y, 0.6, smooth(clamp((qt - 0.5) * 4)) * pa); }
-      const q = k01(T.grp + j * 0.12, 0.6) * pa;
-      if (q <= 0) return;
-      const r = cur.grpR, f = flashes.grp[j], cl = clouds[j];
-      halo(x, y, r * 1.5, (0.07 + 0.25 * f) * q * bright);
-      cl.rim.forEach((d, n) => { const qq = clamp(q * 2.2 - n / cl.rim.length); if (qq > 0) { const px = x + Math.cos(d.a) * r * d.r, py = y + Math.sin(d.a) * r * d.r; halo(px, py, 4.5 * Math.max(0.6, k), 0.3 * qq); dot(px, py, 1.45 * d.s * Math.max(0.65, k), NODE, (0.8 + 0.2 * f) * qq * bright); } });
-      cl.core.forEach((d) => { const px = x + d.x * r, py = y + d.y * r; if (d.b) halo(px, py, 6 * Math.max(0.6, k), 0.45 * q); dot(px, py, 1.6 * d.s * Math.max(0.65, k), CORE, (0.85 + 0.15 * f) * q * bright); });
-    });
-    const qk = ease(k01(T.link, 0.6));
-    if (qk > 0 && pa > 0.003) for (let j = 0; j < 2; j++) { const h = linkThread(j); stroke(h, 0, h.total * qk, 0.7 * LW, THREAD, 0.4 * pa); if (qk >= 1) node(at(h, h.total / 2).x, at(h, h.total / 2).y, 0.7, pa); }
+    // The original seven artist glyphs and three clustered builder groups were
+    // removed, not layered underneath the five legible community actor-orbs.
 
     // From slide 8: the apps' communities drifting out to become the artists and the groups.
     if (hand && !hand.done) {
@@ -763,6 +773,7 @@
 
     // Motes in flight, each with a short tail; where one lands, its node lights.
     for (const mo of motes) {
+      if (['in', 'eq', 'hop'].includes(mo.kind)) continue; // no legacy clutter
       const h = routeFor(mo), u = clamp((ta - mo.t0) / mo.dur), plug = mo.kind === 'relay' || mo.kind === 'arrival';
       const d = (plug ? u : 0.8 * u + 0.2 * smooth(u)) * h.total;
       const tail = 64 * Math.max(0.6, k) * (plug ? 1 : 1 + 0.3 * boost);
@@ -824,13 +835,38 @@
     put(labels.astrid, lens[0] + M.LENS.x * cell * (1 - clamp(m)), lens[1] - lens[3] / 2 - lerp(22 * k, 13, clamp(m)), 0.5, 0.5); // over the lens, wherever she sits
     put(labels.artists, cur.artistsLabel[0], cur.artistsLabel[1], 0.5, 0.5);
     cur.groups.forEach(([x, y], j) => {
-      if (tall) put(labels[`g${j}`], x, y + cur.grpR + 5, 0.5, 0);
+      // All builders are within the community; place their labels underneath.
+      if (m < 0.5 || tall) put(labels[`g${j}`], x, y + cur.grpR + 5 * k, 0.5, 0);
       else put(labels[`g${j}`], x + cur.grpR + 16 * k, y, 0, 0.5);
     });
     put(labels.inspire, cur.inspire[0], cur.inspire[1], 0.5, 0.5);
     put(labels.equip, cur.equip[0], cur.equip[1], 0.5, 0.5);
-    const pa = nine();
-    for (const key in labels) setOp(labels[key], key === 'astrid' ? smooth(k01(T.lens + 0.6, 0.5)) * lensA() : ql * pa);
+    if (Scope) {
+      const positions = Scope.labelPositions(cur.ring, tall, k);
+      for (const key of ['community', 'open', 'ai', 'creative']) {
+        const [width] = lsz.get(labels[key]) || [0, 0];
+        const x = clamp(positions[key][0], width / 2 + 12, Math.max(width / 2 + 12, W - width / 2 - 12));
+        put(labels[key], x, positions[key][1], 0.5, 0.5);
+      }
+    }
+    const pa = nine(), reach = scopeQ();
+    if (Scope) Scope.rolePositions(cur.ring, tall).forEach((p, i) => {
+      const radius = Scope.roleRadius(k, tall);
+      if (short && i === 0) put(labels['role' + i], p.x, p.y - radius - 3, .5, 1);
+      else put(labels['role' + i], p.x, p.y + radius + (tall ? 4 : 7) * k, .5, 0);
+    });
+    for (const key in labels) {
+      let opacity;
+      if (key === 'astrid') opacity = smooth(k01(T.lens + 0.6, 0.5)) * lensA();
+      else if (key.startsWith('role')) opacity = pa * smooth(k01(T.grp - .1, .6));
+      else if (['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'].includes(key)) opacity = 0;
+      else if (key === 'community') opacity = short ? 0 : smooth(k01(T.labels, 0.6)) * pa;
+      else if (key === 'open') opacity = short ? 0 : reach;
+      else if (key === 'ai' || key === 'creative') opacity = (tall || short) ? 0 : smooth(clamp((reach - 0.3) / 0.55));
+      else if (short && ['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'].includes(key)) opacity = 0;
+      else opacity = ql * pa;
+      setOp(labels[key], opacity);
+    }
     // Stage 9 has no cards or flying mink. Retire their layer even if a
     // reverse morph reaches its endpoint between two rendered frames.
     if (m === 0 && !morph) {
@@ -990,12 +1026,10 @@
 
   // ---- Motion -------------------------------------------------------------------------------------
   const spawn = () => {
-    const r = Math.random(), a = Math.floor(Math.random() * 7), b = Math.floor(Math.random() * 3);
-    // On 9 the community circulates between its artists and groups.
-    const mo = r < 0.5 ? { kind: 'in', a, b } : r < 0.84 ? { kind: 'eq', a, b } : { kind: 'hop', b: Math.floor(Math.random() * 2) };
-    mo.t0 = ta;
+    // A sparse shared circulation instead of criss-crossing group-to-group trails.
+    const mo = { kind: 'role', i: Math.floor(Math.random() * 5), t0: ta };
     const len = routeFor(mo).total;
-    mo.dur = clamp(len / ((150 + 70 * boost) * Math.max(0.5, k)), 1.4, 7);
+    mo.dur = clamp(len / (180 * Math.max(.5, k)), 1.4, 3.2);
     motes.push(mo);
   };
   let operation = null, textClear = null;

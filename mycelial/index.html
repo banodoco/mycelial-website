@@ -1182,6 +1182,24 @@
   .fw-l { text-align: left; } .fw-c { text-align: center; }
   .fw-core { font-size: 1.05em; color: #f0c67e; }
   .fw-verb { font-size: .86em; color: #d4b67f; letter-spacing: .04em; }
+  /* Crisp labels belong to the existing flywheel DOM layer, not canvas text. */
+  .fw-scope { font: 500 clamp(9px, .73vw, 11px)/1.2 "DM Sans", system-ui, sans-serif;
+    text-transform: uppercase; letter-spacing: .13em; color: #c4ad85; text-align: center; }
+  .fw-scope-community { color: #f0c67e; letter-spacing: .19em; }
+  .fw-scope-open { color: #d3b787; }
+  .fw-scope-world { color: #ac9d83; }
+  .fw-role { width: clamp(72px, 7.2vw, 110px); white-space: normal;
+    font: 500 clamp(10px, .84vw, 12px)/1.16 "DM Sans", system-ui, sans-serif;
+    letter-spacing: .025em; color: #f0d3a0; text-align: center;
+    text-shadow: 0 1px 7px #0d0a07, 0 0 12px #0d0a07; }
+  @media (max-width: 760px) {
+    .fw-scope { font-size: 9px; letter-spacing: .07em; }
+    .fw-scope-community { font-size: 9px; letter-spacing: .12em; }
+    .fw-role { width: 66px; font-size: 9px; line-height: 1.1; letter-spacing: 0; }
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    .fw-role { width: 50px; font-size: 9px; line-height: 1.05; letter-spacing: 0; }
+  }
   /* Slides 10 and 11: our four initiatives as small versions of the homepage's cards, on their own layer above the
      slides so their links can be clicked (flywheel.js places them and lets them take clicks only while they're out). */
   .fw-cards { position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0; transition: opacity .5s ease; }
@@ -2031,13 +2049,13 @@
   </section>
 
     <section class="slide fw-host" data-v="f">
-    <div class="fw-alt" role="img" aria-label="The community’s flywheel: artists on one side, model trainers, workflow and infrastructure builders and toolmakers on the other, joined by a ring turning round Astrid; the artists inspire everyone, and everyone equips the artists and each other"></div>
+    <div class="fw-alt" role="img" aria-label="Five community groups—artists, model trainers, workflow builders, toolmakers and knowledge sharers—circulate around Astrid. A wider open-source AI network and two distinct outward paths expand beyond."></div>
     <p class="fw-stat"><b aria-label="23,932"><span aria-hidden="true">23,932</span></b> people · Banodoco Discord · <a href="https://discord.gg/NnFxGvx94b" target="_blank" rel="noopener">Join →</a></p>
     <div class="num">09<span class="act">The community</span></div>
     <div class="split">
       <div>
-        <h1>Astrid launches into a community we’ve spent years cultivating&nbsp;— and is designed to accelerate <em>its collective creative flywheel.</em></h1>
-        <div class="body">Banodoco's Discord, events and competitions already connect artists, model trainers, builders and toolmakers — each building on the one before, with the art at the end inspiring the next turn. Astrid gives that loop a home, so every turn is faster. [n] members · [n] years · [n] events.</div>
+        <h1>Astrid launches from a community we’ve spent years cultivating&nbsp;— and is designed to carry <em>its creative momentum far beyond it.</em></h1>
+        <div class="body">Artists, model trainers, workflow builders and toolmakers already collaborate inside Banodoco. Astrid builds from that network, making their creations and shared tools accessible to the wider open-source AI ecosystem — and ultimately to the broader AI and creative worlds.</div>
       </div>
       <svg class="wheel" viewBox="0 0 400 420" role="img" aria-label="Flywheel: artists inspire, model trainers create, infrastructure and workflow builders build, toolmakers make tools, back to artists, with Astrid at the centre">
         <defs>
@@ -3018,6 +3036,7 @@
 <script src="stack.js"></script>
 <script src="pays.js"></script>
 <script src="flowers.js"></script>
+<script src="community-expansion.js"></script>
 <script src="flywheel.js"></script>
 <script>
 // The first layout must use the same fonts that the viewer will read. Hash

@@ -1,0 +1,46 @@
+name: Mycelial deck regressions
+
+on:
+  push:
+    branches: [main, feature/community-ecosystem-expansion]
+    paths:
+      - 'mycelial/**'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/mycelial-deck.yml'
+  pull_request:
+    paths:
+      - 'mycelial/**'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/mycelial-deck.yml'
+
+jobs:
+  deck-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: |
+          node --check mycelial/community-expansion.js
+          node --check mycelial/flywheel.js
+      - name: Run deck regression suite
+        run: npm run test:deck
+      - name: Install browser harness
+        run: npm ci --no-audit --no-fund
+      - name: Install Playwright video encoder
+        run: npx --yes playwright@1.62.1 install ffmpeg
+      - name: Validate live slide transitions and capture desktop/mobile frames
+        run: node tools/deck/check-community-expansion.mjs
+      - name: Preserve visual QA frames
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slide9-community-visuals
+          path: .artifacts/slide9-community/
+          if-no-files-found: warn
