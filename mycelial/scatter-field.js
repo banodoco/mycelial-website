@@ -859,14 +859,16 @@
     pointer = { x: e.clientX - r.left, y: e.clientY - r.top };
   };
   slide.addEventListener('pointermove', (e) => {
+    if (window.FilamentField?.ready()) return;
     if (e.pointerType === 'touch' || !slide.classList.contains('on') || rewind) return;
     locate(e); if (motionOff()) scheduleFrame();
   });
-  slide.addEventListener('pointerdown', (e) => { touched = e.pointerType === 'touch'; if (touched) { locate(e); if (motionOff()) scheduleFrame(); } });
+  slide.addEventListener('pointerdown', (e) => { if (window.FilamentField?.ready()) return; touched = e.pointerType === 'touch'; if (touched) { locate(e); if (motionOff()) scheduleFrame(); } });
   slide.addEventListener('pointerleave', () => { pointer = null; if (motionOff()) scheduleFrame(); });
   // Scroll to fly: down goes forward, up goes back, with momentum. If the
   // slide itself has to scroll (a short window), scrolling stays scrolling.
   slide.addEventListener('wheel', (e) => {
+    if (window.FilamentField?.ready()) return; // Let the main deck's wheel navigation work.
     if (slide.scrollHeight > slide.clientHeight + 1) return;
     e.preventDefault();
     const lines = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? h : 1;
@@ -878,6 +880,7 @@
   // Clicks on a dot, a key or an open card stay here; anywhere else the deck
   // turns the slide as usual.
   slide.addEventListener('click', (e) => {
+    if (window.FilamentField?.ready()) return; // Hidden starfield cannot capture a deck click.
     const key = e.target.closest('.sf-key');
     if (key) {
       e.stopPropagation();
