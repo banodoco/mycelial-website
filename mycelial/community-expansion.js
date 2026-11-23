@@ -166,6 +166,20 @@
     g.restore();
   };
 
+  // One complete circuit in nine seconds, five equally spaced encounters.
+  // Both geometry and hit events use the same phase, including frame skips.
+  const ORBIT_PERIOD = 9;
+  const orbitAngle = (time, start = 0) =>
+    -Math.PI / 2 + TAU * Math.max(0, time - start) / ORBIT_PERIOD;
+  const orbitHits = (previous, next, start = 0) => {
+    if (next < start || next <= previous) return [];
+    const found = previous < start ? [0] : [];
+    const first = Math.floor((Math.max(previous, start) - start) * ROLES.length / ORBIT_PERIOD) + 1;
+    const last = Math.floor((next - start) * ROLES.length / ORBIT_PERIOD);
+    for (let beat = first; beat <= last; beat++) found.push(beat % ROLES.length);
+    return found;
+  };
+
   // The passing light and the orb are one animated system. Each orb's pulse
   // starts from the precise arrival of a travelling ring mote, not a timer.
   // impacts[i] is 1 on impact and decays toward zero over ~350ms.
@@ -205,6 +219,6 @@
     });
     g.restore();
   };
-  const api = Object.freeze({ ROLES, ROLE_ANGLES, roleRadius, rolePositions, geometry, labelPositions, visibility, paint, paintRoles });
+  const api = Object.freeze({ ROLES, ROLE_ANGLES, ORBIT_PERIOD, roleRadius, rolePositions, orbitAngle, orbitHits, geometry, labelPositions, visibility, paint, paintRoles });
   if (typeof window !== 'undefined') window.MycelialCommunityExpansion = api;
 })();
