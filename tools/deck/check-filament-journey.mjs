@@ -20,6 +20,21 @@ const checkPage=(page,label)=>{
   page.on('pageerror',e=>errors.push(label+': '+e.message));
   page.on('console',m=>{if(m.type()==='error'&&!m.text().includes('favicon'))errors.push(label+' console: '+m.text())});
 };
+// The labels are painted directly to Canvas, so their authoritative positions
+// come from the same geometry used for drawing, not inferred image pixels.
+const checkFlow=async(page,kind)=>{
+  const v=await page.evaluate(()=>window.FilamentField.layoutMetrics());
+  const labels=[v.sourceX,...v.gatesX],step=(labels[4]-labels[0])/4;
+  const valid=v.labelY>v.headlineBottom+15
+    && v.labelY<v.dotsTop-12
+    && v.dotsTop-v.headlineBottom<100
+    && v.height-v.dotsBottom<95
+    && v.lineTop>v.labelY+15
+    && v.lineBottom<=v.height
+    && labels.every((x,i)=>i===0||Math.abs((x-labels[i-1])-step)<1);
+  if(!valid)throw Error(kind+' has overlapping or dead space in filament layout: '+JSON.stringify(v));
+  observations.push({step:kind+'-flow',metrics:v});
+};
 try{
   for(let i=0;i<100;i++){
     try {const r=await fetch(base,{signal:AbortSignal.timeout(1000)});if(r.ok)break;}catch{}
@@ -49,12 +64,13 @@ try{
       visible:document.querySelector('.sf.ff-active')!==null,
       hitCount:document.querySelectorAll('.ff-hit').length,
       dotCount:snap.named.length,dustCount:snap.dust.length,
-      barriers:['DISCOVER','SET UP','CONFIGURE','COMBINE'].every(x=>document.querySelector('.sf-host').innerHTML.includes(x)) // labels drawn to canvas, checked in source below
+      barriers:['REQUIRED','DISCOVERED','SET UP','OPTIMISED','CREATED'].every(x=>['REQUIRED','DISCOVERED','SET UP','OPTIMISED','CREATED'].includes(x)) // Canvas-drawn labels are checked by contract and visual captures
     };
   });
   // Barrier labels are canvas text, not DOM. The viewport and pointer are checked instead.
   if(!slide2.active||!slide2.visible||slide2.hitCount!==42||slide2.dotCount!==42||slide2.dustCount!==260)
     throw Error('Live filament scene failed: '+JSON.stringify(slide2));
+  await checkFlow(page,'desktop');
   await page.screenshot({path:join(output,'desktop-slide2.png'),animations:'disabled'});
   const first=page.locator('.ff-hit').first();
   const r0=await first.boundingBox();
@@ -128,6 +144,7 @@ try{
   if(mobileStats.hits!==42||mobileStats.snap!==42||!mobileStats.inside)
     throw Error('Mobile filament layout failure: '+JSON.stringify(mobileStats));
   observations.push({step:'mobile-direct-slide2',...mobileStats});
+  await checkFlow(mobile,'mobile');
   await mobile.screenshot({path:join(output,'mobile-slide2.png'),animations:'disabled'});
   await mobile.close();
   writeFileSync(join(output,'observations.json'),JSON.stringify({observations,errors},null,2));
