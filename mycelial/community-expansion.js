@@ -13,40 +13,50 @@
   const ROLE_ANGLES = Object.freeze(ROLES.map((_, i) => -Math.PI / 2 + i * TAU / ROLES.length));
   const roleRadius = (scale = 1, tall = false) => (tall ? 13 : 20) * Math.max(.75, scale);
   const rolePositions = (ring, tall = false) => {
-    const [cx,cy,rx,ry] = ring;
+    // The centre of each role-orb is ON the actual fitted inner ellipse.
+    const [cx, cy, rx, ry] = ring;
     return ROLE_ANGLES.map(angle => ({
-      x: cx + Math.cos(angle) * rx * .92,
-      y: cy + Math.sin(angle) * ry * .92,
-      angle
+      x: cx + Math.cos(angle) * rx,
+      y: cy + Math.sin(angle) * ry,
+      angle,
     }));
   };
 
-  // Both circles follow the *actual fitted* flywheel ellipse, not a parallel
-  // viewport layout. They can extend beyond the mobile screen and disappear
-  // naturally into its edges; the central community always stays legible.
-  const geometry = (ring, tall = false) => {
+  // All three circles derive from the existing fitted stage-9 wheel, not a
+  // competing responsive layout. The final oval uses the space *available*
+  // between the count at the top and the incoming slide headline below.
+  const geometry = (ring, tall = false, viewport = null) => {
     const [cx, cy, rx, ry] = ring;
-    return {
-      cx, cy, rx, ry,
-      openRx: rx * (tall ? 1.55 : 1.73),
-      openRy: ry * (tall ? 1.45 : 1.34),
-      reachRx: rx * (tall ? 1.92 : 2.12),
-      reachRy: ry * (tall ? 1.77 : 1.56),
-    };
+    const maxHorizontal = viewport
+      ? Math.max(rx * 1.85, Math.min(
+          viewport.width * (tall ? .455 : .465),
+          cx - (tall ? 12 : 24),
+          viewport.width - cx - (tall ? 12 : 24)
+        ))
+      : rx * (tall ? 2.4 : 4.6);
+    const spaceAbove = viewport ? cy - (viewport.top ?? 0) - 10 : ry * 2.4;
+    const spaceBelow = viewport ? (viewport.bottom ?? viewport.height) - cy - 12 : ry * 2.4;
+    const availableVertical = Math.max(ry * 1.35, Math.min(spaceAbove, spaceBelow));
+    const reachRx = Math.max(rx * 1.85, Math.min(rx * (tall ? 2.7 : 4.8), maxHorizontal));
+    const reachRy = Math.max(ry * 1.32, Math.min(ry * (tall ? 2.10 : 2.45), availableVertical));
+    const openRx = Math.min(reachRx * .67, rx * (tall ? 1.50 : 1.75));
+    const openRy = Math.min(reachRy * .72, ry * (tall ? 1.40 : 1.50));
+    return {cx, cy, rx, ry, openRx, openRy, reachRx, reachRy};
   };
-  const labelPositions = (ring, tall = false, scale = 1) => {
-    const z = geometry(ring, tall);
+  const labelPositions = (ring, tall = false, scale = 1, viewport = null) => {
+    const z = geometry(ring, tall, viewport);
+    // Three labels, same visual treatment. Place them on clear sections of
+    // their own perimeters, offset from the five community participants.
     if (tall) return {
-      community: [z.cx, z.cy - z.ry - roleRadius(scale, tall) - 22 * scale],
-      open: [z.cx, z.cy - z.openRy - 15 * scale],
-      ai: [z.cx + z.openRx * 0.75, z.cy - z.ry * 0.17],
-      creative: [z.cx + z.openRx * 0.75, z.cy + z.ry * 0.86],
+      community: [z.cx, z.cy + z.ry + roleRadius(scale, tall) + 13 * scale],
+      open: [z.cx - z.openRx * .78, z.cy - z.openRy * .72],
+      world: [z.cx + z.reachRx * .44, z.cy - z.reachRy * .84],
     };
     return {
-      community: [z.cx, z.cy - z.ry - roleRadius(scale, tall) - 22 * scale],
-      open: [z.cx - z.openRx * 0.72, z.cy - z.openRy * 0.86],
-      ai: [z.cx + z.reachRx * 0.76, z.cy - z.reachRy * 0.70],
-      creative: [z.cx + z.reachRx * 0.76, z.cy + z.reachRy * 0.72],
+      community: [z.cx, z.cy + z.ry + roleRadius(scale, tall) +
+        (viewport?.short ? 30 : 16 * scale)],
+      open: [z.cx - z.openRx * .78, z.cy - z.openRy * .74],
+      world: [z.cx + z.reachRx * .56, z.cy - z.reachRy * .82],
     };
   };
 
@@ -92,110 +102,124 @@
     path(g, [left, [x1, y1], right]); g.stroke();
   };
 
-  const paint = (g, ring, { tall = false, scale = 1, time = 0, visibility: amount = 0 } = {}) => {
-    if (!g || amount <= 0.003) return;
-    const z = geometry(ring, tall), k = Math.max(0.35, scale);
-    const q = smooth(amount), rx = lerp(z.rx * 1.07, z.openRx, q),
-      ry = lerp(z.ry * 1.08, z.openRy, q);
-    const beyond = smooth((amount - 0.27) / 0.64);
+  const paint = (g, ring, {
+    tall = false, scale = 1, time = 0, visibility: amount = 0, viewport = null,
+  } = {}) => {
+    if (!g || amount <= .003) return;
+    const z = geometry(ring, tall, viewport), k = Math.max(.35, scale);
+    // The open-source ring grows first. The broad world appears later, and
+    // stays a complete oval rather than disconnected side fragments.
+    const middle = smooth((amount - .04) / .74);
+    const world = smooth((amount - .28) / .72);
+    const mx = lerp(z.rx * 1.05, z.openRx, middle);
+    const my = lerp(z.ry * 1.05, z.openRy, middle);
+    const wx = lerp(mx * 1.08, z.reachRx, world);
+    const wy = lerp(my * 1.08, z.reachRy, world);
     g.save();
     g.lineCap = 'round'; g.lineJoin = 'round';
 
-    // A porous double orbit, thin enough to read as a larger community rather
-    // than a hard enclosure or a second mechanical flywheel.
-    g.lineWidth = Math.max(0.55, 0.85 * k);
-    g.strokeStyle = rgba(GOLD, 0.44 * amount);
-    oval(g, z.cx, z.cy, rx, ry); g.stroke();
-    g.setLineDash([2.3 * k, 9 * k]);
-    g.strokeStyle = rgba(LIGHT, 0.28 * amount);
-    oval(g, z.cx, z.cy, rx + 11 * k, ry + 7 * k); g.stroke();
-    g.setLineDash([]);
+    // Middle: porous open-source ecosystem, similar material to inner wheel
+    // but perceptibly larger and less intense.
+    if (middle > .003) {
+      g.lineWidth = Math.max(.9, 1.05 * k);
+      g.strokeStyle = rgba(GOLD, .60 * middle);
+      oval(g, z.cx, z.cy, mx, my); g.stroke();
+      g.setLineDash([2.6 * k, 8 * k]);
+      g.strokeStyle = rgba(LIGHT, .25 * middle);
+      oval(g, z.cx, z.cy, mx + 9 * k, my + 8 * k); g.stroke();
+      g.setLineDash([]);
 
-    // Deterministic, unevenly spaced nodes between the old wheel and the new
-    // orbit. No random calls during paint: direct visits and reversals are stable.
-    for (let i = 0; i < 24; i++) {
-      const angle = (i * 2.399963229728653) % TAU;
-      const f = 0.24 + ((i * 11) % 17) / 22;
-      const x = z.cx + Math.cos(angle) * lerp(z.rx * 1.05, rx, f);
-      const y = z.cy + Math.sin(angle) * lerp(z.ry * 1.05, ry, f);
-      const strength = i % 7 === 0 ? 0.7 : i % 3 === 0 ? 0.43 : 0.24;
-      spark(g, x, y, (i % 8 === 0 ? 1.9 : 1.1) * k, strength * amount);
-      if (i % 6 === 0) {
-        const inner = point(z.cx, z.cy, z.rx * 0.98, z.ry * 0.98, angle);
-        g.lineWidth = Math.max(0.5, 0.6 * k);
-        g.strokeStyle = rgba(GOLD, 0.13 * amount);
-        path(g, [inner, [x, y]]); g.stroke();
+      // Sparse luminous points between the existing community and its wider
+      // open-source peers. No random frame-to-frame positions or clutter.
+      for (let i = 0; i < 22; i++) {
+        const a = (i * 2.399963229728653) % TAU;
+        const f = .24 + ((i * 7) % 13) / 17;
+        const x = z.cx + Math.cos(a) * lerp(z.rx * 1.08, mx, f);
+        const y = z.cy + Math.sin(a) * lerp(z.ry * 1.08, my, f);
+        spark(g, x, y, (i % 6 === 0 ? 1.7 : 1.0) * k,
+          (i % 5 === 0 ? .56 : .30) * middle);
+      }
+      for (let i = 0; i < 6; i++) {
+        const a = i * TAU / 6 + .35;
+        const f = ((time * (i % 3 === 0 ? -.10 : .08)) + i * .21) % 1;
+        const u = (f + 1) % 1;
+        const x = z.cx + Math.cos(a) * lerp(z.rx, mx, u);
+        const y = z.cy + Math.sin(a) * lerp(z.ry, my, u);
+        spark(g, x, y, 1.5 * k, .55 * middle);
       }
     }
 
-    // Fine points moving out to the broader open-source ring, and occasional
-    // inward returns: two-way participation, not merely a broadcast.
-    for (let i = 0; i < 8; i++) {
-      const angle = (i / 8) * TAU + 0.14;
-      const u = ((time * (i % 3 === 0 ? -0.13 : 0.10)) + i * 0.173) % 1;
-      const f = (u + 1) % 1;
-      const a = point(z.cx, z.cy, lerp(z.rx, rx, f), lerp(z.ry, ry, f), angle);
-      spark(g, a[0], a[1], 1.65 * k, 0.52 * amount);
-    }
-
-    // The wider AI and creative worlds are TWO different destinations, not
-    // further nested communities. Separate arc fragments and outward arrows.
-    if (beyond > 0.003) {
-      g.lineWidth = Math.max(0.55, 0.7 * k);
-      g.strokeStyle = rgba(GOLD, 0.17 * beyond);
-      oval(g, z.cx, z.cy, z.reachRx, z.reachRy, -1.03, -0.11); g.stroke();
-      oval(g, z.cx, z.cy, z.reachRx * 1.01, z.reachRy * 1.01, 0.11, 0.99); g.stroke();
-
-      for (const angle of [-0.66, 0.66]) {
-        const from = point(z.cx, z.cy, rx, ry, angle);
-        const to = point(z.cx, z.cy, z.reachRx, z.reachRy, angle);
-        arrow(g, from, to, k, beyond);
-        for (let i = 0; i < 5; i++) {
-          const p = point(z.cx, z.cy,
-            lerp(rx, z.reachRx, 0.4 + i / 9), lerp(ry, z.reachRy, 0.4 + i / 9),
-            angle + (i - 2) * 0.14);
-          spark(g, p[0], p[1], (i === 2 ? 1.75 : 1.05) * k,
-            (0.30 + (i % 2) * 0.22) * beyond);
-        }
-        const moving = (time * 0.14 + (angle > 0 ? 0.37 : 0)) % 1;
-        const p = point(z.cx, z.cy, lerp(rx, z.reachRx, moving), lerp(ry, z.reachRy, moving), angle);
-        spark(g, p[0], p[1], 2.0 * k, 0.7 * beyond);
+    // Outer: ONE uninterrupted, clearly visible, horizontally broad ellipse.
+    // Use the same warm gold as the other rings rather than a new motif.
+    if (world > .003) {
+      g.lineWidth = Math.max(1.0, 1.23 * k);
+      g.strokeStyle = rgba(GOLD, .57 * world);
+      oval(g, z.cx, z.cy, wx, wy); g.stroke();
+      g.lineWidth = Math.max(.5, .7 * k);
+      g.strokeStyle = rgba(LIGHT, .18 * world);
+      oval(g, z.cx, z.cy, wx - 5 * k, wy - 4 * k); g.stroke();
+      for (let i = 0; i < 12; i++) {
+        const a = (i + .25) * TAU / 12;
+        const [x, y] = point(z.cx, z.cy, wx, wy, a);
+        spark(g, x, y, (i % 3 === 0 ? 1.65 : 1.0) * k, .39 * world);
       }
     }
     g.restore();
   };
 
-  const paintRoles = (g, ring, { tall = false, scale = 1, time = 0, opacity = 1 } = {}) => {
+  // One complete circuit in nine seconds, five equally spaced encounters.
+  // Both geometry and hit events use the same phase, including frame skips.
+  const ORBIT_PERIOD = 9;
+  const orbitAngle = (time, start = 0) =>
+    -Math.PI / 2 + TAU * Math.max(0, time - start) / ORBIT_PERIOD;
+  const orbitHits = (previous, next, start = 0) => {
+    if (next < start || next <= previous) return [];
+    const found = previous < start ? [0] : [];
+    const first = Math.floor((Math.max(previous, start) - start) * ROLES.length / ORBIT_PERIOD) + 1;
+    const last = Math.floor((next - start) * ROLES.length / ORBIT_PERIOD);
+    for (let beat = first; beat <= last; beat++) found.push(beat % ROLES.length);
+    return found;
+  };
+
+  // The passing light and the orb are one animated system. Each orb's pulse
+  // starts from the precise arrival of a travelling ring mote, not a timer.
+  // impacts[i] is 1 on impact and decays toward zero over ~350ms.
+  const paintRoles = (g, ring, {
+    tall = false, scale = 1, time = 0, opacity = 1, impacts = [],
+  } = {}) => {
     if (!g || opacity <= .003) return;
-    const nodes = rolePositions(ring, tall), radius = roleRadius(scale, tall), k = Math.max(.7, scale);
-    g.save();
-    g.lineCap = 'round';
-    g.lineWidth = Math.max(.6, .8 * k);
-    g.strokeStyle = rgba(GOLD, .15 * opacity);
-    g.beginPath();
-    nodes.forEach(({x,y},i) => i ? g.lineTo(x,y) : g.moveTo(x,y));
-    g.closePath();
-    g.stroke();
-    nodes.forEach(({x,y}, i) => {
-      const r = radius * (.96 + .04 * Math.sin(time * .95 + i));
-      const gr = g.createRadialGradient(x,y,r*.2,x,y,r*1.65);
-      gr.addColorStop(0, rgba(LIGHT, .18*opacity));
-      gr.addColorStop(.55, rgba(GOLD, .10*opacity));
-      gr.addColorStop(1, rgba(GOLD, 0));
-      g.fillStyle = gr;
-      g.beginPath(); g.arc(x,y,r*1.65,0,TAU); g.fill();
-      g.fillStyle = rgba('35,26,15', .84*opacity);
-      g.lineWidth = Math.max(1,1.1*k);
-      g.strokeStyle = rgba(GOLD,.86*opacity);
-      g.beginPath(); g.arc(x,y,r,0,TAU);g.fill();g.stroke();
-      g.strokeStyle = rgba(LIGHT,.27*opacity);
-      g.lineWidth = Math.max(.5,.75*k);
-      g.beginPath();g.arc(x,y,r*.7,.1,2.5);g.stroke();
-      g.fillStyle = rgba(LIGHT,.95*opacity);
-      g.beginPath();g.arc(x,y,Math.max(2.4,3.6*k),0,TAU);g.fill();
+    const nodes = rolePositions(ring, tall), radius = roleRadius(scale, tall);
+    const k = Math.max(.7, scale);
+    g.save(); g.lineCap = 'round';
+    nodes.forEach(({x, y}, i) => {
+      const impact = clamp(impacts[i] || 0);
+      const progress = 1 - impact;
+      const r = radius * (1 + .015 * Math.sin(time * .95 + i));
+      const haloR = r * (1.48 + .35 * progress);
+      const aura = g.createRadialGradient(x, y, r * .2, x, y, haloR);
+      aura.addColorStop(0, rgba(LIGHT, (.19 + .28 * impact) * opacity));
+      aura.addColorStop(.57, rgba(GOLD, (.09 + .18 * impact) * opacity));
+      aura.addColorStop(1, rgba(GOLD, 0));
+      g.fillStyle = aura;
+      g.beginPath(); g.arc(x, y, haloR, 0, TAU); g.fill();
+      g.fillStyle = rgba('35,26,15', .90 * opacity);
+      g.strokeStyle = rgba(LIGHT, (.67 + .33 * impact) * opacity);
+      g.lineWidth = Math.max(1, (1.05 + .75 * impact) * k);
+      g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); g.stroke();
+      g.strokeStyle = rgba(LIGHT, .22 * opacity);
+      g.lineWidth = Math.max(.5, .7 * k);
+      g.beginPath(); g.arc(x, y, r * .69, .1, 2.5); g.stroke();
+      g.fillStyle = rgba(LIGHT, (.88 + .12 * impact) * opacity);
+      g.beginPath(); g.arc(x, y, Math.max(2.5, 3.6 * k) * (1 + .28 * impact), 0, TAU); g.fill();
+      if (impact > .003) {
+        // Impact expands outward and fades; no scale snap or flashing text.
+        g.lineWidth = Math.max(.6, .95 * k);
+        g.strokeStyle = rgba(LIGHT, .65 * impact * opacity);
+        g.beginPath(); g.arc(x, y, r * (1 + .5 * progress), 0, TAU); g.stroke();
+      }
     });
     g.restore();
   };
-  const api = Object.freeze({ ROLES, ROLE_ANGLES, roleRadius, rolePositions, geometry, labelPositions, visibility, paint, paintRoles });
+  const api = Object.freeze({ ROLES, ROLE_ANGLES, ORBIT_PERIOD, roleRadius, rolePositions, orbitAngle, orbitHits, geometry, labelPositions, visibility, paint, paintRoles });
   if (typeof window !== 'undefined') window.MycelialCommunityExpansion = api;
 })();
