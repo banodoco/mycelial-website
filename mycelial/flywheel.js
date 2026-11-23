@@ -394,6 +394,13 @@
     tall = W <= 760 && H > W;
     short = !tall && H <= 500;
     R = tall ? TALL : short ? SHORT : WIDE;
+    // The short landscape wheel gets its own compact, readable names.
+    if (Scope) {
+      const compact = ['Artists', 'Models', 'Workflows', 'Tools', 'Knowledge'];
+      Scope.ROLES.forEach((name, i) => {
+        labels['role' + i].textContent = short ? compact[i] : name;
+      });
+    }
     // Type first (it sets the labels' widths), from the room there is; then the picture round it.
     const kBase = tall ? Math.min((W - 24) / 400, (H * 0.6) / 640) : Math.min((W / 2 - 64) / 795, (H * 0.64) / 600);
     root.style.fontSize = `${clamp(22 * (tall ? kBase * 0.55 : kBase), tall ? 10.5 : 12.5, 22).toFixed(1)}px`;
@@ -403,6 +410,12 @@
     wordsBottom = colOf(hosts[1]).getBoundingClientRect().bottom;
     // Each slide fits its own picture: 10's is the bigger one, the wheel grown with the initiatives round it.
     stages = [build(0, fit(0)), build(1, fit(1)), build(2, fit(2))];
+    // A wide, flatter inner oval gives the five roles a clear horizontal
+    // separation on a phone turned sideways, without moving the copy.
+    if (short) {
+      const r = stages[0].ring;
+      r[2] = Math.max(r[2], Math.min(W * .19, r[3] * 2.35));
+    }
     // On 11 the halo opens tall enough to pass well above the label's node (the room the deck's small Mycelial mark
     // once took there; the mark now forms large and faint behind the words, inside the halo).
     const lab = hosts[2].querySelector('.num');
@@ -839,14 +852,15 @@
     const pa = nine(), reach = scopeQ();
     if (Scope) Scope.rolePositions(cur.ring, tall).forEach((p, i) => {
       const radius = Scope.roleRadius(k, tall);
-      put(labels['role' + i], p.x, p.y + radius + (tall ? 4 : 7) * k, .5, 0);
+      if (short && i === 0) put(labels['role' + i], p.x, p.y - radius - 3, .5, 1);
+      else put(labels['role' + i], p.x, p.y + radius + (tall ? 4 : 7) * k, .5, 0);
     });
     for (const key in labels) {
       let opacity;
       if (key === 'astrid') opacity = smooth(k01(T.lens + 0.6, 0.5)) * lensA();
       else if (key.startsWith('role')) opacity = pa * smooth(k01(T.grp - .1, .6));
       else if (['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'].includes(key)) opacity = 0;
-      else if (key === 'community') opacity = smooth(k01(T.labels, 0.6)) * pa;
+      else if (key === 'community') opacity = short ? 0 : smooth(k01(T.labels, 0.6)) * pa;
       else if (key === 'open') opacity = short ? 0 : reach;
       else if (key === 'ai' || key === 'creative') opacity = (tall || short) ? 0 : smooth(clamp((reach - 0.3) / 0.55));
       else if (short && ['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'].includes(key)) opacity = 0;
