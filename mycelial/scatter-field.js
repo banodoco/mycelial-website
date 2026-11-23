@@ -1243,6 +1243,10 @@
         const a=(p.inspection?.97:.82)*dissipate*opacity;
         dot(pnt.x,pnt.y,p.inspection?4.3:2.8,thread.color,a,true);
         if(success&&time>=.82){
+          if(!p.bloomed){
+            p.bloomed=true;
+            root.dispatchEvent(new CustomEvent('filament-create',{detail:{strand:p.id,capability:activeItem(p.id).name}}));
+          }
           // An earned burst at Create; blocked journeys only dissolve.
           const burst=clamp((time-.82)/.18),peak=1-ease(burst),origin=position(thread,travel);
           dot(origin.x,origin.y,6+14*ease(burst),'#ffdfa1',opacity*peak*.58,true);
