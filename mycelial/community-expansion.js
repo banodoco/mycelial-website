@@ -9,6 +9,17 @@
   const lerp = (a, b, u) => a + (b - a) * u;
   const rgba = (rgb, a) => 'rgba(' + rgb + ',' + clamp(a).toFixed(4) + ')';
   const GOLD = '240,200,119', LIGHT = '255,217,145';
+  const ROLES = Object.freeze(['Artists', 'Model trainers', 'Workflow builders', 'Toolmakers', 'Knowledge sharers']);
+  const ROLE_ANGLES = Object.freeze(ROLES.map((_, i) => -Math.PI / 2 + i * TAU / ROLES.length));
+  const roleRadius = (scale = 1, tall = false) => (tall ? 13 : 20) * Math.max(.75, scale);
+  const rolePositions = (ring, tall = false) => {
+    const [cx,cy,rx,ry] = ring;
+    return ROLE_ANGLES.map(angle => ({
+      x: cx + Math.cos(angle) * rx * .92,
+      y: cy + Math.sin(angle) * ry * .92,
+      angle
+    }));
+  };
 
   // Both circles follow the *actual fitted* flywheel ellipse, not a parallel
   // viewport layout. They can extend beyond the mobile screen and disappear
@@ -26,13 +37,13 @@
   const labelPositions = (ring, tall = false, scale = 1) => {
     const z = geometry(ring, tall);
     if (tall) return {
-      community: [z.cx, z.cy - z.ry - 16 * scale],
+      community: [z.cx, z.cy - z.ry - roleRadius(scale, tall) - 22 * scale],
       open: [z.cx, z.cy - z.openRy - 15 * scale],
       ai: [z.cx + z.openRx * 0.75, z.cy - z.ry * 0.17],
       creative: [z.cx + z.openRx * 0.75, z.cy + z.ry * 0.86],
     };
     return {
-      community: [z.cx, z.cy - z.ry - 16 * scale],
+      community: [z.cx, z.cy - z.ry - roleRadius(scale, tall) - 22 * scale],
       open: [z.cx - z.openRx * 0.72, z.cy - z.openRy * 0.86],
       ai: [z.cx + z.reachRx * 0.76, z.cy - z.reachRy * 0.70],
       creative: [z.cx + z.reachRx * 0.76, z.cy + z.reachRy * 0.72],
@@ -93,16 +104,16 @@
     // A porous double orbit, thin enough to read as a larger community rather
     // than a hard enclosure or a second mechanical flywheel.
     g.lineWidth = Math.max(0.55, 0.85 * k);
-    g.strokeStyle = rgba(GOLD, 0.28 * amount);
+    g.strokeStyle = rgba(GOLD, 0.44 * amount);
     oval(g, z.cx, z.cy, rx, ry); g.stroke();
     g.setLineDash([2.3 * k, 9 * k]);
-    g.strokeStyle = rgba(LIGHT, 0.18 * amount);
+    g.strokeStyle = rgba(LIGHT, 0.28 * amount);
     oval(g, z.cx, z.cy, rx + 11 * k, ry + 7 * k); g.stroke();
     g.setLineDash([]);
 
     // Deterministic, unevenly spaced nodes between the old wheel and the new
     // orbit. No random calls during paint: direct visits and reversals are stable.
-    for (let i = 0; i < 38; i++) {
+    for (let i = 0; i < 24; i++) {
       const angle = (i * 2.399963229728653) % TAU;
       const f = 0.24 + ((i * 11) % 17) / 22;
       const x = z.cx + Math.cos(angle) * lerp(z.rx * 1.05, rx, f);
@@ -154,6 +165,37 @@
     g.restore();
   };
 
-  const api = Object.freeze({ geometry, labelPositions, visibility, paint });
+  const paintRoles = (g, ring, { tall = false, scale = 1, time = 0, opacity = 1 } = {}) => {
+    if (!g || opacity <= .003) return;
+    const nodes = rolePositions(ring, tall), radius = roleRadius(scale, tall), k = Math.max(.7, scale);
+    g.save();
+    g.lineCap = 'round';
+    g.lineWidth = Math.max(.6, .8 * k);
+    g.strokeStyle = rgba(GOLD, .15 * opacity);
+    g.beginPath();
+    nodes.forEach(({x,y},i) => i ? g.lineTo(x,y) : g.moveTo(x,y));
+    g.closePath();
+    g.stroke();
+    nodes.forEach(({x,y}, i) => {
+      const r = radius * (.96 + .04 * Math.sin(time * .95 + i));
+      const gr = g.createRadialGradient(x,y,r*.2,x,y,r*1.65);
+      gr.addColorStop(0, rgba(LIGHT, .18*opacity));
+      gr.addColorStop(.55, rgba(GOLD, .10*opacity));
+      gr.addColorStop(1, rgba(GOLD, 0));
+      g.fillStyle = gr;
+      g.beginPath(); g.arc(x,y,r*1.65,0,TAU); g.fill();
+      g.fillStyle = rgba('35,26,15', .84*opacity);
+      g.lineWidth = Math.max(1,1.1*k);
+      g.strokeStyle = rgba(GOLD,.86*opacity);
+      g.beginPath(); g.arc(x,y,r,0,TAU);g.fill();g.stroke();
+      g.strokeStyle = rgba(LIGHT,.27*opacity);
+      g.lineWidth = Math.max(.5,.75*k);
+      g.beginPath();g.arc(x,y,r*.7,.1,2.5);g.stroke();
+      g.fillStyle = rgba(LIGHT,.95*opacity);
+      g.beginPath();g.arc(x,y,Math.max(2.4,3.6*k),0,TAU);g.fill();
+    });
+    g.restore();
+  };
+  const api = Object.freeze({ ROLES, ROLE_ANGLES, roleRadius, rolePositions, geometry, labelPositions, visibility, paint, paintRoles });
   if (typeof window !== 'undefined') window.MycelialCommunityExpansion = api;
 })();
