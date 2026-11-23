@@ -218,7 +218,7 @@
       }
       if(build>.4){
         const travelling=pulses.some(p=>!p.inspection&&p.id===i&&clock-p.at>=0&&clock-p.at<p.duration);
-        const a=opacity*clamp((build-.4)/.5)*(hot?1:.76)*atten*(travelling?.2:clamp((clock-reborn[i])/.65));
+        const a=opacity*clamp((build-.4)/.5)*(hot?1:.76)*atten*(travelling ? 0.2 : clamp((clock-reborn[i])/.65));
         dot(origin.x,origin.y,hot?4.0:2.35,strand.color,a,true);
       }
       if(hot&&build>.9){
