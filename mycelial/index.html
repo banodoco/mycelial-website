@@ -1836,6 +1836,54 @@
   @media (max-width: 760px) and (orientation: landscape) and (max-height: 330px) {
     .pa-side { translate: 0 -16px; }
   }
+
+  /* The filament scene keeps the original slide-1 dissolution and slide-3 chart handoffs.
+     Only its resting picture changes: tangible capabilities fraying at four technical barriers. */
+  html[data-ver="f"] .sf-host { justify-content: flex-start; padding-top: max(48px, 7vh); text-align: left; }
+  html[data-ver="f"] .sf-host > .split { display: block; width: 100%; }
+  html[data-ver="f"] .sf-host h1 {
+    max-width: min(32ch, 100%); margin: 0;
+    font-size: clamp(32px, 3.3vw, 54px); line-height: 1.1; text-align: left;
+  }
+  html[data-ver="f"] .sf-host .sf-stage { mask-image: none; -webkit-mask-image: none; }
+  html[data-ver="f"] .sf-host .sf-whisper,
+  html[data-ver="f"] .sf-host .sf-legend,
+  html[data-ver="f"] .sf-host .sf-card { visibility: hidden !important; pointer-events: none !important; }
+  html[data-ver="f"] .sf-host[data-deck-present] > .sf { opacity: 1; }
+  .ff-canvas { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+  .ff-hits { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+  .ff-hit {
+    position: absolute; transform: translate(-50%, -50%);
+    width: 24px; height: 24px; padding: 0; border: 0;
+    border-radius: 50%; background: transparent;
+    pointer-events: auto; cursor: pointer; touch-action: manipulation;
+  }
+  .ff-hit:focus-visible { outline: 1px solid #edc68f; outline-offset: 2px; }
+  .ff-note {
+    position: absolute; top: 24%; left: 11%; width: min(380px, 48vw); z-index: 5;
+    display: flex; flex-direction: column; gap: 4px; padding: 12px 15px;
+    border-left: 2px solid #d0a468; background: #15100bea;
+    box-shadow: 0 12px 35px #0008; pointer-events: none;
+    opacity: 0; transform: translateY(7px);
+    transition: opacity .22s ease, transform .22s ease;
+  }
+  .ff-note.is-on { opacity: 1; transform: none; }
+  .ff-note-kind { font: 11px/1.3 "DM Sans", sans-serif; color: #ae8b63; letter-spacing: .06em; }
+  .ff-note-name { font: italic 22px/1.12 "Cormorant Garamond", Georgia, serif; color: #e8bc85; }
+  .ff-note-detail { font: 15px/1.3 "EB Garamond", Georgia, serif; color: #c9b8a1; }
+  @media (max-width: 760px) {
+    html[data-ver="f"] .sf-host { justify-content: flex-start; padding: 52px 16px 75px; }
+    html[data-ver="f"] .sf-host h1 { font-size: clamp(25px, 5.8vw, 35px); max-width: 28ch; line-height: 1.08; }
+    html[data-ver="f"] .sf-host > .split { display: block; }
+    .ff-hit { width: 24px; height: 24px; }
+    .ff-note { left: 8%; top: 26%; width: min(310px, 82vw); padding: 9px 11px; }
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    html[data-ver="f"] .sf-host { padding-top: 24px; }
+    html[data-ver="f"] .sf-host h1 { font-size: clamp(20px, 5vh, 28px); max-width: 40ch; }
+    .ff-note { top: 12%; }
+  }
+
 </style>
 </head>
 <body>
@@ -1887,7 +1935,7 @@
     <div class="num">02<span class="act">The problem</span></div>
     <div class="split">
       <div>
-        <h1>But its capabilities are scattered across thousands of repos and threads — so <em>few artists, creators and everyday people can use them.</em></h1>
+        <h1>But its capabilities are scattered across thousands of repos and threads — so <em>few creators can actually use them.</em></h1>
       </div>
       <div class="vis" aria-hidden="true"></div>
     </div>
@@ -3009,6 +3057,7 @@
 </script>
 <script src="deck-overlay.js"></script>
 <script src="scatter-field.js"></script>
+<script src="filament-field.js"></script>
 <script src="collage.js"></script>
 <script src="dot-transitions.js"></script>
 <script src="gap.js"></script>
