@@ -2,7 +2,7 @@ name: Mycelial deck regressions
 
 on:
   push:
-    branches: [main, feature/community-ecosystem-expansion]
+    branches: [main, feature/community-ecosystem-expansion, feature/slide9-three-concentric-rings]
     paths:
       - 'mycelial/**'
       - 'tests/**'
