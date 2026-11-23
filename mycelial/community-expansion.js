@@ -45,8 +45,8 @@
     // Treat nesting as an invariant rather than an accidental consequence of
     // viewport caps. Reserve enough clear space for the on-ring role orbs and
     // for the dotted middle / inner outer-world strokes.
-    const innerGapY = Math.max(short ? 10 : tall ? 16 : 24, ry * .12);
-    const outerGapY = Math.max(short ? 10 : tall ? 14 : 18, ry * .10);
+    const innerGapY = Math.max(short ? 9 : tall ? 12 : 17, ry * .12);
+    const outerGapY = Math.max(short ? 9 : tall ? 11 : 14, ry * .10);
     const preferredOuterY = Math.max(ry * 1.14,
       Math.min(ry * (tall ? 2.0 : short ? 1.85 : 2.05), Math.max(ry * 1.16, maxY)));
     // If the vertical envelope is too small for all three rings, give the
