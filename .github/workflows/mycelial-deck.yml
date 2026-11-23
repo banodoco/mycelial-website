@@ -44,3 +44,12 @@ jobs:
           name: slide9-community-visuals
           path: .artifacts/slide9-community/
           if-no-files-found: warn
+      - name: Validate and capture live filament slide 1–2–3 transitions
+        run: node tools/deck/check-filament-journey.mjs
+      - name: Preserve slide 2 real-deck frames and transition recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slide2-filament-journey
+          path: .artifacts/slide2-filaments/
+          if-no-files-found: warn

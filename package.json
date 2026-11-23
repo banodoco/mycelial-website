@@ -27,7 +27,7 @@
     "check:captures": "tools/check.sh",
     "check:browser": "npm run check && npm run test:browser && npm run test:mobile",
     "test:gpu:browser": "node tools/test-gpu-preparation-browser.mjs",
-    "test:deck": "node --test tests/community-expansion.test.cjs tests/deck-copy-surfaces.test.mjs tests/deck-flowers-return.test.mjs tests/deck-font-readiness.test.mjs tests/deck-scene-resilience.test.mjs tests/deck-story.test.mjs tests/visible-view.test.mjs"
+    "test:deck": "node --test mycelial/tests/filament-contract.test.mjs tests/community-expansion.test.cjs tests/deck-copy-surfaces.test.mjs tests/deck-flowers-return.test.mjs tests/deck-font-readiness.test.mjs tests/deck-scene-resilience.test.mjs tests/deck-story.test.mjs tests/visible-view.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
