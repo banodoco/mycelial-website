@@ -33,6 +33,8 @@ jobs:
         run: npm run test:deck
       - name: Install browser harness
         run: npm ci --no-audit --no-fund
+      - name: Install Playwright video encoder
+        run: npx playwright install ffmpeg
       - name: Validate live slide transitions and capture desktop/mobile frames
         run: node tools/deck/check-community-expansion.mjs
       - name: Preserve visual QA frames
