@@ -53,6 +53,7 @@
   let visit=null, hovered=-1, pinned=-1, pointerLeave=0, pulseId=0, pulses=[], launchAt=0, shadow=0;
   // Capability identity belongs to each individual dot, not to the entire field.
   const assignments=Array.from({length:N},(_,i)=>(i*13)%catalogue.length);
+  const reborn=Array(N).fill(-100);
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
   const motionOff=()=>reduced || window.deckStill?.() || document.hidden;
   const owned=()=>slide.classList.contains('on') && !document.getElementById('overview')?.classList.contains('on');
@@ -215,7 +216,9 @@
         if(hot)a*=2.6;
         drawLine(strand,j,a,stage);
       }
-      if(build>.4){const a=opacity*clamp((build-.4)/.5)*(hot?1:.76)*atten;
+      if(build>.4){
+        const travelling=pulses.some(p=>!p.inspection&&p.id===i&&clock-p.at>=0&&clock-p.at<p.duration);
+        const a=opacity*clamp((build-.4)/.5)*(hot?1:.76)*atten*(travelling?.2:clamp((clock-reborn[i])/.65));
         dot(origin.x,origin.y,hot?4.0:2.35,strand.color,a,true);
       }
       if(hot&&build>.9){
@@ -258,11 +261,17 @@
         const id=Math.floor(hash(++pulseId*617+77)*N);
         pulses.push({id,at:clock,duration:2.2+hash(pulseId*77)*1.6,inspection:false});
         launchAt=clock+.37+hash(pulseId*37)*.45;
-        if(pulseId%9===0){const k=(pulseId*11)%N;
-          assignments[k]=(assignments[k]+17)%catalogue.length;
-          hits.children[k]?.setAttribute('aria-label',`Inspect ${activeItem(k).name}`);
-          geom[k].color=colors[activeItem(k).type]||'#d3b180';
-        }
+
+      }
+      // A departing mote leaves its original socket faint. Once it fails or
+      // survives its journey, one new resource grows into that same position.
+      for(const p of pulses){
+        if(p.inspection||p.replaced||clock-p.at<p.duration)continue;
+        p.replaced=true;
+        assignments[p.id]=(assignments[p.id]+17)%catalogue.length;
+        reborn[p.id]=clock;
+        hits.children[p.id]?.setAttribute('aria-label',`Inspect ${activeItem(p.id).name}`);
+        geom[p.id].color=colors[activeItem(p.id).type]||'#d3b180';
       }
     }
     if(mode==='enter-collage'&&latest()>2.35)mode='rest';
