@@ -1,0 +1,33 @@
+name: Mycelial deck regressions
+
+on:
+  push:
+    branches: [main, feature/community-ecosystem-expansion]
+    paths:
+      - 'mycelial/**'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/mycelial-deck.yml'
+  pull_request:
+    paths:
+      - 'mycelial/**'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/mycelial-deck.yml'
+
+jobs:
+  deck-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: |
+          node --check mycelial/community-expansion.js
+          node --check mycelial/flywheel.js
+      - name: Run deck regression suite
+        run: npm run test:deck

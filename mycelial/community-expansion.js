@@ -150,5 +150,4 @@
 
   const api = Object.freeze({ geometry, labelPositions, visibility, paint });
   if (typeof window !== 'undefined') window.MycelialCommunityExpansion = api;
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

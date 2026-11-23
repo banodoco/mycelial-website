@@ -2,7 +2,14 @@
 // Execute with: node --test tests/community-expansion.test.cjs
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const scope = require('../mycelial/community-expansion.js');
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
+const vm = require('node:vm');
+// The website is ESM; exercise this classic browser script in its actual window shape.
+const source = readFileSync(join(__dirname, '../mycelial/community-expansion.js'), 'utf8');
+const sandbox = { window: {} };
+vm.runInNewContext(source, sandbox, { filename: 'community-expansion.js' });
+const scope = sandbox.window.MycelialCommunityExpansion;
 
 test('nesting scales from the fitted existing flywheel geometry', () => {
   for (const tall of [false, true]) {
@@ -52,4 +59,16 @@ test('canvas paint is bounded, stateless and restores drawing state', () => {
     assert.equal(saves, restores);
   }
   assert.ok(lines > 4);
+});
+
+test('the live deck includes the renderer before flywheel and retains the 8-11 transitions', () => {
+  const html = readFileSync(join(__dirname, '../mycelial/index.html'), 'utf8');
+  const flywheel = readFileSync(join(__dirname, '../mycelial/flywheel.js'), 'utf8');
+  assert.ok(html.indexOf('src="community-expansion.js"') > 0);
+  assert.ok(html.indexOf('src="community-expansion.js"') < html.indexOf('src="flywheel.js"'));
+  assert.match(html, /carry <em>its creative momentum far beyond it/);
+  assert.match(flywheel, /Scope\.paint\(g, cur\.ring/);
+  assert.match(flywheel, /reversingTo8: !!unhanding/);
+  assert.match(flywheel, /deckRegisterScene\(\[8, 9, 10\]/);
+  assert.match(flywheel, /window\.AstridFlowers\.prepareReturn\(ctx\)/);
 });

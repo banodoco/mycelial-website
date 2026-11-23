@@ -22,11 +22,12 @@
     "test:browser": "node tools/browser-smoke.mjs && node tools/test-epilogue-retire.mjs && node tools/tempo-run.mjs",
     "test:browser:required": "node tools/browser-smoke.mjs --mode=required",
     "test:mobile": "node tools/trace/mobile/gate.mjs",
-    "test": "npm run test:unit && npm run test:harness && node tools/run-contracts.mjs && npm run test:static",
-    "check": "npm run runtime:check && npm run test:runtime && npm run lint && npm run cycles && npm run test:unit && npm run test:harness && node tools/run-contracts.mjs && npm run test:static",
+    "test": "npm run test:unit && npm run test:harness && node tools/run-contracts.mjs && npm run test:static && npm run test:deck",
+    "check": "npm run runtime:check && npm run test:runtime && npm run lint && npm run cycles && npm run test:unit && npm run test:harness && node tools/run-contracts.mjs && npm run test:static && npm run test:deck",
     "check:captures": "tools/check.sh",
     "check:browser": "npm run check && npm run test:browser && npm run test:mobile",
-    "test:gpu:browser": "node tools/test-gpu-preparation-browser.mjs"
+    "test:gpu:browser": "node tools/test-gpu-preparation-browser.mjs",
+    "test:deck": "node --test tests/community-expansion.test.cjs tests/deck-copy-surfaces.test.mjs tests/deck-flowers-return.test.mjs tests/deck-font-readiness.test.mjs tests/deck-scene-resilience.test.mjs tests/deck-story.test.mjs tests/visible-view.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
