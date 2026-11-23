@@ -82,9 +82,36 @@ for(const [w,h] of [[1280,720],[390,844],[812,375]]){
   });
 }
 test('barrier assignment is deterministic, not misrepresented as an empirical funnel',()=>{
-  for(const name of ['DISCOVER','SET UP','CONFIGURE','COMBINE'])
+  for(const name of ['DISCOVER','SET UP','CONFIGURE','CREATE'])
     assert.ok(addon.includes("'"+name+"'"));
   assert.match(addon,/Visual attrition is illustrative/);
   assert.match(addon,/const hash=/);
   assert.doesNotMatch(addon,/Math\.random\(/);
+});
+
+test('sampled artwork is passed to the new entrance without outward-starfield duplicates',()=>{
+  assert.match(source,/root\.filamentArtwork=motes\.filter/);
+  assert.match(source,/root\.filamentSuppressMotes=!!window\.FilamentField/);
+  assert.match(source,/!root\.filamentSuppressMotes \|\| rewind/);
+  assert.match(addon,/artwork=m==='enter-collage'&&Array\.isArray\(root\.filamentArtwork\)/);
+  assert.match(addon,/const dest=position\(strand,/);
+});
+test('stages, hovered paths and Create bursts respect their destination',()=>{
+  assert.match(addon,/g\.fillText\(gates\[j\]\[0\],x,baseline\)/);
+  assert.doesNotMatch(addon,/a world of possibilities|only a fraction reaches the artist/);
+  assert.match(addon,/const terminal=strand=>/);
+  assert.match(addon,/const partial=clamp\(head\*5-j\)/);
+  assert.match(addon,/if\(success&&time>=\.82\)/);
+});
+test('source-dot spacing is uniform on desktop and mobile',()=>{
+  for(const [w,h] of [[1280,720],[390,844],[812,375]]){
+    const {api,field}=harness(w,h);
+    api.enter('rest',{rest:true,direct:true});
+    const surface=field.children.find(x=>x.className==='ff-hits');
+    const ys=surface.children.map(b=>parseFloat(b.style.top));
+    assert.equal(ys.length,42);
+    const step=(ys[ys.length-1]-ys[0])/(ys.length-1);
+    assert.ok(step>0);
+    for(let i=1;i<ys.length;i++)assert.ok(Math.abs(ys[i]-ys[i-1]-step)<1e-6,'uneven dot '+i+' at '+w+'x'+h);
+  }
 });
