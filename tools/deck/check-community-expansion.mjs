@@ -132,7 +132,15 @@ try {
     if (o.clippedLabels.length) throw new Error('Clipped ecosystem labels on ' + o.shot + ': ' + o.clippedLabels.join(', '));
   }
   const at9 = observations.filter((o) => o.currentSlide === 9);
-  for (const o of at9) if (o.outerOpacity < 0.9) throw new Error('Outer circle invisible in ' + o.shot);
+  for (const o of at9) {
+    // On a phone in short landscape, the outer labels are hidden deliberately
+    // to avoid crowding the existing tiny flywheel. The orbit remains painted.
+    if (o.shot === 'short-landscape-slide9') {
+      if (o.outerOpacity !== 0 || o.worldOpacity !== 0)
+        throw new Error('Short landscape should suppress peripheral labels');
+    } else if (o.outerOpacity < 0.9)
+      throw new Error('Outer circle invisible in ' + o.shot);
+  }
   const at10 = observations.find((o) => o.shot === 'desktop-9-to-10');
   if (!at10 || at10.outerOpacity > 0.08) throw new Error('Outer circle did not fold before slide 10');
   if (errors.length) throw new Error('Page errors: ' + errors.join('; '));
