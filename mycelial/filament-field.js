@@ -51,14 +51,15 @@
   const N=42;
   let w=0,h=0,dpr=1,geom=[],sources=[],raf=0,last=0,elapsed=0,clock=0,mode='inactive',start=0;
   let visit=null, hovered=-1, pinned=-1, pointerLeave=0, pulseId=0, pulses=[], launchAt=0, shadow=0;
-  let currentItem=0, chosen=0, entranceSource='normal', ending=false;
+  // Capability identity belongs to each individual dot, not to the entire field.
+  const assignments=Array.from({length:N},(_,i)=>(i*13)%catalogue.length);
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
   const motionOff=()=>reduced || window.deckStill?.() || document.hidden;
   const owned=()=>slide.classList.contains('on') && !document.getElementById('overview')?.classList.contains('on');
   const now=()=>window.deckNow?.() ?? performance.now();
   const canvasArea=()=>({ left:root.getBoundingClientRect().left, top:root.getBoundingClientRect().top });
   const stopIndex=(i)=>{const x=hash(i*17+6);return x<.29?0:x<.56?1:x<.78?2:x<.93?3:4;};
-  const activeItem=i=>catalogue[(i*13+currentItem)%catalogue.length];
+  const activeItem=i=>catalogue[assignments[i]];
   const gateX=()=>[.345,.49,.635,.78].map(x=>w*x);
   const stops=()=>gateX();
   const layout=()=>{
@@ -257,7 +258,8 @@
         const id=Math.floor(hash(++pulseId*617+77)*N);
         pulses.push({id,at:clock,duration:2.2+hash(pulseId*77)*1.6,inspection:false});
         launchAt=clock+.37+hash(pulseId*37)*.45;
-        if(pulseId%9===0){currentItem=(currentItem+1)%catalogue.length; const k=(pulseId*11)%N;
+        if(pulseId%9===0){const k=(pulseId*11)%N;
+          assignments[k]=(assignments[k]+17)%catalogue.length;
           hits.children[k]?.setAttribute('aria-label',`Inspect ${activeItem(k).name}`);
           geom[k].color=colors[activeItem(k).type]||'#d3b180';
         }
