@@ -1183,18 +1183,17 @@
   .fw-core { font-size: 1.05em; color: #f0c67e; }
   .fw-verb { font-size: .86em; color: #d4b67f; letter-spacing: .04em; }
   /* Crisp labels belong to the existing flywheel DOM layer, not canvas text. */
-  .fw-scope { font: 500 clamp(9px, .73vw, 11px)/1.2 "DM Sans", system-ui, sans-serif;
-    text-transform: uppercase; letter-spacing: .13em; color: #c4ad85; text-align: center; }
-  .fw-scope-community { color: #f0c67e; letter-spacing: .19em; }
-  .fw-scope-open { color: #d3b787; }
-  .fw-scope-world { color: #ac9d83; }
+  /* Three rings, three labels. Their DOM identity differs but typography,
+     colour, letter spacing and hierarchy do not. */
+  .fw-scope { font: 500 clamp(9px, .74vw, 11px)/1.2 "DM Sans", system-ui, sans-serif;
+    text-transform: uppercase; letter-spacing: .11em; color: #d9bd8e; text-align: center;
+    text-shadow: 0 0 8px #0d0a07, 0 1px 4px #0d0a07; }
   .fw-role { width: clamp(72px, 7.2vw, 110px); white-space: normal;
     font: 500 clamp(10px, .84vw, 12px)/1.16 "DM Sans", system-ui, sans-serif;
     letter-spacing: .025em; color: #f0d3a0; text-align: center;
     text-shadow: 0 1px 7px #0d0a07, 0 0 12px #0d0a07; }
   @media (max-width: 760px) {
-    .fw-scope { font-size: 9px; letter-spacing: .07em; }
-    .fw-scope-community { font-size: 9px; letter-spacing: .12em; }
+    .fw-scope { font-size: 9px; letter-spacing: .065em; }
     .fw-role { width: 66px; font-size: 9px; line-height: 1.1; letter-spacing: 0; }
   }
   @media (orientation: landscape) and (max-height: 500px) {
@@ -2049,7 +2048,7 @@
   </section>
 
     <section class="slide fw-host" data-v="f">
-    <div class="fw-alt" role="img" aria-label="Five community groups—artists, model trainers, workflow builders, toolmakers and knowledge sharers—circulate around Astrid. A wider open-source AI network and two distinct outward paths expand beyond."></div>
+    <div class="fw-alt" role="img" aria-label="Three concentric rings: Our community, Open-source AI ecosystem, and Wider creative world. Five groups—artists, model trainers, workflow builders, toolmakers and knowledge sharers—sit on the innermost ring surrounding Astrid. A traveling light activates each group as it reaches its orb."></div>
     <p class="fw-stat"><b aria-label="23,932"><span aria-hidden="true">23,932</span></b> people · Banodoco Discord · <a href="https://discord.gg/NnFxGvx94b" target="_blank" rel="noopener">Join →</a></p>
     <div class="num">09<span class="act">The community</span></div>
     <div class="split">

@@ -54,9 +54,9 @@
     g2: tag('fw-who fw-l', 'toolmakers'),
     inspire: tag('fw-verb', 'inspire'),
     equip: tag('fw-verb', 'equip'),
-    community: tag('fw-scope', 'OUR COMMUNITY'),
-    open: tag('fw-scope', 'OPEN-SOURCE AI ECOSYSTEM'),
-    world: tag('fw-scope', 'WIDER CREATIVE WORLD'),
+    community: tag('fw-scope fw-scope-community', 'OUR COMMUNITY'),
+    open: tag('fw-scope fw-scope-open', 'OPEN-SOURCE AI ECOSYSTEM'),
+    world: tag('fw-scope fw-scope-world', 'WIDER CREATIVE WORLD'),
     ...Object.fromEntries((Scope?.ROLES || []).map((name, i) => ['role' + i, tag('fw-role', name)])),
   };
   // Our four initiatives, as small versions of the homepage's cards: its own words, links and real images

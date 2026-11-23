@@ -45,6 +45,12 @@ const snapshot = async (page, name) => {
     const host = document.querySelector('.slide.on');
     const main = host?.querySelector('h1')?.getBoundingClientRect();
     const visible = [...document.querySelectorAll('.fw-scope')].filter((el) => Number(el.style.opacity) > 0.4);
+    const ringLabelRects = visible.map(el => ({ text: el.textContent, r: el.getBoundingClientRect() }));
+    const ringLabelOverlaps = ringLabelRects.flatMap((a, i) =>
+      ringLabelRects.slice(i + 1).filter(b =>
+        a.r.left < b.r.right - 2 && a.r.right > b.r.left + 2 &&
+        a.r.top < b.r.bottom - 2 && a.r.bottom > b.r.top + 2
+      ).map(b => a.text + ' / ' + b.text));
     const roles = [...document.querySelectorAll('.fw-role')].filter((el) => Number(el.style.opacity) > 0.4);
     const roleRects = roles.map(el => ({ label: el.textContent, r: el.getBoundingClientRect() }));
     const roleOverlaps = roleRects.flatMap((a, i) =>
@@ -72,6 +78,8 @@ const snapshot = async (page, name) => {
       overlappingText: overlaps,
       clippedLabels,
       roleCount: roles.length,
+      ringLabelCount: visible.length,
+      ringLabelOverlaps,
       roleOverlaps,
       clippedRoles,
     };
@@ -168,18 +176,15 @@ try {
     if (o.overlappingText.length) throw new Error('Label overlaps headline on ' + o.shot + ': ' + o.overlappingText.join(', '));
     if (o.clippedLabels.length) throw new Error('Clipped ecosystem labels on ' + o.shot + ': ' + o.clippedLabels.join(', '));
     if (o.currentSlide === 9 && o.roleCount !== 5) throw new Error('Missing community roles on ' + o.shot + ': ' + o.roleCount);
+    if (o.currentSlide === 9 && o.ringLabelCount !== 3) throw new Error('Expected exactly 3 ring labels on ' + o.shot + ': ' + o.ringLabelCount);
+    if (o.currentSlide === 9 && o.ringLabelOverlaps.length) throw new Error('Overlapping ring labels on ' + o.shot + ': ' + o.ringLabelOverlaps.join(', '));
     if (o.currentSlide === 9 && o.roleOverlaps.length) throw new Error('Overlapping role labels on ' + o.shot + ': ' + o.roleOverlaps.join(', '));
     if (o.currentSlide === 9 && o.clippedRoles.length) throw new Error('Clipped role labels on ' + o.shot + ': ' + o.clippedRoles.join(', '));
   }
   const at9 = observations.filter((o) => o.currentSlide === 9);
   for (const o of at9) {
-    // On a phone in short landscape, the outer labels are hidden deliberately
-    // to avoid crowding the existing tiny flywheel. The orbit remains painted.
-    if (o.shot === 'short-landscape-slide9') {
-      if (o.outerOpacity !== 0 || o.worldOpacity !== 0)
-        throw new Error('Short landscape should suppress peripheral labels');
-    } else if (o.outerOpacity < 0.9)
-      throw new Error('Outer circle invisible in ' + o.shot);
+    if (o.outerOpacity < .9 || o.worldOpacity < .9)
+      throw new Error('The three world rings must stay labeled on ' + o.shot);
   }
   const at10 = observations.find((o) => o.shot === 'desktop-9-to-10');
   if (!at10 || at10.outerOpacity > 0.08) throw new Error('Outer circle did not fold before slide 10');
