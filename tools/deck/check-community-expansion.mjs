@@ -45,6 +45,10 @@ const snapshot = async (page, name) => {
     const host = document.querySelector('.slide.on');
     const main = host?.querySelector('h1')?.getBoundingClientRect();
     const visible = [...document.querySelectorAll('.fw-scope')].filter((el) => Number(el.style.opacity) > 0.4);
+    const clippedLabels = visible.filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.left < 2 || r.right > innerWidth - 2;
+    }).map((el) => el.textContent);
     const overlaps = visible.filter((el) => {
       if (!main) return false;
       const r = el.getBoundingClientRect();
@@ -57,6 +61,7 @@ const snapshot = async (page, name) => {
       outerOpacity: Number(a?.style.opacity || 0),
       worldOpacity: Number(b?.style.opacity || 0),
       overlappingText: overlaps,
+      clippedLabels,
     };
   }, name));
 };
@@ -124,6 +129,7 @@ try {
   for (const o of observations) {
     if (!o.hasScope) throw new Error('Missing community expansion on ' + o.shot);
     if (o.overlappingText.length) throw new Error('Label overlaps headline on ' + o.shot + ': ' + o.overlappingText.join(', '));
+    if (o.clippedLabels.length) throw new Error('Clipped ecosystem labels on ' + o.shot + ': ' + o.clippedLabels.join(', '));
   }
   const at9 = observations.filter((o) => o.currentSlide === 9);
   for (const o of at9) if (o.outerOpacity < 0.9) throw new Error('Outer circle invisible in ' + o.shot);

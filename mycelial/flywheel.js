@@ -844,16 +844,20 @@
     put(labels.equip, cur.equip[0], cur.equip[1], 0.5, 0.5);
     if (Scope) {
       const positions = Scope.labelPositions(cur.ring, tall, k);
-      for (const key of ['community', 'open', 'ai', 'creative'])
-        put(labels[key], positions[key][0], positions[key][1], 0.5, 0.5);
+      for (const key of ['community', 'open', 'ai', 'creative']) {
+        const [width] = lsz.get(labels[key]) || [0, 0];
+        const x = clamp(positions[key][0], width / 2 + 12, Math.max(width / 2 + 12, W - width / 2 - 12));
+        put(labels[key], x, positions[key][1], 0.5, 0.5);
+      }
     }
     const pa = nine(), reach = scopeQ();
     for (const key in labels) {
       let opacity;
       if (key === 'astrid') opacity = smooth(k01(T.lens + 0.6, 0.5)) * lensA();
       else if (key === 'community') opacity = smooth(k01(T.labels, 0.6)) * pa;
-      else if (key === 'open') opacity = reach;
-      else if (key === 'ai' || key === 'creative') opacity = smooth(clamp((reach - 0.3) / 0.55));
+      else if (key === 'open') opacity = short ? 0 : reach;
+      else if (key === 'ai' || key === 'creative') opacity = short ? 0 : smooth(clamp((reach - 0.3) / 0.55));
+      else if (short && ['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'].includes(key)) opacity = 0;
       else opacity = ql * pa;
       setOp(labels[key], opacity);
     }

@@ -25,9 +25,15 @@
   };
   const labelPositions = (ring, tall = false, scale = 1) => {
     const z = geometry(ring, tall);
+    if (tall) return {
+      community: [z.cx, z.cy - z.ry - 16 * scale],
+      open: [z.cx, z.cy - z.openRy - 15 * scale],
+      ai: [z.cx + z.openRx * 0.75, z.cy - z.ry * 0.17],
+      creative: [z.cx + z.openRx * 0.75, z.cy + z.ry * 0.86],
+    };
     return {
       community: [z.cx, z.cy - z.ry - 16 * scale],
-      open: [z.cx - z.openRx * (tall ? 0.67 : 0.72), z.cy - z.openRy * 0.86],
+      open: [z.cx - z.openRx * 0.72, z.cy - z.openRy * 0.86],
       ai: [z.cx + z.reachRx * 0.76, z.cy - z.reachRy * 0.70],
       creative: [z.cx + z.reachRx * 0.76, z.cy + z.reachRy * 0.72],
     };
