@@ -54,10 +54,9 @@
     g2: tag('fw-who fw-l', 'toolmakers'),
     inspire: tag('fw-verb', 'inspire'),
     equip: tag('fw-verb', 'equip'),
-    community: tag('fw-scope fw-scope-community', 'OUR COMMUNITY'),
-    open: tag('fw-scope fw-scope-open', 'WIDER OPEN-SOURCE AI ECOSYSTEM'),
-    ai: tag('fw-scope fw-scope-world', 'WIDER AI WORLD'),
-    creative: tag('fw-scope fw-scope-world', 'CREATIVE WORLD'),
+    community: tag('fw-scope', 'OUR COMMUNITY'),
+    open: tag('fw-scope', 'OPEN-SOURCE AI ECOSYSTEM'),
+    world: tag('fw-scope', 'WIDER CREATIVE WORLD'),
     ...Object.fromEntries((Scope?.ROLES || []).map((name, i) => ['role' + i, tag('fw-role', name)])),
   };
   // Our four initiatives, as small versions of the homepage's cards: its own words, links and real images
@@ -471,7 +470,8 @@
   // ---- Time and state ----------------------------------------------------------------------------
   // ta: seconds since the picture began; m: where it stands between the slides (0 = 9, 1 = 10, 2 = 11).
   let ta = 0, m = 0, morph = null, begun = false, running = false, raf = 0, last = 0, entryCtx = null, reverseCtx = null, activeStage = -1;
-  let attach = { dir: 0, t0: 0 }, boost = 0, spin = 0, motes = [], nextMote = 0, flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], plug: chips.map(() => 0) };
+  let attach = { dir: 0, t0: 0 }, boost = 0, spin = 0, motes = [], nextMote = 0, roleCursor = 0,
+    flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], role: [0, 0, 0, 0, 0], plug: chips.map(() => 0) };
   const relayOrder = [1, 4, 3, 5, 2, 0], OMEGA = TAU / 10;
   let relay = null, cur = null, lastM = -1;
   const T_FRESH = { lens: 0.05, ring: 0.25, art: 0.35, artT: 0.75, grpT: 1.05, grp: 1.3, link: 1.8, labels: 1.5, motes: 2.0, chips: 2.3 };
@@ -550,7 +550,8 @@
   const route = (mo) => {
     if (mo.kind === 'role') {
       const a = Scope.ROLE_ANGLES[mo.i];
-      return line(arc(a, a + TAU / Scope.ROLES.length, -lane() * .5));
+      // The illuminated current sits on EXACTLY the same ellipse as the roles.
+      return line(arc(a, a + TAU / Scope.ROLES.length, 0));
     }
     if (mo.kind === 'in') { // an artist, round the top, out to a group
       const a = entryTh(mo.a), b = exitTh(mo.b) + TAU;
@@ -674,7 +675,8 @@
     const pa = nine();
 
     // The wider network sits BELOW the existing wheel, without a second scene.
-    if (Scope) Scope.paint(g, cur.ring, { tall, scale: k, time: ta, visibility: scopeQ() });
+    if (Scope) Scope.paint(g, cur.ring, { tall, short, width: W, height: H,
+      scale: k, time: ta, visibility: scopeQ() });
 
     // The ring: two strands traced from the artists' side round both ways; beads on the inner one turn with it.
     const qr = ease(k01(T.ring, 1.1));
@@ -697,7 +699,7 @@
 
     // Five distinct role-orbs on the live community wheel, fading with stage 9.
     if (Scope) Scope.paintRoles(g, cur.ring, { tall, scale: k, time: ta,
-      opacity: pa * smooth(k01(T.grp - .15, .65)) });
+      opacity: pa * smooth(k01(T.grp - .15, .65)), impacts: flashes.role });
     // Astrid at the hub: the lens traces from its tips, the mink inside; faint spokes out to the ring.
     const hq = hand ? easeIO(clamp(ta / 1.25)) : 1;
     const ql = hand ? 1 : ease(k01(T.lens, 1.0));
@@ -842,8 +844,9 @@
     put(labels.inspire, cur.inspire[0], cur.inspire[1], 0.5, 0.5);
     put(labels.equip, cur.equip[0], cur.equip[1], 0.5, 0.5);
     if (Scope) {
-      const positions = Scope.labelPositions(cur.ring, tall, k);
-      for (const key of ['community', 'open', 'ai', 'creative']) {
+      const positions = Scope.labelPositions(cur.ring, tall, k,
+        { width: W, height: H, short });
+      for (const key of ['community', 'open', 'world']) {
         const [width] = lsz.get(labels[key]) || [0, 0];
         const x = clamp(positions[key][0], width / 2 + 12, Math.max(width / 2 + 12, W - width / 2 - 12));
         put(labels[key], x, positions[key][1], 0.5, 0.5);
@@ -860,10 +863,9 @@
       if (key === 'astrid') opacity = smooth(k01(T.lens + 0.6, 0.5)) * lensA();
       else if (key.startsWith('role')) opacity = pa * smooth(k01(T.grp - .1, .6));
       else if (['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'].includes(key)) opacity = 0;
-      else if (key === 'community') opacity = short ? 0 : smooth(k01(T.labels, 0.6)) * pa;
-      else if (key === 'open') opacity = short ? 0 : reach;
-      else if (key === 'ai' || key === 'creative') opacity = (tall || short) ? 0 : smooth(clamp((reach - 0.3) / 0.55));
-      else if (short && ['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'].includes(key)) opacity = 0;
+      else if (key === 'community') opacity = smooth(k01(T.labels, .6)) * pa;
+      else if (key === 'open') opacity = reach;
+      else if (key === 'world') opacity = smooth(clamp((reach - .2) / .72));
       else opacity = ql * pa;
       setOp(labels[key], opacity);
     }
@@ -1026,11 +1028,13 @@
 
   // ---- Motion -------------------------------------------------------------------------------------
   const spawn = () => {
-    // A sparse shared circulation instead of criss-crossing group-to-group trails.
-    const mo = { kind: 'role', i: Math.floor(Math.random() * 5), t0: ta };
+    // One continuous light, moving in sequence around the five orb sockets.
+    // Each segment ends at the next orb, which receives the energy pulse.
+    const mo = { kind: 'role', i: roleCursor++ % Scope.ROLES.length, t0: ta };
     const len = routeFor(mo).total;
-    mo.dur = clamp(len / (180 * Math.max(.5, k)), 1.4, 3.2);
+    mo.dur = clamp(len / (165 * Math.max(.5, k)), 1.1, 1.85);
     motes.push(mo);
+    return mo.dur;
   };
   let operation = null, textClear = null;
   const finishOperation = (ctx, result = 'completed') => {
@@ -1040,7 +1044,8 @@
     resolve(result);
   };
   const land = (mo) => {
-    if (mo.kind === 'in') flashes.grp[mo.b] = 1;
+    if (mo.kind === 'role') flashes.role[(mo.i + 1) % Scope.ROLES.length] = 1;
+    else if (mo.kind === 'in') flashes.grp[mo.b] = 1;
     else if (mo.kind === 'eq') flashes.art[mo.a] = 1;
     else if (mo.kind === 'hop') flashes.grp[mo.b + 1] = 1;
     else if (relay) relay.attacks[mo.kind === 'relay' ? mo.next : mo.c] = 0.3;
@@ -1058,7 +1063,8 @@
     const target = m >= 0.9 ? (m > 1.5 ? 0.6 : 1) : 0;
     boost += (target - boost) * (1 - Math.exp(-dt / 0.9));
     spin += dt * 0.08;
-    for (const key of ['art', 'grp']) flashes[key] = flashes[key].map((f) => f * Math.exp(-dt / 0.5));
+    for (const key of ['art', 'grp']) flashes[key] = flashes[key].map((f) => f * Math.exp(-dt / .5));
+    flashes.role = flashes.role.map((f) => f * Math.exp(-dt / .52));
     if (m >= 0.9 && !relay) relay = { start: ta, arrivals: 0, nextArrival: ta, next: 0, launch: Infinity, attacks: chips.map(() => 0) };
     if (m < 0.5) { relay = null; flashes.plug.fill(0); }
     if (relay) {
@@ -1084,7 +1090,10 @@
     grT.forEach((t, i) => { gro[i] += (t - gro[i]) * (1 - Math.exp(-dt / 0.13)); if (Math.abs(t - gro[i]) < 0.002) gro[i] = t; });
     // Motes: a calm, continuous circulation once the wheel is drawn.
     if (ta >= T.motes) {
-      if (m < 0.5 && ta >= nextMote) { spawn(); nextMote = ta + (0.75 + Math.random() * 0.6) / (1 + 0.8 * boost); }
+      if (m < .5 && ta >= nextMote && !motes.some((mo) => mo.kind === 'role')) {
+        const dur = spawn();
+        nextMote = ta + dur + .10;
+      }
       motes = motes.filter((mo) => !['relay', 'arrival'].includes(mo.kind) || m >= 0.3); // back on 9, the energy goes with the cards
       motes = motes.filter((mo) => { if (ta - mo.t0 >= mo.dur) { land(mo); return false; } return true; });
     }
@@ -1226,7 +1235,8 @@
     clearFullCards(); vis.fill(null);
     vids.forEach((v) => v && !v.paused && v.pause()); cardsRoot.inert = true; cardsRoot.classList.remove('is-live'); fly.style.opacity = '0';
     T = T_FRESH; hand = null; minkAt = null;
-    flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], plug: chips.map(() => 0) };
+    roleCursor = 0;
+    flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], role: [0, 0, 0, 0, 0], plug: chips.map(() => 0) };
     for (const key in labels) labels[key].style.opacity = '0';
     chips.forEach((c) => { c.style.opacity = '0'; });
   };
