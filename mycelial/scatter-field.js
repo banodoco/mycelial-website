@@ -996,7 +996,7 @@
   const canvasArea=()=>({ left:root.getBoundingClientRect().left, top:root.getBoundingClientRect().top });
   const stopIndex=(i)=>{const x=hash(i*17+6);return x<.29?0:x<.56?1:x<.78?2:x<.93?3:4;};
   const activeItem=i=>catalogue[assignments[i]];
-  // Need and the four stages form five evenly spaced beats across the width.
+  // Required and the four stages form five evenly spaced beats across the width.
   const sourceX=()=>w*(w<700?.08:.11);
   const gateX=()=>{
     const origin=sourceX(),last=w*(w<700?.86:.87);
@@ -1034,7 +1034,9 @@
     geom=Array.from({length:N},(_,i)=>{
       const u=(i+.5)/N;
       const y=top+u*(bottom-top); // evenly spaced left-hand dots
-      const x0=sourceX()+(hash(i*33+2)-.5)*Math.min(w*.012,12);
+      // Start every strand directly beneath Required, so the first interval
+      // is exactly the same width as the four following stage intervals.
+      const x0=sourceX();
       const xf=w*(narrow?.95:.925);
       const end=stopIndex(i);
       const nodes=Array.from({length:6},(_,k)=>{
@@ -1201,7 +1203,7 @@
       g.font='10px "EB Garamond",Georgia,serif';g.letterSpacing='0px';
       g.fillText(String(j+1).padStart(2,'0'),x,labelY-17);
     });
-    // Need is the origin, not a barrier; align it with the four steps.
+    // Required is the origin, not a barrier; align it with the four steps.
     const needX=sourceX(); // Required is the starting point, not another filter
     g.fillStyle=alpha('#e4bf8a',opacity*.94);
     g.textAlign='center';g.letterSpacing='1.4px';
