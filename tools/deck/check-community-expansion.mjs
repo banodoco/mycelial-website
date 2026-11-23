@@ -44,6 +44,14 @@ const snapshot = async (page, name) => {
     const b = document.querySelector('.fw-scope-world');
     const host = document.querySelector('.slide.on');
     const main = host?.querySelector('h1')?.getBoundingClientRect();
+    const innerRing = window.AstridFlywheel?.ring?.(0);
+    const portrait = innerWidth <= 760 && innerHeight > innerWidth;
+    const smallLandscape = !portrait && innerHeight <= 500;
+    const rings = innerRing && window.MycelialCommunityExpansion?.geometry(
+      innerRing, portrait, { width: innerWidth, height: innerHeight, short: smallLandscape }
+    );
+    const verticalRingGaps = rings
+      ? [rings.openRy - rings.ry, rings.outerRy - rings.openRy] : null;
     const visible = [...document.querySelectorAll('.fw-scope')].filter((el) => Number(el.style.opacity) > 0.4);
     const ringLabelRects = visible.map(el => ({ text: el.textContent, r: el.getBoundingClientRect() }));
     const ringLabelOverlaps = ringLabelRects.flatMap((a, i) =>
@@ -82,6 +90,8 @@ const snapshot = async (page, name) => {
       ringLabelOverlaps,
       roleOverlaps,
       clippedRoles,
+      innerRing,
+      verticalRingGaps,
     };
   }, name));
 };
@@ -150,6 +160,21 @@ try {
   await snapshot(hero, 'desktop-main-slide9');
   await hero.close();
 
+  // Large desktop CSS viewports exercise the formerly inverted vertical
+  // radii; browser dimensions, not monitor diagonal inches, govern layout.
+  for (const [w, h] of [[1920, 1080], [1920, 900]]) {
+    const large = await browser.newPage({
+      viewport: { width: w, height: h }, deviceScaleFactor: 1,
+      reducedMotion: 'reduce',
+    });
+    record(large, 'large-' + w + 'x' + h);
+    await large.goto(base + '#9', { waitUntil: 'domcontentloaded' });
+    await large.waitForFunction(() => window.deckNav?.to === 8);
+    await sleep(1200);
+    await snapshot(large, 'desktop-' + w + 'x' + h + '-slide9');
+    await large.close();
+  }
+
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 }, deviceScaleFactor: 1,
     isMobile: true, hasTouch: true, reducedMotion: 'reduce',
@@ -175,6 +200,8 @@ try {
     if (!o.hasScope) throw new Error('Missing community expansion on ' + o.shot);
     if (o.overlappingText.length) throw new Error('Label overlaps headline on ' + o.shot + ': ' + o.overlappingText.join(', '));
     if (o.clippedLabels.length) throw new Error('Clipped ecosystem labels on ' + o.shot + ': ' + o.clippedLabels.join(', '));
+    if (o.currentSlide === 9 && (!o.verticalRingGaps || o.verticalRingGaps.some(gap => gap <= 0)))
+      throw new Error('Nested rings invert or touch vertically on ' + o.shot + ': ' + JSON.stringify(o.verticalRingGaps));
     if (o.currentSlide === 9 && o.roleCount !== 5) throw new Error('Missing community roles on ' + o.shot + ': ' + o.roleCount);
     if (o.currentSlide === 9 && o.ringLabelCount !== 3) throw new Error('Expected exactly 3 ring labels on ' + o.shot + ': ' + o.ringLabelCount);
     if (o.currentSlide === 9 && o.ringLabelOverlaps.length) throw new Error('Overlapping ring labels on ' + o.shot + ': ' + o.ringLabelOverlaps.join(', '));
