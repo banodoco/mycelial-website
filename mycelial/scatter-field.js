@@ -1149,7 +1149,8 @@
       build=1-ease(clamp(since/.85));opacity=1-ease(clamp(since/1.1));dusting=clamp(1-since/.6);
     }else if(mode==='inactive') { g.clearRect(0,0,w,h);root.classList.remove('ff-active');return; }
     if(mode!=='exit-collage'&&mode!=='exit-gap'&&mode!=='enter-collage')dusting=1;
-    if(originalCanvas)originalCanvas.style.opacity=String(1-dusting);
+    // One renderer owns moving artwork pixels during the entrance.
+    if(originalCanvas)originalCanvas.style.opacity=mode==='enter-collage'&&artwork.length?'0':String(1-dusting);
     root.classList.toggle('ff-active',mode!=='inactive');
 
     const gatesX=stops(),yTop=narrow?h*.475:h*.46,yBottom=narrow?h*.86:h*.88;
@@ -1161,22 +1162,43 @@
       grad.addColorStop(0,alpha('#d5a368',0));grad.addColorStop(.20,alpha('#d5a368',fade));
       grad.addColorStop(.80,alpha('#d5a368',fade*.8));grad.addColorStop(1,alpha('#d5a368',0));
       g.strokeStyle=grad;g.beginPath();g.moveTo(x,yTop);g.lineTo(x,yBottom);g.stroke();
-      g.fillStyle=alpha('#d6ba90',opacity*.86);
+      // All four evenly spaced labels share a baseline beneath the threads.
+      const baseline=yBottom+(narrow?22:25);
+      g.fillStyle=alpha(j===3?'#f0c98d':'#d6ba90',opacity*.94);
       g.font=`${narrow?10:12}px "DM Sans",Arial,sans-serif`;
-      g.textAlign='center';g.letterSpacing='1.6px';
-      g.fillText(gates[j][0],x,yTop-(narrow?(j%2===0?20:42):20));
-      if(!narrow){g.fillStyle=alpha('#9b8262',opacity*.8);g.font='11px "EB Garamond",Georgia,serif';g.letterSpacing='0px';
-      g.fillText(String(j+1).padStart(2,'0'),x,yTop-40);}
+      g.textAlign='center';g.letterSpacing='1.4px';
+      g.fillText(gates[j][0],x,baseline);
+      g.fillStyle=alpha('#9b8262',opacity*.65);
+      g.font='10px "EB Garamond",Georgia,serif';g.letterSpacing='0px';
+      g.fillText(String(j+1).padStart(2,'0'),x,baseline-17);
     });
     g.restore();
 
+    // The gallery's real sampled pixels fold into the filament field.
+    if(mode==='enter-collage'&&artwork.length){
+      g.save();
+      for(const mote of artwork){
+        const t=clamp((since-.07-mote.delay*.8)/1.26);
+        if(t<=0||t>=1)continue;
+        const k=ease(t),strand=geom[mote.id%N];
+        const dest=position(strand,.035+.33*hash(mote.id*53+3));
+        const turn=Math.sin(Math.PI*k);
+        const x=point(mote.x,dest.x,k)+(hash(mote.id*97)-.5)*42*turn;
+        const y=point(mote.y,dest.y,k)-23*turn;
+        const a=clamp(t/.11)*clamp((1-t)/.27)*(.72+.2*hash(mote.id*9));
+        const size=point(mote.size,1.1,k);
+        g.globalAlpha=a;g.fillStyle=mote.color;
+        g.fillRect(x-size*.5,y-size*.5,size,size);
+      }
+      g.restore();
+    }
     geom.forEach((strand,i)=>{
       const hot=i===hovered||i===pinned;
       const atten=hot?1:((hovered>=0||pinned>=0)?.24:1);
       const twinkle=1+.085*Math.sin(clock*.65+i*1.1);
       const origin=strand.nodes[0];
-      if(build<.999){
-        // Arrival source locations come from the original starfield snapshot.
+      if(build<.999&&!artwork.length){
+        // Fallback when the gallery did not provide any sampled image pixels.
         const src=sources[i%sources.length]||{x:w*.5,y:h*.52};
         const k=ease(clamp((since-.16)/.9));
         const x=point(src.x,origin.x,k),y=point(src.y,origin.y,k);
@@ -1186,7 +1208,7 @@
         const stage=clamp(build*5-j);
         let a=(j===0?.35:j===1?.26:j===2?.20:j===3?.14:.09)*opacity*atten*twinkle;
         if(j>strand.end)a*=.095;
-        if(hot)a*=2.6;
+        if(hot)a*=.32; // bright focus is painted only behind the pulse head
         drawLine(strand,j,a,stage);
       }
       if(build>.4){
@@ -1195,7 +1217,12 @@
         dot(origin.x,origin.y,hot?4.0:2.35,strand.color,a,true);
       }
       if(hot&&build>.9){
-        for(let j=0;j<5;j++)drawLine(strand,j,(j>strand.end?.055:.8)*opacity,1);
+        // Highlight is drawn only as far as this journey has travelled.
+        const head=terminal(strand)*ease(clamp((clock-highlightAt)/2.7));
+        for(let j=0;j<5;j++){
+          const partial=clamp(head*5-j);
+          if(partial>0)drawLine(strand,j,.88*opacity,partial);
+        }
       }
     });
     // Passing motes: the survivor is brighter; most die at a predetermined gate.
@@ -1218,12 +1245,7 @@
         }
       }
     }
-    if(mode==='rest'&&opacity>.9){
-      g.fillStyle=alpha('#9d7c56',.72);
-      g.font='italic 15px "Cormorant Garamond",Georgia,serif';
-      g.textAlign='left';g.fillText('a world of possibilities',w*.11,narrow?h*.91:h*.89);
-      g.textAlign='right';g.fillStyle=alpha('#9a8062',.52);g.fillText('only a fraction reaches the artist',w*.927,narrow?h*.91:h*.89);
-    }
+
   };
   const update=()=>{
     raf=0;const t=now(),dt=clamp((t-(last||t))/1000,0,.06);last=t;
