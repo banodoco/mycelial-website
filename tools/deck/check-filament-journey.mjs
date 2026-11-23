@@ -78,7 +78,10 @@ try{
   await page.waitForFunction(()=>window.__filamentBloomEvents?.some(event=>event.strand===12),{timeout:7000});
   await sleep(140);
   await page.screenshot({path:join(output,'desktop-create-bloom.png'),animations:'disabled'});
-  observations.push({step:'create-bloom',events:await page.evaluate(()=>window.__filamentBloomEvents)});
+  const created=await page.evaluate(()=>window.__filamentBloomEvents);
+  if(created.filter(event=>event.strand===12).length!==1)
+    throw Error('Create bloom fired more than once for one hovered-and-pinned capability: '+JSON.stringify(created));
+  observations.push({step:'create-bloom',events:created});
   // Blank-space click must navigate forward, not open an invisible old starfield card.
   await page.mouse.click(1198,440);
   await page.waitForFunction(()=>window.deckNav?.to===2,{timeout:15000});
