@@ -29,6 +29,7 @@ test('expansion is absent before its arrival, full on direct or settled slide 9'
   const p = { morph: 0, motesAt: 2.4 };
   assert.equal(scope.visibility({ ...p, time: 0 }), 0);
   assert.equal(scope.visibility({ ...p, time: 30 }), 1);
+  assert.equal(scope.visibility({ ...p, time: 2.6 }), 1); // Flowers handoff finishes by 2.6 seconds
   assert.equal(scope.visibility({ ...p, time: 30, morph: 1 }), 0);
 });
 

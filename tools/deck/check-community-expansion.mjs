@@ -68,7 +68,11 @@ try {
     ],
   });
 
-  const desktop = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+  const desktopContext = await browser.newContext({
+    viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1,
+    recordVideo: { dir: output, size: { width: 1440, height: 900 } },
+  });
+  const desktop = await desktopContext.newPage();
   record(desktop, 'desktop');
   await desktop.goto(base + '#8', { waitUntil: 'domcontentloaded' });
   await desktop.waitForFunction(() => window.deckNav?.to === 7);
@@ -89,6 +93,12 @@ try {
   await desktop.waitForFunction(() => window.deckNav?.to === 7);
   await sleep(3600);
   await snapshot(desktop, 'desktop-9-to-8');
+
+  // Close the page and its context to flush the recorded real transitions.
+  const desktopVideo = desktop.video();
+  await desktop.close();
+  await desktopContext.close();
+  if (desktopVideo) await desktopVideo.saveAs(join(output, 'community-8-9-10-9-8.webm'));
 
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 }, deviceScaleFactor: 1,

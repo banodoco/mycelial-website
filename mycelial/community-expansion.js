@@ -40,7 +40,7 @@
     const nine = 1 - smooth(tall ? morph / 0.25 : (morph - 0.08) / 0.42);
     const introduction = reversingTo8
       ? smooth((time - 0.35) / 2.25)
-      : smooth((time - motesAt + 0.30) / 1.55);
+      : smooth((time - motesAt + 1.25) / 1.45);
     return clamp(nine * introduction);
   };
 
