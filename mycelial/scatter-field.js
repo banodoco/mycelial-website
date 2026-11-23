@@ -1139,7 +1139,7 @@
       g.fillStyle=alpha('#d6ba90',opacity*.86);
       g.font=`${narrow?10:12}px "DM Sans",Arial,sans-serif`;
       g.textAlign='center';g.letterSpacing='1.6px';
-      g.fillText(gates[j][0],x,yTop-(narrow?16:20));
+      g.fillText(gates[j][0],x,yTop-(narrow?(j%2===0?20:42):20));
       if(!narrow){g.fillStyle=alpha('#9b8262',opacity*.8);g.font='11px "EB Garamond",Georgia,serif';g.letterSpacing='0px';
       g.fillText(String(j+1).padStart(2,'0'),x,yTop-40);}
     });
