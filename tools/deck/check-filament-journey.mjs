@@ -65,7 +65,8 @@ try{
   if(!selected)throw Error('Click on capability did not display details');
   await page.screenshot({path:join(output,'desktop-slide2-selected.png'),animations:'disabled'});
   observations.push({step:'slide2',...slide2,selected});
-  await page.keyboard.press('ArrowRight');
+  // Blank-space click must navigate forward, not open an invisible old starfield card.
+  await page.mouse.click(1198,440);
   await page.waitForFunction(()=>window.deckNav?.to===2,{timeout:15000});
   await sleep(2300);
   observations.push({step:'slide3',slide:await page.evaluate(()=>window.deckNav?.to+1)});
