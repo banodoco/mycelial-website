@@ -1005,7 +1005,9 @@
     if(canvas.width!==bw)canvas.width=bw;if(canvas.height!==bh)canvas.height=bh;
     canvas.style.width=w+'px';canvas.style.height=h+'px';
     g.setTransform(dpr,0,0,dpr,0,0);
-    const narrow=w<700,top=narrow?h*.50:h*.47,bottom=narrow?h*.835:h*.85;
+    const narrow=w<700,short=h<500;
+    const top=short?h*.40:narrow?h*.50:h*.47;
+    const bottom=short?h*.73:narrow?h*.835:h*.85;
     geom=Array.from({length:N},(_,i)=>{
       const u=(i+.5)/N;
       const y=top+u*(bottom-top); // evenly spaced left-hand dots
@@ -1153,7 +1155,9 @@
     if(originalCanvas)originalCanvas.style.opacity=mode==='enter-collage'&&artwork.length?'0':String(1-dusting);
     root.classList.toggle('ff-active',mode!=='inactive');
 
-    const gatesX=stops(),yTop=narrow?h*.475:h*.46,yBottom=narrow?h*.86:h*.88;
+    const gatesX=stops(),short=h<500;
+    const yTop=short?h*.39:narrow?h*.475:h*.46;
+    const yBottom=short?h*.75:narrow?h*.86:h*.88;
     // A subdued, architectural frame that belongs to the same family as the deck's network artwork.
     g.save();g.lineWidth=.7;
     gatesX.forEach((x,j)=>{
@@ -1163,7 +1167,7 @@
       grad.addColorStop(.80,alpha('#d5a368',fade*.8));grad.addColorStop(1,alpha('#d5a368',0));
       g.strokeStyle=grad;g.beginPath();g.moveTo(x,yTop);g.lineTo(x,yBottom);g.stroke();
       // All four evenly spaced labels share a baseline beneath the threads.
-      const baseline=yBottom+(narrow?22:25);
+      const baseline=yBottom+(short?18:narrow?22:25);
       g.fillStyle=alpha(j===3?'#f0c98d':'#d6ba90',opacity*.94);
       g.font=`${narrow?10:12}px "DM Sans",Arial,sans-serif`;
       g.textAlign='center';g.letterSpacing='1.4px';
