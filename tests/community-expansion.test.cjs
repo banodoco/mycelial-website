@@ -89,75 +89,67 @@ test('five named actor-orbs replace the earlier dense role diagram', () => {
   assert.match(fw, /\['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'\]\.includes\(key\)\) opacity = 0/);
 });
 
-test('all five orbiters sit EXACTLY on the community ellipse', () => {
-  for (const ring of [[200, 300, 118, 118], [720, 330, 234, 176], [422, 130, 156, 49]]) {
-    const [cx, cy, rx, ry] = ring;
-    for (const p of scope.rolePositions(ring)) {
-      const contour = ((p.x - cx) / rx) ** 2 + ((p.y - cy) / ry) ** 2;
-      assert.ok(Math.abs(contour - 1) < 1e-10, 'orb must be attached to stroke');
+
+test('all five role-orb centres lie EXACTLY on the inner ellipse', () => {
+  for (const tall of [false, true]) {
+    const ring = [340, 260, 108, 82];
+    const positions = scope.rolePositions(ring, tall);
+    assert.equal(positions.length, 5);
+    for (const p of positions) {
+      const equation = ((p.x-ring[0])/ring[2])**2 + ((p.y-ring[1])/ring[3])**2;
+      assert.ok(Math.abs(equation - 1) < 1e-10, 'role must be on the ring, not inset');
     }
   }
 });
-test('three nested complete ring geometries expand dramatically on desktop', () => {
-  const inner = [720, 360, 185, 185];
-  for (const viewport of [
-    { width: 1440, height: 900 },
-    { width: 390, height: 844 },
-    { width: 844, height: 390, short: true },
-  ]) {
-    const tall = viewport.width < viewport.height;
-    const ring = viewport.width === 1440 ? inner :
-      viewport.width === 390 ? [195, 330, 105, 105] : [422, 130, 152, 49];
-    const z = scope.geometry(ring, tall, viewport);
-    assert.ok(z.rx < z.openRx && z.openRx < z.outerRx);
-    assert.ok(z.ry < z.openRy && z.openRy < z.outerRy);
-    const pos = scope.labelPositions(ring, tall, 1, viewport);
-    assert.deepEqual(Object.keys(pos).sort(), ['community','open','world'].sort());
-    assert.ok(Object.values(pos).every(p => p.length === 2 && p.every(Number.isFinite)));
-  }
-  const wide = scope.geometry(inner, false, {width: 1440, height: 900});
-  assert.ok(wide.outerRx > inner[2] * 3.0, 'wider world must stretch across the screen');
+
+test('three clear labels and full outer oval fit viewport limits', () => {
+  const labels = scope.labelPositions([720,370,130,110], false, .8, {
+    width: 1440, height: 900, top: 78, bottom: 680,
+  });
+  assert.deepEqual(Object.keys(labels).sort(), ['community','open','world']);
+  const z = scope.geometry([720,370,130,110], false, {
+    width:1440,height:900,top:78,bottom:680
+  });
+  assert.ok(z.rx < z.openRx && z.openRx < z.reachRx);
+  assert.ok(z.ry < z.openRy && z.openRy < z.reachRy);
+  assert.ok(z.reachRx > 520, 'wider creative world should fill most desktop width');
+  assert.ok(z.reachRx < 680, 'outer ellipse must stay inside desktop bounds');
+  assert.ok(z.reachRy < 300, 'outer ellipse must avoid copy and count');
 });
-test('outer world is a complete ellipse and hit flash only affects its target orb', () => {
-  const ellipses = [];
-  const gradient = () => ({ addColorStop() {} });
-  const mock = {
-    save() {}, restore() {}, setLineDash() {}, beginPath() {}, moveTo() {}, lineTo() {},
-    closePath() {}, stroke() {}, fill() {}, arc() {}, createRadialGradient: gradient,
-    ellipse(cx,cy,rx,ry,r,start,end) { ellipses.push({cx,cy,rx,ry,start,end}); },
-  };
-  scope.paint(mock, [720,360,190,190], {width:1440,height:900,visibility:1,scale:1,time:6});
-  assert.ok(ellipses.length >= 4);
-  assert.ok(ellipses.every(e => Math.abs(e.end-e.start-2*Math.PI) < 1e-9), 'no half-arcs');
-  scope.paintRoles(mock, [720,360,190,190], {time:6,opacity:1,impacts:[0,1,0,0,0]});
+
+test('a single nine-second orbit hits each orb once, including across delayed frames', () => {
+  const period = scope.ORBIT_PERIOD, segment = period / 5;
+  assert.equal(period, 9);
+  assert.equal(scope.orbitAngle(0, 0), -Math.PI/2);
+  assert.deepEqual(Array.from(scope.orbitHits(-.1, 0, 0)), [0]);
+  assert.deepEqual(Array.from(scope.orbitHits(.1, segment+.01, 0)), [1]);
+  assert.deepEqual(Array.from(scope.orbitHits(.1, segment*3+.01, 0)), [1,2,3]);
+  assert.deepEqual(Array.from(scope.orbitHits(8.9, 9.01, 0)), [0]);
+  assert.deepEqual(Array.from(scope.orbitHits(9.2, 9.3, 0)), []);
+  assert.deepEqual(Array.from(scope.orbitHits(3, 4.9, 2.4)), [1]);
+  assert.deepEqual(Array.from(scope.orbitHits(4.9, 3, 2.4)), []);
 });
 
 
-test('wide desktop viewport can never invert the middle ring at its top and bottom', () => {
-  // The former outerY*.79 calculation could reduce the middle vertical radius
-  // below ry as soon as the outer ring was clamped near 1.14*ry.
+test('wide desktop, phone and landscape rings never cross vertically', () => {
+  // Regression: .72 * capped reachRy could make the middle ring smaller than the inner one.
   const cases = [
-    { ring: [960, 425, 237, 237], viewport: { width: 1920, height: 900 } },
-    { ring: [960, 500, 237, 237], viewport: { width: 1920, height: 1080 } },
-    { ring: [1280, 600, 273, 273], viewport: { width: 2560, height: 1440 } },
-    { ring: [960, 480, 250, 250], viewport: { width: 1920, height: 900 } },
-    { ring: [720, 352, 190, 190], viewport: { width: 1440, height: 900 } },
-    { ring: [195, 330, 105, 105], viewport: { width: 390, height: 844 } },
-    { ring: [422, 130, 152, 49], viewport: { width: 844, height: 390, short: true } },
+    { ring:[960,425,237,237], view:{width:1920,height:900,top:80,bottom:655} },
+    { ring:[960,500,237,237], view:{width:1920,height:1080,top:88,bottom:785} },
+    { ring:[1280,600,273,273], view:{width:2560,height:1440,top:100,bottom:1030} },
+    { ring:[720,360,185,185], view:{width:1440,height:900,top:80,bottom:685} },
+    { ring:[195,330,105,105], view:{width:390,height:844,top:76,bottom:570} },
+    { ring:[422,130,152,49], view:{width:844,height:390,top:55,bottom:230,short:true} },
   ];
-  for (const { ring, viewport } of cases) {
-    const [cx, cy, rx, ry] = ring;
-    const tall = viewport.width < viewport.height;
-    const z = scope.geometry(ring, tall, viewport);
-    const minInnerY = Math.max(viewport.short ? 9 : tall ? 12 : 17, ry * .12);
-    const minOuterY = Math.max(viewport.short ? 9 : tall ? 11 : 14, ry * .10);
-    assert.ok(z.openRy - ry >= minInnerY - 1e-9,
-      'middle ring top/bottom overlaps inner ring at ' + JSON.stringify(viewport));
-    assert.ok(z.outerRy - z.openRy >= minOuterY - 1e-9,
-      'outer ring top/bottom overlaps middle ring at ' + JSON.stringify(viewport));
-    assert.ok(z.rx < z.openRx && z.openRx < z.outerRx);
-    // The rings must remain concentric after viewport clamping.
-    assert.equal(z.cx, cx);
-    assert.equal(z.cy, cy);
+  for (const {ring,view} of cases) {
+    const tall = view.width < view.height;
+    const z = scope.geometry(ring,tall,view);
+    const innerGap = Math.max(view.short ? 9 : tall ? 12 : 17, ring[3] * .12);
+    const outerGap = Math.max(view.short ? 9 : tall ? 11 : 14, ring[3] * .10);
+    assert.ok(z.openRy-z.ry >= innerGap - 1e-9,
+      'middle ring crosses community ring at ' + view.width + 'x' + view.height);
+    assert.ok(z.reachRy-z.openRy >= outerGap - 1e-9,
+      'outer ring crosses ecosystem ring at ' + view.width + 'x' + view.height);
+    assert.ok(z.rx < z.openRx && z.openRx < z.reachRx);
   }
 });

@@ -54,9 +54,9 @@
     g2: tag('fw-who fw-l', 'toolmakers'),
     inspire: tag('fw-verb', 'inspire'),
     equip: tag('fw-verb', 'equip'),
-    community: tag('fw-scope fw-scope-community', 'OUR COMMUNITY'),
-    open: tag('fw-scope fw-scope-open', 'OPEN-SOURCE AI ECOSYSTEM'),
-    world: tag('fw-scope fw-scope-world', 'WIDER CREATIVE WORLD'),
+    community: tag('fw-scope', 'OUR COMMUNITY'),
+    open: tag('fw-scope', 'OPEN-SOURCE ECOSYSTEM'),
+    world: tag('fw-scope', 'WIDER CREATIVE WORLD'),
     ...Object.fromEntries((Scope?.ROLES || []).map((name, i) => ['role' + i, tag('fw-role', name)])),
   };
   // Our four initiatives, as small versions of the homepage's cards: its own words, links and real images
@@ -309,6 +309,7 @@
 
   // ---- Layout ---------------------------------------------------------------------------------
   let W = 0, H = 0, dpr = 1, tall = false, short = false, R = WIDE, cell = 3;
+  let scopeViewport = null; // fitted space between slide 9's count and headline
   let stages = [null, null, null], nb = 0; // per slide: the picture in viewport pixels
   let lastPlaceKey = null, layoutVersion = 0, lastPlacedM = null;
   const colOf = (s) => s.querySelector(':scope > .split > :first-child');
@@ -409,6 +410,13 @@
     wordsBottom = colOf(hosts[1]).getBoundingClientRect().bottom;
     // Each slide fits its own picture: 10's is the bigger one, the wheel grown with the initiatives round it.
     stages = [build(0, fit(0)), build(1, fit(1)), build(2, fit(2))];
+    const countRect = hosts[0].querySelector('.fw-stat').getBoundingClientRect();
+    const copyRect = colOf(hosts[0]).getBoundingClientRect();
+    scopeViewport = {
+      width: W, height: H, short,
+      top: Math.max(0, countRect.bottom + (tall ? 6 : 10)),
+      bottom: Math.min(H - (short ? 28 : 58), copyRect.top - (short ? 8 : 12)),
+    };
     // A wide, flatter inner oval gives the five roles a clear horizontal
     // separation on a phone turned sideways, without moving the copy.
     if (short) {
@@ -470,8 +478,7 @@
   // ---- Time and state ----------------------------------------------------------------------------
   // ta: seconds since the picture began; m: where it stands between the slides (0 = 9, 1 = 10, 2 = 11).
   let ta = 0, m = 0, morph = null, begun = false, running = false, raf = 0, last = 0, entryCtx = null, reverseCtx = null, activeStage = -1;
-  let attach = { dir: 0, t0: 0 }, boost = 0, spin = 0, motes = [], nextMote = 0, roleCursor = 0,
-    flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], role: [0, 0, 0, 0, 0], plug: chips.map(() => 0) };
+  let attach = { dir: 0, t0: 0 }, boost = 0, spin = 0, motes = [], nextMote = 0, flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], role: [0, 0, 0, 0, 0], plug: chips.map(() => 0) };
   const relayOrder = [1, 4, 3, 5, 2, 0], OMEGA = TAU / 10;
   let relay = null, cur = null, lastM = -1;
   const T_FRESH = { lens: 0.05, ring: 0.25, art: 0.35, artT: 0.75, grpT: 1.05, grp: 1.3, link: 1.8, labels: 1.5, motes: 2.0, chips: 2.3 };
@@ -482,8 +489,11 @@
   const k01 = (t0, d) => clamp((ta - t0) / d);
   window.AstridFlywheel = {
     glow: (s) => { const st = stages[s]; return st && { x: st.ring[0], y: st.ring[1], r: 40 * st.k }; },
-    // Read-only fitted ring geometry for precise, browser-level layout checks.
-    ring: (s) => stages[s]?.ring.slice() || null,
+    // Read-only fitted ring geometry for real desktop-viewport regression QA.
+    scopeGeometry: () => ({
+      ring: stages[0]?.ring.slice() || null,
+      viewport: scopeViewport && { ...scopeViewport },
+    }),
   };
   // How far each card has come out (it follows the move from 9; drawing fresh on 10 or 11, it comes last).
   const cardOut = () => smooth(clamp((m - 0.42) / 0.58));
@@ -554,8 +564,7 @@
   const route = (mo) => {
     if (mo.kind === 'role') {
       const a = Scope.ROLE_ANGLES[mo.i];
-      // The illuminated current sits on EXACTLY the same ellipse as the roles.
-      return line(arc(a, a + TAU / Scope.ROLES.length, 0));
+      return line(arc(a, a + TAU / Scope.ROLES.length, -lane() * .5));
     }
     if (mo.kind === 'in') { // an artist, round the top, out to a group
       const a = entryTh(mo.a), b = exitTh(mo.b) + TAU;
@@ -679,8 +688,10 @@
     const pa = nine();
 
     // The wider network sits BELOW the existing wheel, without a second scene.
-    if (Scope) Scope.paint(g, cur.ring, { tall, short, width: W, height: H,
-      scale: k, time: ta, visibility: scopeQ() });
+    if (Scope) Scope.paint(g, cur.ring, {
+      tall, scale: k, time: motionOff() ? 0 : ta,
+      visibility: scopeQ(), viewport: scopeViewport,
+    });
 
     // The ring: two strands traced from the artists' side round both ways; beads on the inner one turn with it.
     const qr = ease(k01(T.ring, 1.1));
@@ -702,8 +713,22 @@
     }
 
     // Five distinct role-orbs on the live community wheel, fading with stage 9.
-    if (Scope) Scope.paintRoles(g, cur.ring, { tall, scale: k, time: ta,
-      opacity: pa * smooth(k01(T.grp - .15, .65)), impacts: flashes.role });
+    if (Scope) Scope.paintRoles(g, cur.ring, {
+      tall, scale: k, time: motionOff() ? 0 : ta,
+      opacity: pa * smooth(k01(T.grp - .15, .65)) *
+        (unhanding ? smooth(clamp(ta / HAND_END)) : 1),
+      impacts: flashes.role,
+    });
+    // One clear light travels ON the same ellipse as the five orb centres.
+    // The pulse event is computed from its exact phase in advance().
+    if (Scope && pa > .003 && ta >= T.motes && !motionOff() && !unhanding) {
+      const angle = Scope.orbitAngle(ta, T.motes);
+      const trail = line(arc(angle - .24, angle, 0));
+      stroke(trail, 0, trail.total, Math.max(1, 1.6 * LW), CORE, .58 * pa);
+      const [lx, ly] = ell(angle);
+      halo(lx, ly, 15 * Math.max(.7, k), .82 * pa);
+      dot(lx, ly, 3 * Math.max(.75, k), CORE, pa);
+    }
     // Astrid at the hub: the lens traces from its tips, the mink inside; faint spokes out to the ring.
     const hq = hand ? easeIO(clamp(ta / 1.25)) : 1;
     const ql = hand ? 1 : ease(k01(T.lens, 1.0));
@@ -830,7 +855,8 @@
     });
   };
   const place = () => {
-    const key = [W, H, m, k01(T.labels, 0.6), cardOut(), openBase(), ...chips.map((_, i) => chipQ(i)), ...gro, root.classList.contains('is-on')].join('|');
+    const key = [W, H, m, k01(T.labels, 0.6), k01(T.grp - .1, .6),
+      scopeQ(), unhanding ? ta : 0, cardOut(), openBase(), ...chips.map((_, i) => chipQ(i)), ...gro, root.classList.contains('is-on')].join('|');
     if (key === lastPlaceKey) return;
     const mChanged = m !== lastPlacedM;
     lastPlaceKey = key;
@@ -848,8 +874,7 @@
     put(labels.inspire, cur.inspire[0], cur.inspire[1], 0.5, 0.5);
     put(labels.equip, cur.equip[0], cur.equip[1], 0.5, 0.5);
     if (Scope) {
-      const positions = Scope.labelPositions(cur.ring, tall, k,
-        { width: W, height: H, short });
+      const positions = Scope.labelPositions(cur.ring, tall, k, scopeViewport);
       for (const key of ['community', 'open', 'world']) {
         const [width] = lsz.get(labels[key]) || [0, 0];
         const x = clamp(positions[key][0], width / 2 + 12, Math.max(width / 2 + 12, W - width / 2 - 12));
@@ -868,8 +893,8 @@
       else if (key.startsWith('role')) opacity = pa * smooth(k01(T.grp - .1, .6));
       else if (['artists', 'g0', 'g1', 'g2', 'inspire', 'equip'].includes(key)) opacity = 0;
       else if (key === 'community') opacity = smooth(k01(T.labels, .6)) * pa;
-      else if (key === 'open') opacity = reach;
-      else if (key === 'world') opacity = smooth(clamp((reach - .2) / .72));
+      else if (key === 'open') opacity = smooth(clamp((reach - .04) / .74));
+      else if (key === 'world') opacity = smooth(clamp((reach - .28) / .72));
       else opacity = ql * pa;
       setOp(labels[key], opacity);
     }
@@ -1031,15 +1056,6 @@
   };
 
   // ---- Motion -------------------------------------------------------------------------------------
-  const spawn = () => {
-    // One continuous light, moving in sequence around the five orb sockets.
-    // Each segment ends at the next orb, which receives the energy pulse.
-    const mo = { kind: 'role', i: roleCursor++ % Scope.ROLES.length, t0: ta };
-    const len = routeFor(mo).total;
-    mo.dur = clamp(len / (165 * Math.max(.5, k)), 1.1, 1.85);
-    motes.push(mo);
-    return mo.dur;
-  };
   let operation = null, textClear = null;
   const finishOperation = (ctx, result = 'completed') => {
     if (!operation || operation.ctx !== ctx) return;
@@ -1048,14 +1064,22 @@
     resolve(result);
   };
   const land = (mo) => {
-    if (mo.kind === 'role') flashes.role[(mo.i + 1) % Scope.ROLES.length] = 1;
-    else if (mo.kind === 'in') flashes.grp[mo.b] = 1;
+    if (mo.kind === 'in') flashes.grp[mo.b] = 1;
     else if (mo.kind === 'eq') flashes.art[mo.a] = 1;
     else if (mo.kind === 'hop') flashes.grp[mo.b + 1] = 1;
     else if (relay) relay.attacks[mo.kind === 'relay' ? mo.next : mo.c] = 0.3;
   };
   const advance = (dt, elapsed, ctx = entryCtx) => {
+    const before = ta;
     ta += elapsed;
+    // A real orb encounter comes from the phase of the one travelling light.
+    // Calculate crossed sectors across frame skips, then decay a pulse over
+    // about 350ms. The reverse handoff never invents new collisions.
+    flashes.role = flashes.role.map(v => Math.max(0, v - elapsed / .35));
+    if (Scope && m < .5 && !motionOff() && !unhanding) {
+      for (const index of Scope.orbitHits(before, ta, T.motes))
+        flashes.role[index] = 1;
+    }
     // The morph between slides.
     if (morph) {
       const q = clamp((ta - morph.t0) / morph.dur);
@@ -1067,8 +1091,7 @@
     const target = m >= 0.9 ? (m > 1.5 ? 0.6 : 1) : 0;
     boost += (target - boost) * (1 - Math.exp(-dt / 0.9));
     spin += dt * 0.08;
-    for (const key of ['art', 'grp']) flashes[key] = flashes[key].map((f) => f * Math.exp(-dt / .5));
-    flashes.role = flashes.role.map((f) => f * Math.exp(-dt / .52));
+    for (const key of ['art', 'grp']) flashes[key] = flashes[key].map((f) => f * Math.exp(-dt / 0.5));
     if (m >= 0.9 && !relay) relay = { start: ta, arrivals: 0, nextArrival: ta, next: 0, launch: Infinity, attacks: chips.map(() => 0) };
     if (m < 0.5) { relay = null; flashes.plug.fill(0); }
     if (relay) {
@@ -1094,10 +1117,7 @@
     grT.forEach((t, i) => { gro[i] += (t - gro[i]) * (1 - Math.exp(-dt / 0.13)); if (Math.abs(t - gro[i]) < 0.002) gro[i] = t; });
     // Motes: a calm, continuous circulation once the wheel is drawn.
     if (ta >= T.motes) {
-      if (m < .5 && ta >= nextMote && !motes.some((mo) => mo.kind === 'role')) {
-        const dur = spawn();
-        nextMote = ta + dur + .10;
-      }
+      // Slide 9 now uses a single deterministic orbit light, not random motes.
       motes = motes.filter((mo) => !['relay', 'arrival'].includes(mo.kind) || m >= 0.3); // back on 9, the energy goes with the cards
       motes = motes.filter((mo) => { if (ta - mo.t0 >= mo.dur) { land(mo); return false; } return true; });
     }
@@ -1239,7 +1259,6 @@
     clearFullCards(); vis.fill(null);
     vids.forEach((v) => v && !v.paused && v.pause()); cardsRoot.inert = true; cardsRoot.classList.remove('is-live'); fly.style.opacity = '0';
     T = T_FRESH; hand = null; minkAt = null;
-    roleCursor = 0;
     flashes = { art: [0, 0, 0, 0, 0, 0, 0], grp: [0, 0, 0], role: [0, 0, 0, 0, 0], plug: chips.map(() => 0) };
     for (const key in labels) labels[key].style.opacity = '0';
     chips.forEach((c) => { c.style.opacity = '0'; });
@@ -1334,6 +1353,7 @@
   const unstep = (dt, elapsed) => {
     const u = unhanding;
     ta -= elapsed;
+    flashes.role.fill(0); // 9→8 withdraws role activation before handing off
     spin += dt * 0.08;
     setOp(labels.astrid, smooth(k01(T.lens + 0.6, 0.5)));
     if (!u.shown && ta <= 0.5) { u.shown = true; reverseCtx.present(flSlide, '', 'dt-await'); }
