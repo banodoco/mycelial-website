@@ -53,7 +53,8 @@
       world: [z.cx + z.reachRx * .44, z.cy - z.reachRy * .84],
     };
     return {
-      community: [z.cx, z.cy + z.ry + roleRadius(scale, tall) + 16 * scale],
+      community: [z.cx, z.cy + z.ry + roleRadius(scale, tall) +
+        (viewport?.short ? 30 : 16 * scale)],
       open: [z.cx - z.openRx * .78, z.cy - z.openRy * .74],
       world: [z.cx + z.reachRx * .56, z.cy - z.reachRy * .82],
     };

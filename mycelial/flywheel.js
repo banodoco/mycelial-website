@@ -717,7 +717,7 @@
     if (Scope && pa > .003 && ta >= T.motes && !motionOff() && !unhanding) {
       const angle = Scope.orbitAngle(ta, T.motes);
       const trail = line(arc(angle - .24, angle, 0));
-      stroke(trail, 0, trail.total, Math.max(1, 1.6 * LW), LIGHT, .58 * pa);
+      stroke(trail, 0, trail.total, Math.max(1, 1.6 * LW), CORE, .58 * pa);
       const [lx, ly] = ell(angle);
       halo(lx, ly, 15 * Math.max(.7, k), .82 * pa);
       dot(lx, ly, 3 * Math.max(.75, k), CORE, pa);
