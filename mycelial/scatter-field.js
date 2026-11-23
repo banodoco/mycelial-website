@@ -317,7 +317,12 @@
     // The arrival rush: the burst past slide 1's films is quick, then it eases
     // off more slowly, so slowing down and the heading's glide home settle together.
     since += elapsed;
-    if (!rewind && since >= 2.5) entryFinish?.(visitCtx, 'completed');
+    if (!rewind && since >= 2.5) {
+      entryFinish?.(visitCtx, 'completed');
+      // Once the filament scene owns the settled picture, retire the hidden
+      // 2,400-particle starfield loop. It can still restart for picture rewind.
+      if (window.FilamentField?.ready()) { stop(); return; }
+    }
     glide *= Math.exp(-(2.2 - 1.25 * (t => t * t * (3 - 2 * t))(clamp((since - 0.6) / 0.8))) * dt);
     // Gathering back into slide 1 (rewind): the arrival's flight runs backwards, the field rushing away from us.
     if (rewind) { // the vanishing point drifts back to the collage, coming to rest there as the motes land
