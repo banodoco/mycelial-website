@@ -74,6 +74,9 @@
     ["guide", "Field notes · Banodoco", "Test the motion before the long render", "Atom.p’s image-shift prototype checks the move before committing to full animation."],
   ];
 
+  // The filament view uses the same editorial examples and their descriptions.
+  root.filamentItems = ITEMS.map(([type, where, name, detail]) => [type, where, name, detail]);
+
   // Seeded, so the field has the same shape on every visit.
   let seed = 20261015;
   const rnd = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
@@ -314,7 +317,12 @@
     // The arrival rush: the burst past slide 1's films is quick, then it eases
     // off more slowly, so slowing down and the heading's glide home settle together.
     since += elapsed;
-    if (!rewind && since >= 2.5) entryFinish?.(visitCtx, 'completed');
+    if (!rewind && since >= 2.5) {
+      entryFinish?.(visitCtx, 'completed');
+      // Once the filament scene owns the settled picture, retire the hidden
+      // 2,400-particle starfield loop. It can still restart for picture rewind.
+      if (window.FilamentField?.ready()) { stop(); return; }
+    }
     glide *= Math.exp(-(2.2 - 1.25 * (t => t * t * (3 - 2 * t))(clamp((since - 0.6) / 0.8))) * dt);
     // Gathering back into slide 1 (rewind): the arrival's flight runs backwards, the field rushing away from us.
     if (rewind) { // the vanishing point drifts back to the collage, coming to rest there as the motes land
@@ -805,9 +813,11 @@
     card.style.transitionDuration = '';
     if (ctx.from === 0 && !motionOff() && !ctx.rest && !ctx.direct) dissolve(ctx);
     start(!ctx.rest, ctx);
+    window.FilamentField?.enter(ctx.from === 0 ? 'enter-collage' : ctx.from === 2 ? 'enter-gap' : 'rest', ctx);
     return promise;
   };
   const sceneExit = (ctx) => {
+    window.FilamentField?.exit(ctx);
     clearHighlights(); // dismiss immediately, before the reverse picture handoff
     if (ctx.to === 0 && ctx.back && !motionOff()) {
       const promise = completion(ctx, (fn) => { reverseFinish = fn; }, () => endRewind());
@@ -820,6 +830,7 @@
     stop();
   };
   const sceneRestore = (ctx) => {
+    window.FilamentField?.restore(ctx);
     if (rewind) endRewind();
     if (ctx.to !== 1) return true;
     if (motes.length || slide.classList.contains('sf-arrive')) {
