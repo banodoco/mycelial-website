@@ -57,7 +57,10 @@ try{
     throw Error('Live filament scene failed: '+JSON.stringify(slide2));
   await page.screenshot({path:join(output,'desktop-slide2.png'),animations:'disabled'});
   const first=page.locator('.ff-hit').first();
-  await first.click({timeout:4000});
+  const r0=await first.boundingBox();
+  if(!r0)throw Error('Source dot has no visual position');
+  await page.mouse.move(r0.x+r0.width/2,r0.y+r0.height/2);
+  await page.mouse.click(r0.x+r0.width/2,r0.y+r0.height/2);
   const selected=await page.locator('.ff-note').evaluate(el=>el.classList.contains('is-on'));
   if(!selected)throw Error('Click on capability did not display details');
   await page.screenshot({path:join(output,'desktop-slide2-selected.png'),animations:'disabled'});
