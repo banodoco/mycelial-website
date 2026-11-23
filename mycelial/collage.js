@@ -763,7 +763,7 @@
   });
 
   // ---- The subtitle's note -----------------------------------------------------------------------------------
-  // The ¹ after "economy" opens a small card: on a mouse resting on it (and on the card, while the pointer
+  // The ¹ after "create." opens a small card: on a mouse resting on it (and on the card, while the pointer
   // crosses to it), on a click or a tap, or on keyboard focus.
   const mark = sub?.querySelector('.vc-fn button'), note = slide.querySelector('.vc-note');
   if (mark && note) {
