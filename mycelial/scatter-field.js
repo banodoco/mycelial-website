@@ -971,10 +971,10 @@
     .map((r,i) => ({ id:i, type:r[0], where:r[1], name:r[2], detail:r[3] }));
   const colors = { model:'#f2c77e', lora:'#dbb2ca', repo:'#a9d7b2', workflow:'#a9c8e5', thread:'#c8bbeb', guide:'#e6c9a2' };
   const gates = [
-    ['DISCOVER','Find the right model, tool or workflow across scattered repositories and discussions.'],
+    ['DISCOVERED','Find the right model, tool or workflow across scattered repositories and discussions.'],
     ['SET UP','Resolve dependencies, hardware, model downloads and installation conflicts.'],
-    ['CONFIGURE','Learn the right settings, prompting and control techniques for a useful result.'],
-    ['CREATE','Turn connected capabilities into a finished creative work.']
+    ['OPTIMISED','Learn and tune the settings, prompts and control techniques to get the desired result.'],
+    ['CREATED','Connect and apply the capabilities to turn an idea into finished creative work.']
   ];
   const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v));
   const ease=t=>t*t*(3-2*t);
@@ -1194,19 +1194,20 @@
       g.strokeStyle=grad;g.beginPath();g.moveTo(x,yTop);g.lineTo(x,yBottom);g.stroke();
       // Five stage names now sit on one baseline just above the filaments.
       g.fillStyle=alpha(j===3?'#f0c98d':'#d6ba90',opacity*.94);
-      g.font=`${narrow?10:12}px "DM Sans",Arial,sans-serif`;
-      g.textAlign='center';g.letterSpacing='1.4px';
+      g.font=`${narrow?(w<480?9:10):12}px "DM Sans",Arial,sans-serif`;
+      g.textAlign='center';g.letterSpacing=narrow?'0.4px':'1.4px';
       g.fillText(gates[j][0],x,labelY);
       g.fillStyle=alpha('#9b8262',opacity*.65);
       g.font='10px "EB Garamond",Georgia,serif';g.letterSpacing='0px';
       g.fillText(String(j+1).padStart(2,'0'),x,labelY-17);
     });
     // Need is the origin, not a barrier; align it with the four steps.
-    const needX=sourceX();
+    const needX=sourceX(); // Required is the starting point, not another filter
     g.fillStyle=alpha('#e4bf8a',opacity*.94);
     g.textAlign='center';g.letterSpacing='1.4px';
-    g.font=`${narrow?10:12}px "DM Sans",Arial,sans-serif`;
-    g.fillText('NEED',needX,labelY);
+    g.font=`${narrow?(w<480?9:10):12}px "DM Sans",Arial,sans-serif`;
+    g.letterSpacing=narrow?'0.4px':'1.4px';
+    g.fillText('REQUIRED',needX,labelY);
     g.fillStyle=alpha('#9b8262',opacity*.65);
     g.letterSpacing='0px';g.font='10px "EB Garamond",Georgia,serif';
     g.fillText('00',needX,labelY-17);
