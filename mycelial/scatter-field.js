@@ -397,13 +397,14 @@
           if (go > 0) m.z -= dz; // released, it flies with the field
         }
         const q = place(m);
-        if (m.z < NEAR || (go >= 1 && (q.x < -60 || q.x > w + 60 || q.y < -60 || q.y > h + 60))) { if (rewind) left.push(m); continue; }
+        if (!(rewind && m.grid) && (m.z < NEAR || (go >= 1 && (q.x < -60 || q.x > w + 60 || q.y < -60 || q.y > h + 60)))) { if (rewind) left.push(m); continue; }
         const e = go * go * (3 - 2 * go);
         const star = clamp(1.7 * q.p, 0.45, 4) * grain;
         const mw = m.cw + (star - m.cw) * e, mh = m.ch + (star - m.ch) * e;
-        const x = m.sx0 + (q.x - m.sx0) * e, y = m.sy0 + (q.y - m.sy0) * e;
+        const target = rewind && m.grid ? m.grid : q;
+        const x = m.sx0 + (target.x - m.sx0) * e, y = m.sy0 + (target.y - m.sy0) * e;
         const glow = 1 + ((0.09 + 0.6 * clamp(q.p / 1.6)) - 1) * e;
-        const alpha = glow * q.a * (rewind ? smooth(clamp(rewind.t / 0.35)) : clamp((5.6 - m.age) / 2));
+        const alpha = glow * (rewind && m.grid ? 1 : q.a) * (rewind ? smooth(clamp(rewind.t / 0.35)) : clamp((5.6 - m.age) / 2));
         if (alpha <= 0.01) { if (rewind) left.push(m); continue; }
         // Filament canvas draws the same motes on paths *toward* the strands.
         // The old starfield's outward flight must not leak through on entry.
@@ -720,6 +721,7 @@
     return r.v0 + (back - r.v0) * smooth(clamp(r.t / 0.35)); // from the drift it had, without a jolt
   };
   const regather = (ctx) => {
+    const grid = root.snapshot?.().named || [];
     entryCtx = ctx;
     if (frameRaf) cancelAnimationFrame(frameRaf);
     frameRaf = 0; running = true; last = window.deckNow?.() ?? performance.now();
@@ -735,7 +737,7 @@
     shift = { x: mid.x - cx, y: mid.y - cy, k: 1 };
     aim();
     motes = tileMotes(base);
-    motes.forEach((m) => { m.z0 = m.z; });
+    motes.forEach((m, i) => { m.z0 = m.z; const p = grid[i % grid.length]; if (p) m.grid = { x: p.x - base.left, y: p.y - base.top }; });
     const A = Math.max(...motes.map((m) => m.delay + 0.9)), landed = A - Math.min(...motes.map((m) => m.delay));
     shift.k = k0; // where the vanishing point is now (home, unless it is still drifting there)
     aim();
@@ -931,479 +933,357 @@
 })();
 
 // The new filament scene shares the original collage handoff and gap.js snapshot.
-/* Mycelial slide 2 — the capabilities remain; access progressively frays.
- * A deterministic Canvas2D filament scene. Works alongside the existing artwork
- * motes, and exports a snapshot with the contract expected by gap.js.
- * Visual attrition is illustrative, never an empirical conversion claim.
- */
+
+// Mycelial slide 2 — ten authored creative journeys, not a measured funnel.
+// Existing capabilities are sourced in docs/slide-2-resources.md; experiences,
+// elapsed times and miniature diagrams are explicitly illustrative.
 (() => {
   'use strict';
-  const root = document.querySelector('[data-scatter-field]');
-  if (!root) return;
-  const slide = root.closest('.slide');
-  root.setAttribute('aria-label', 'Creative needs meet four barriers: Discover, Set Up, Configure and Create. Many available capabilities remain difficult to turn into finished work.');
-  const originalCanvas = root.querySelector('.sf-dust');
-  const originalSnapshot = root.snapshot?.bind(root);
-  const canvas = document.createElement('canvas');
-  canvas.className = 'ff-canvas';
-  canvas.setAttribute('aria-hidden', 'true');
-  root.append(canvas);
-  const g = canvas.getContext('2d');
-  if (!g) return;
-  const hits = document.createElement('div');
-  hits.className = 'ff-hits';
-  const note = document.createElement('div');
-  note.className = 'ff-note';
-  note.setAttribute('role', 'status');
-  note.setAttribute('aria-live', 'polite');
-  note.innerHTML = '<span class="ff-note-kind"></span><b class="ff-note-name"></b><span class="ff-note-detail"></span>';
-  root.append(hits, note);
-
-  const fallback = [
-    ['model','Upscaler','Restore intricate detail in footage','Video super-resolution with open image and video upscalers.'],
-    ['lora','Motion','Direct a particular camera movement','Fine-tune motion using open LoRAs and control techniques.'],
-    ['workflow','Workflow','Keep a character consistent','Use references and multiple generation steps across shots.'],
-    ['repo','Tool','Replace elements of a scene','Masks, conditioning and frame-aware editing tools.'],
-    ['guide','Guide','Control the look of an image','Learn advanced prompting, compositing and colour methods.'],
-    ['thread','Discussion','Solve difficult temporal artifacts','Community workarounds for flicker, joins and consistency.'],
+  const root=document.querySelector('[data-scatter-field]');
+  if(!root)return;
+  const slide=root.closest('.slide'), oldCanvas=root.querySelector('.sf-dust');
+  const originalSnapshot=root.snapshot?.bind(root);
+  const canvas=document.createElement('canvas');
+  canvas.className='ff-canvas';canvas.setAttribute('aria-hidden','true');
+  const g=canvas.getContext('2d');if(!g)return;
+  const hits=document.createElement('div');hits.className='ff-hits';
+  const note=document.createElement('div');note.className='ff-note';
+  note.setAttribute('role','status');note.setAttribute('aria-live','off');
+  note.innerHTML='<div class="ff-note-kind"><span class="ff-kind"></span><span class="ff-time"></span></div><div class="ff-note-body"><div><b class="ff-note-name"></b><span class="ff-note-detail"></span></div><div class="ff-mini" aria-hidden="true"></div></div>';
+  root.append(canvas,hits,note);
+  root.setAttribute('aria-label','Ten illustrative creative journeys through six checkpoints. Hover, tap or focus any checkpoint to inspect it.');
+  const stages=['Requirement','Discover','Set up','Optimise','Create','Output'];
+  // Each row has an explicit terminal checkpoint; later checkpoints are
+  // inspectable counterfactuals, never presented as work actually performed.
+  // [short title, capability, source URL, possible output, steps (title, detail, time)]
+  const journeys=[
+    ['Direct choreography','MiniMax H3 pose control','https://github.com/sepiablue-ai/minimax_h3_workflows/blob/main/phase2_ref2va_pose_control_448x800_api.json','A character performing the reference choreography.',[
+      ['“I want my character to dance like this.”','A character image and a reference video of the movement.',''],
+      ['MiniMax H3 pose control','Finds a reference-to-video pose workflow buried in a shared repository.','1h'],
+      ['Missing custom nodes','The graph will not load with their installed nodes and model weights. They stop here.','1h 10m']]],
+    ['Restore old footage','FlashVSR','https://github.com/OpenImagingLab/FlashVSR','Sharper, temporally consistent footage, ready to edit.',[
+      ['“I want to restore this old footage.”','The only copy is soft, noisy and low resolution.',''],
+      ['FlashVSR','Finds an open video super-resolution model after comparing alternatives.','25m'],
+      ['The workflow runs','Downloads weights and finds settings that fit the available GPU.','20m'],
+      ['Find the balance','Tests for flicker and excessive sharpening on a short excerpt.','30m'],
+      ['Render the footage','Processes the clip using the chosen settings.','20m'],
+      ['Restored footage','A cleaner clip, ready for the film.','1h 35m total']]],
+    ['Make a seamless loop','H3 overlapping-frame workflow','https://discord.com/channels/1076117621407223829/1533677158067736777/1560959324900298893','An eight-second loop without a visible join.',[
+      ['“I want this scene to loop forever.”','The beginning and end must meet naturally.',''],
+      ['An H3 looping recipe','Finds a community technique using guide video and overlapping frames.','20m'],
+      ['Load the graph','Works out the input timing and guide sequence.','15m'],
+      ['The join still jumps','Tries different overlaps and guide strengths, but cannot remove the seam.','35m']]],
+    ['Relight a subject','VACE relighting recipe','https://discord.com/channels/1076117621407223829/1342763350815277067/1486447326934466612','A subject whose edges and lighting belong in the new scene.',[
+      ['“I want her to belong in this scene.”','Move a subject into a new environment with coherent light and edges.',''],
+      ['The technique exists','Finds a VACE recipe that separates foreground, edges and background.','25m'],
+      ['Prepare the masks','Builds the graph and prepares the conditioning inputs.','20m'],
+      ['Edges still look wrong','After repeated tuning, the subject still looks pasted onto the scene.','35m']]],
+    ['Create game sprites','FLUX.2 Klein sprite-sheet LoRA','https://huggingface.co/fal/flux-2-klein-4b-spritesheet-lora','Four consistent object views for a game asset.',[
+      ['“I want four views of this game object.”','Generate a consistent sprite sheet from an existing design.',''],
+      ['Sprite-sheet LoRA','Finds a specialised adapter that makes a 2×2 set of views.','15m'],
+      ['Connect the adapter','Loads the matching base model and LoRA.','15m'],
+      ['Make the views consistent','Adjusts the reference and prompt until the views align.','15m'],
+      ['Render and clean','Generates the views and prepares the sheet.','7m'],
+      ['Four usable sprites','The object is ready to take into the game pipeline.','52m total']]],
+    ['Train a personal style','Flimmer / Klippbok','https://github.com/alvdansen/flimmer-trainer','A reusable video LoRA trained on the artist’s own work.',[
+      ['“I want a model that understands my style.”','Train on a collection of the artist’s own clips.',''],
+      ['Flimmer and Klippbok','Finds dedicated dataset-preparation and video LoRA training tools.','40m'],
+      ['Training never starts','Captioning, validation and configuration become a project of their own.','3h']]],
+    ['Replace a character','Qwen Image Edit + Wan Animate','https://discord.com/channels/1076117621407223829/1342763350815277067/1476542672851439668','A replacement character in the original action and framing.',[
+      ['“I want a different character in this shot.”','Keep the original camera, action and composition.',''],
+      ['Qwen + Wan Animate','Finds a shared approach using an edited reference and animation.','20m'],
+      ['Prepare the reference','Builds the graph and supplies the replacement character.','20m'],
+      ['Tune the mask','Tests reference strength and temporal conditioning.','30m'],
+      ['Identity drifts','The character changes between frames; the shot is unusable.','40m']]],
+    ['Match a film’s colours','ComfyUI VideoColorGrading','https://github.com/kijai/ComfyUI-VideoColorGrading','A sequence with a consistent colour palette.',[
+      ['“I want all these shots to feel alike.”','The clips have mismatched colour and exposure.',''],
+      ['Reference-driven LUTs','Finds a tool for deriving a colour LUT from a reference.','10m'],
+      ['Choose the reference','Loads the graph and selects a representative frame.','10m'],
+      ['Balance the grade','Adjusts the strength to preserve details across shots.','15m'],
+      ['Apply the look','Grades all the selected clips.','9m'],
+      ['A coherent sequence','The clips now share the intended colour treatment.','44m total']]],
+    ['Remove image stripes','MOSS Destripe SFT','https://huggingface.co/nynxz/MOSS-Image/blob/main/loras/moss_sft_destripe_top64_bf16.safetensors','An image with stripe artefacts removed.',[
+      ['“I want to remove these stripes.”','The image is otherwise right, but repetitive artefacts spoil it.',''],
+      ['Search ends without an answer','A specialist destriping adapter exists, but the creator never finds a compatible approach.','1h']]],
+    ['Direct a dolly-out','LTX-2 dolly-out LoRA','https://huggingface.co/Lightricks/LTX-2-19b-LoRA-Camera-Control-Dolly-Out','A deliberate cinematic pull-back.',[
+      ['“I want the camera to pull back.”','A precise reveal, not arbitrary zooming or wobble.',''],
+      ['LTX-2 camera-control LoRA','Finds an adapter specialised for the dolly-out move.','12m'],
+      ['Load the LoRA','Connects the adapter to the compatible model.','12m'],
+      ['Direct the movement','Tunes strength and prompt to get a natural pull-back.','15m'],
+      ['Generate the shot','Renders the movement using the chosen settings.','10m'],
+      ['A controlled dolly-out','The shot reveals the setting as intended.','49m total']]]
   ];
-  const catalogue = (Array.isArray(root.filamentItems) && root.filamentItems.length ? root.filamentItems : fallback)
-    .map((r,i) => ({ id:i, type:r[0], where:r[1], name:r[2], detail:r[3] }));
-  const colors = { model:'#f2c77e', lora:'#dbb2ca', repo:'#a9d7b2', workflow:'#a9c8e5', thread:'#c8bbeb', guide:'#e6c9a2' };
-  const gates = [
-    ['DISCOVERED','Find the right model, tool or workflow across scattered repositories and discussions.'],
-    ['SET UP','Resolve dependencies, hardware, model downloads and installation conflicts.'],
-    ['OPTIMISED','Learn and tune the settings, prompts and control techniques to get the desired result.'],
-    ['CREATED','Connect and apply the capabilities to turn an idea into finished creative work.']
-  ];
+  const N=journeys.length,S=stages.length;
+  const gold='#e0ab5e',ink='#f5d8a3',rust='#c28a72',green='#b4c8a0';
+  const end=r=>journeys[r][4].length-1;
+  const blocked=r=>end(r)<S-1;
+  const tone=(r,s)=>s===end(r)&&blocked(r)?rust:s===S-1&&!blocked(r)?green:gold;
   const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v));
   const ease=t=>t*t*(3-2*t);
   const hash=n=>{let z=(n+0x6D2B79F5)|0;z=Math.imul(z^(z>>>15),z|1);z^=z+Math.imul(z^(z>>>7),z|61);return ((z^(z>>>14))>>>0)/4294967296;};
-  const hexRgb=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
-  const alpha=(hex,a)=>`rgba(${hexRgb(hex).join(',')},${clamp(a).toFixed(3)})`;
-  const point=(a,b,t)=>a+(b-a)*t;
-  const N=42;
-  let w=0,h=0,dpr=1,geom=[],sources=[],artwork=[],raf=0,last=0,elapsed=0,clock=0,mode='inactive',start=0;
-  let flow={labelY:0,lineTop:0,lineBottom:0,dotsTop:0,dotsBottom:0,headlineBottom:0};
-  let visit=null, hovered=-1, pinned=-1, highlightAt=0, pointerLeave=0, pulseId=0, pulses=[], launchAt=0, shadow=0;
-  // Every dot keeps its own resource identity until it is replaced.
-  const assignments=Array.from({length:N},(_,i)=>(i*13)%catalogue.length);
-  const reborn=Array(N).fill(-100);
-  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const motionOff=()=>reduced || window.deckStill?.() || document.hidden;
-  const owned=()=>slide.classList.contains('on') && !document.getElementById('overview')?.classList.contains('on');
-  const now=()=>window.deckNow?.() ?? performance.now();
-  const canvasArea=()=>({ left:root.getBoundingClientRect().left, top:root.getBoundingClientRect().top });
-  const stopIndex=(i)=>{const x=hash(i*17+6);return x<.29?0:x<.56?1:x<.78?2:x<.93?3:4;};
-  const activeItem=i=>catalogue[assignments[i]];
-  // Required and the four stages form five evenly spaced beats across the width.
-  const sourceX=()=>w*(w<700?.08:.11);
-  const gateX=()=>{
-    const origin=sourceX(),last=w*(w<700?.86:.87);
-    return [1,2,3,4].map(i=>origin+(last-origin)*i/4);
+  const alpha=(c,a)=>'rgba('+[1,3,5].map(i=>parseInt(c.slice(i,i+2),16)).join(',')+','+clamp(a).toFixed(3)+')';
+  const now=()=>window.deckNow?.()??performance.now();
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)');
+  const still=()=>reduced.matches||window.deckStill?.();
+  const overview=()=>document.getElementById('overview')?.classList.contains('on');
+  const owned=()=>slide.classList.contains('on')&&!overview();
+  const rect=()=>root.getBoundingClientRect();
+  let w=0,h=0,dpr=1,geom=[],flow={},mode='inactive',visit=null,raf=0,start=0,last=0;
+  let row=0,step=0,phase='hold',age=0,seen=Array(N).fill(-1),inspection=null,pinned=false,artwork=[],sources=[];
+  let shown=null;
+  const node=(r,s)=>geom[r][s];
+  const valid=(r,s)=>Number.isInteger(r)&&Number.isInteger(s)&&r>=0&&r<N&&s>=0&&s<S;
+  const describe=(r,s)=>{
+    const j=journeys[r];
+    if(s<=end(r))return j[4][s];
+    return [s===S-1?'Output never realised':stages[s]+' not reached',s===S-1?'Possible output: '+j[3]:s===1?j[1]+' exists, but was not found.':'The journey stopped at '+stages[end(r)].toLowerCase()+'.',''];
   };
-  const stops=()=>gateX();
-  // Fit the filaments into the *actual* room below the headline, not a
-  // fixed percentage of the viewport. This removes the large dead band that
-  // appeared on both desktop and portrait mobile.
-  const verticalFlow=(box)=>{
-    const narrow=w<700,short=h<500;
-    const headline=slide.querySelector('.split h1');
-    const measured=headline?.getBoundingClientRect().bottom-box.top;
-    const headlineBottom=Number.isFinite(measured)&&measured>0&&measured<h*.7?measured:h*.27;
-    const labelY=headlineBottom+(short?21:Math.max(32,Math.min(48,h*.055)));
-    const lineTop=labelY+(short?18:29);
-    const lineBottom=h-(short?40:narrow?76:61);
-    // Very short landscape viewports may not fit the whole field. Compress
-    // in that case, while preserving an actual line below the labels.
-    const available=Math.max(44,lineBottom-lineTop);
-    return {headlineBottom,labelY,lineTop,lineBottom:lineTop+available,
-      dotsTop:lineTop+(short?5:8),dotsBottom:lineTop+available-(short?5:8)};
-  };
-  const layout=()=>{
-    const box=root.getBoundingClientRect(),nw=box.width,nh=box.height;
-    if(nw<1||nh<1)return;
-    w=nw;h=nh;dpr=Math.min(2,devicePixelRatio||1);
-    const bw=Math.max(1,Math.round(w*dpr)),bh=Math.max(1,Math.round(h*dpr));
+  function layout(){
+    const b=rect();if(b.width<1||b.height<1)return false;
+    w=b.width;h=b.height;dpr=Math.min(2,devicePixelRatio||1);
+    const bw=Math.round(w*dpr),bh=Math.round(h*dpr);
     if(canvas.width!==bw)canvas.width=bw;if(canvas.height!==bh)canvas.height=bh;
-    canvas.style.width=w+'px';canvas.style.height=h+'px';
-    g.setTransform(dpr,0,0,dpr,0,0);
-    flow=verticalFlow(box);
-    const narrow=w<700;
-    const top=flow.dotsTop,bottom=flow.dotsBottom;
-    geom=Array.from({length:N},(_,i)=>{
-      const u=(i+.5)/N;
-      const y=top+u*(bottom-top); // evenly spaced left-hand dots
-      // Start every strand directly beneath Required, so the first interval
-      // is exactly the same width as the four following stage intervals.
-      const x0=sourceX();
-      const xf=w*(narrow?.95:.925);
-      const end=stopIndex(i);
-      const nodes=Array.from({length:6},(_,k)=>{
-        const x=k===0?x0:k===5?xf:gateX()[k-1];
-        return{x,y:y+(k===0?0:(hash(i*37+k*63)-.5)*Math.min(30,h*.05))};
-      });
-      return {id:i,nodes,y,x0,xf,end,seed:hash(i*541+31),color:colors[activeItem(i).type]||'#d3b180'};
-    });
-    if(!hits.children.length){
-      for(let i=0;i<N;i++){
-        const b=document.createElement('button'); b.type='button';b.className='ff-hit';
-        b.dataset.id=String(i);b.setAttribute('aria-label','Inspect creative capability');
-        b.addEventListener('pointerenter',()=>inspect(i,false));
-        b.addEventListener('focus',()=>inspect(i,false));
-        b.addEventListener('pointerleave',()=>release(i));
-        b.addEventListener('blur',()=>release(i));
-        b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();inspect(i,true);});
-        b.addEventListener('keydown',e=>{if(e.key===' '||e.key==='Enter')e.stopPropagation();});
-        hits.append(b);
-      }
-    }
+    const heading=slide.querySelector('.split h1')?.getBoundingClientRect();
+    const footer=slide.querySelector('.ff-conclusion')?.getBoundingClientRect();
+    const narrow=w<760,short=h<510;
+    const measured=heading?.bottom-b.top;
+    const headlineBottom=Number.isFinite(measured)&&measured>0&&measured<h*.75?measured:h*.25;
+    const measuredFooter=footer?.top-b.top;
+    const bottom=Number.isFinite(measuredFooter)&&measuredFooter>headlineBottom+80&&measuredFooter<h?measuredFooter-12:h-(short?57:narrow?105:88);
+    const labelY=headlineBottom+(short?15:23);
+    const lineTop=labelY+(short?13:17);
+    const dotsTop=lineTop+(short?5:8);
+    const dotsBottom=Math.max(dotsTop+9,Math.min(bottom-4,h-17));
+    const x0=w*(narrow?.10:.25),x1=w*(narrow?.92:.91);
+    const xs=Array.from({length:S},(_,s)=>x0+(x1-x0)*s/(S-1));
+    geom=Array.from({length:N},(_,r)=>xs.map(x=>({x,y:dotsTop+(dotsBottom-dotsTop)*r/(N-1)})));
+    flow={headlineBottom,labelY,lineTop,lineBottom:dotsBottom+4,dotsTop,dotsBottom,sourceX:x0,gatesX:xs.slice(1),height:h};
+    const pitch=(dotsBottom-dotsTop)/(N-1);
     Array.from(hits.children).forEach((b,i)=>{
-      b.style.left=geom[i].x0+'px';b.style.top=geom[i].y+'px';
-      b.setAttribute('aria-label',`Inspect ${activeItem(i).name}`);
+      const p=geom[Math.floor(i/S)][i%S];
+      b.style.left=p.x+'px';b.style.top=p.y+'px';
+      b.style.width=Math.min(44,(x1-x0)/(S-1)-3)+'px';b.style.height=Math.max(1,Math.min(34,pitch-1))+'px';
     });
-    draw();
-  };
-  const cubic=(a,b,t)=>{
-    const mid=(a.x+b.x)/2,delta=Math.abs(b.x-a.x)*.06;
-    const c1={x:mid-delta,y:a.y+(b.y-a.y)*.18};
-    const c2={x:mid+delta,y:b.y-(b.y-a.y)*.18};
-    const q=1-t;
-    return{x:q*q*q*a.x+3*q*q*t*c1.x+3*q*t*t*c2.x+t*t*t*b.x,
-      y:q*q*q*a.y+3*q*q*t*c1.y+3*q*t*t*c2.y+t*t*t*b.y};
-  };
-  const position=(strand,t)=>{
-    const k=clamp(t)*5,idx=Math.min(4,Math.floor(k));
-    return cubic(strand.nodes[idx],strand.nodes[idx+1],k-idx);
-  };
-  function displayText(i){
-    const item=activeItem(i);
-    note.querySelector('.ff-note-kind').textContent=item.where;
-    note.querySelector('.ff-note-name').textContent=item.name;
-    note.querySelector('.ff-note-detail').textContent=item.detail;
-    // Hover details belong to the selected dot, below the main headline.
-    note.style.left=clamp(geom[i].x0+25,w*.11,w*.26)+'px';
-    note.style.top=clamp(geom[i].y-87,h*.37,h*.70)+'px';
-    note.classList.add('is-on');
-    hits.children[i]?.setAttribute('aria-label',`Selected: ${item.name}`);
+    if(shown)placeNote(shown.r,shown.s);
+    draw();return true;
   }
-  const inspect=(i,lock)=>{
-    if(!owned()||mode!=='rest')return;
-    if(i!==hovered&&i!==pinned)highlightAt=clock;
-    hovered=i;if(lock)pinned=i;
-    displayText(i);
-    // Pointer hover naturally precedes click. Pinning the same source must
-    // not launch a second pulse (and a second Create explosion).
-    if(!pulses.some(p=>p.inspection&&p.id===i&&clock-p.at<p.duration)){
-      pulses.push({id:i,at:clock-0.08,duration:2.9,inspection:true});
-      pulses=pulses.slice(-12);
+  // Miniatures are purpose-built diagrams, not claimed renders or evidence.
+  const mini=(r,s)=>{
+    const wrap=x=>'<svg viewBox="0 0 100 74" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="74" fill="#17130e"/>'+x+'</svg>';
+    const line=(d,c='#bd9c6b')=>'<path d="'+d+'" fill="none" stroke="'+c+'" stroke-width="1.5" stroke-linecap="round"/>';
+    const box=(x,y,a,b,c='#3c3021')=>'<rect x="'+x+'" y="'+y+'" width="'+a+'" height="'+b+'" rx="2" fill="'+c+'" stroke="#9b805344"/>';
+    const figure=(x,y,c)=>'<g transform="translate('+x+' '+y+')" fill="none" stroke="'+c+'" stroke-width="2" stroke-linecap="round"><circle cy="-13" r="4" fill="'+c+'"/><path d="M0 -8L-2 9M0 -5L-13 2L-18 -5M0 -5L11 -12L15 -5M-2 9L-11 24M-2 9L9 24"/></g>';
+    const image=(x,y,c)=>'<g transform="translate('+x+' '+y+')"><rect width="40" height="49" fill="#29261d"/><circle cx="29" cy="11" r="5" fill="#d4b785"/><path d="M0 49V30L13 13L25 35L32 24L40 37V49Z" fill="'+c+'"/></g>';
+    if(s===2)return wrap(box(7,8,86,58)+line('M7 20H93')+'<g font-size="7" font-family="monospace" fill="#c4ad88"><text x="12" y="32">&gt; load weights</text><text x="12" y="43">&gt; resolve nodes</text><text x="12" y="55" fill="'+(blocked(r)&&end(r)===s?rust:green)+'">'+(blocked(r)&&end(r)===s?'! dependency':'graph ready')+'</text></g>');
+    if(s===3)return wrap([20,36,52].map((y,i)=>line('M12 '+y+'H88','#735c3e')+'<circle cx="'+[36,66,49][i]+'" cy="'+y+'" r="4" fill="#d4b17b"/>').join(''));
+    if(s===1)return wrap(line('M18 20L50 37L83 17M18 54L50 37L83 56','#856f50')+box(6,12,23,15)+box(6,47,23,15)+box(36,27,28,20,'#58432a')+box(74,10,20,15)+box(74,48,20,15));
+    if(r===0||r===3||r===6)return wrap(box(5,8,43,58)+box(52,8,43,58)+figure(26,32,'#b7ab96')+figure(73,32,s===S-1?green:gold));
+    if(r===2)return wrap(line('M24 37a26 26 0 1 1 10 21M30 54l8 5-7 5')+'<circle cx="24" cy="37" r="4" fill="'+gold+'"/>');
+    if(r===4)return wrap(line('M50 5V69M6 37H94','#58452d')+[0,1,2,3].map((i)=>'<g transform="translate('+(25+i%2*50)+' '+(19+Math.floor(i/2)*36)+')"><path d="M-9 -6L0 -12L9 -6V9H-9Z" fill="'+['#b59764','#8e9d79','#ad805d','#c9ad7d'][i]+'"/><rect x="-4" y="-2" width="8" height="11" fill="#372b1c"/></g>').join(''));
+    if(r===9)return wrap([0,1,2].map(i=>'<rect x="'+(10+13*i)+'" y="'+(9+10*i)+'" width="'+(80-26*i)+'" height="'+(56-20*i)+'" fill="none" stroke="#bda073"/>').join('')+'<circle cx="50" cy="37" r="3" fill="'+gold+'"/>');
+    if(r===5)return wrap(box(6,6,40,28,'#816c4c')+box(54,6,40,28,'#64715c')+box(6,40,40,28,'#9b805d')+box(54,40,40,28,'#655237'));
+    return wrap(image(6,12,r===7&&s===0?'#74898d':'#8d7759')+image(54,12,'#ae875c')+(r===8&&s===0?[20,27,34,41,48,55].map(y=>line('M6 '+y+'H94','#c3ab7a')).join(''):''));
+  };
+  function placeNote(r,s){
+    if(!geom.length)return;
+    const p=node(r,s),nw=note.offsetWidth||Math.min(330,w-16),nh=note.offsetHeight||115;
+    const margin=w<760?9:Math.max(12,w*.035),above=p.y-nh-15,below=p.y+15;
+    // Prefer above. Early rows use below; there is no reserved blank band.
+    const safeTop=flow.headlineBottom+2,safeBottom=Math.min(h-12,flow.dotsBottom+55);
+    const down=above<safeTop&&below+nh<=safeBottom;
+    const x=clamp(p.x-nw/2,margin,Math.max(margin,w-margin-nw));
+    const y=down?below:Math.max(safeTop,above);
+    note.style.left=x+'px';note.style.top=Math.min(y,Math.max(0,h-nh-8))+'px';
+    note.style.setProperty('--ff-arrow',clamp(p.x-x,9,nw-9)+'px');
+    note.classList.toggle('is-below',down);
+  }
+  function show(r,s,announce=false){
+    if(!valid(r,s))return;
+    const [title,detail,time]=describe(r,s),j=journeys[r];
+    if(!shown||shown.r!==r||shown.s!==s){
+      note.querySelector('.ff-kind').textContent=String(r+1).padStart(2,'0')+' / '+stages[s]+(s>end(r)?' · not reached':s===end(r)&&blocked(r)?' · stopped':'');
+      note.querySelector('.ff-time').textContent=time;
+      note.querySelector('.ff-note-name').textContent=title;
+      note.querySelector('.ff-note-detail').textContent=detail+(s===1&&blocked(r)&&end(r)===1?' Existing capability: '+j[1]+'.':'');
+      note.querySelector('.ff-mini').innerHTML=mini(r,s);
+      note.dataset.tone=s>=end(r)&&blocked(r)?'blocked':s===S-1?'success':'normal';
+      shown={r,s};placeNote(r,s);
     }
-    wake();
-  };
-  const release=i=>{
-    if(pinned===i)return;
-    if(hovered===i)hovered=-1;
-    if(hovered<0&&pinned<0)note.classList.remove('is-on');
-  };
-  // Visual dots are only ~6px apart. 28px buttons overlap and later
-  // siblings steal clicks. Resolve the nearest actual dot on one pointer
-  // surface; keep the labelled buttons as independent keyboard targets.
-  const nearest=(event)=>{
-    if(!owned()||mode!=='rest')return -1;
-    const rect=canvasArea();
-    const x=event.clientX-rect.left,y=event.clientY-rect.top;
-    let best=-1,distance=(event.pointerType==='touch'?27:15)**2;
-    geom.forEach((strand,i)=>{
-      const dx=x-strand.x0,dy=y-strand.y;
-      const d=dx*dx+dy*dy;
-      if(d<distance){distance=d;best=i;}
-    });
-    return best;
-  };
-  hits.addEventListener('pointermove',e=>{
-    if(e.pointerType==='touch')return;
-    const selected=nearest(e);
-    if(selected===hovered)return;
-    if(hovered>=0)release(hovered);
-    if(selected>=0)inspect(selected,false);
-  });
-  hits.addEventListener('pointerleave',()=>{
-    if(hovered>=0)release(hovered);
-  });
-  hits.addEventListener('click',e=>{
-    const selected=nearest(e);
-    if(selected<0)return; // blank space still turns the deck
-    e.preventDefault();e.stopPropagation();
-    if(pinned===selected){pinned=-1;hovered=-1;note.classList.remove('is-on');}
-    else inspect(selected,true);
-  });
-  // Click empty space or Escape to return to the quiet field.
-  slide.addEventListener('pointerdown',e=>{
-    if(!e.target.closest('.ff-hit')&&pinned>=0){pinned=-1;hovered=-1;note.classList.remove('is-on');}
-  });
-  slide.addEventListener('keydown',e=>{if(e.key==='Escape'){pinned=-1;hovered=-1;note.classList.remove('is-on');}});
-  const frameColor=(color,a)=>{g.strokeStyle=alpha(color,a);};
-  const drawLine=(strand,segment,opacity,build,thin=0)=>{
-    const a=strand.nodes[segment],b=strand.nodes[segment+1];
-    if(opacity<.002||build<=0)return;
-    const len=18;g.beginPath();g.moveTo(a.x,a.y);
-    for(let j=1;j<=len;j++){
-      const p=cubic(a,b,j/len*build);g.lineTo(p.x,p.y);
-    }
-    frameColor(strand.color,opacity);
-    g.lineWidth=thin?0.7:1.08;g.stroke();
-  };
-  const dot=(x,y,r,c,a,glow=true)=>{
-    if(a<.004)return;
-    if(glow){const rr=Math.max(8,r*4);const grad=g.createRadialGradient(x,y,0,x,y,rr);
-      grad.addColorStop(0,alpha(c,a*.19));grad.addColorStop(1,alpha(c,0));g.fillStyle=grad;g.fillRect(x-rr,y-rr,rr*2,rr*2);}
-    g.beginPath();g.arc(x,y,r,0,Math.PI*2);g.fillStyle=alpha(c,a);g.fill();
-  };
-  const buildAt=(t)=>clamp(t);
-  // Never highlight beyond a strand's actual stopping point.
-  const terminal=strand=>strand.end===4?.85:Math.max(.03,(strand.end+1)/5-.025);
-  const latest=()=>Math.max(0,(now()-start)/1000);
-  const draw=()=>{
-    if(!w||!h)return;
-    const narrow=w<700;
+    note.setAttribute('aria-live',announce?'polite':'off');
+    note.classList.add('is-on');
+  }
+  function hide(){note.classList.remove('is-on');shown=null;}
+  const pick=()=>inspection||{r:row,s:step};
+  function inspect(r,s,lock=false,announce=false){
+    if(!owned()||mode!=='rest'||!valid(r,s))return;
+    if(lock&&pinned&&inspection?.r===r&&inspection?.s===s){release(true);return;}
+    if(inspection?.r!==r||inspection?.s!==s)pinned=false;
+    inspection={r,s};if(lock)pinned=true;
+    show(r,s,announce);draw();wake();
+  }
+  function release(force=false){
+    if(!inspection||pinned&&!force)return;
+    const p=inspection;inspection=null;pinned=false;row=p.r;step=Math.min(p.s,end(row));
+    phase='hold';age=0;seen[row]=Math.max(seen[row],step);show(row,step);draw();wake();
+  }
+  for(let r=0;r<N;r++)for(let s=0;s<S;s++){
+    const b=document.createElement('button');b.type='button';b.className='ff-hit';
+    b.dataset.row=String(r);b.dataset.stage=String(s);b.dataset.id=String(r*S+s);
+    b.setAttribute('aria-label',journeys[r][0]+', '+stages[s]+': '+describe(r,s)[0]);
+    b.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')inspect(r,s);});
+    b.addEventListener('pointerleave',()=>{if(inspection?.r===r&&inspection?.s===s)release();});
+    b.addEventListener('focus',()=>inspect(r,s,false,true));
+    b.addEventListener('blur',()=>{if(inspection?.r===r&&inspection?.s===s)release();});
+    b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();inspect(r,s,true,true);});
+    b.addEventListener('keydown',e=>{if(e.key===' '||e.key==='Enter')e.stopPropagation();});
+    hits.append(b);
+  }
+  slide.addEventListener('keydown',e=>{if(e.key==='Escape'&&inspection){e.stopPropagation();release(true);}});
+  slide.addEventListener('pointerdown',e=>{if(inspection&&!e.target.closest('.ff-hit'))release(true);});
+  window.deckOverlay?.register({isOpen:()=>pinned,contains:t=>hits.contains(t),close:()=>release(true)});
+  function dot(p,r,c,a,glow=false){
+    if(a<=0)return;
+    if(glow){const rr=r*5,gr=g.createRadialGradient(p.x,p.y,0,p.x,p.y,rr);
+      gr.addColorStop(0,alpha(c,a*.32));gr.addColorStop(1,alpha(c,0));g.fillStyle=gr;g.fillRect(p.x-rr,p.y-rr,rr*2,rr*2);}
+    g.beginPath();g.arc(p.x,p.y,r,0,Math.PI*2);g.fillStyle=alpha(c,a);g.fill();
+  }
+  function line(a,b,c,o,dashed=false){
+    if(o<=0)return;
+    g.strokeStyle=alpha(c,o);g.lineWidth=.8;g.setLineDash(dashed?[2,5]:[]);
+    g.beginPath();g.moveTo(a.x,a.y);g.lineTo(b.x,b.y);g.stroke();g.setLineDash([]);
+  }
+  function draw(){
+    if(!w||!h||!geom.length)return;
     g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
-    const since=latest();
-    let build=1,opacity=1,dusting=0;
-    if(mode==='enter-collage'){
-      build=ease(clamp((since-.35)/1.55));opacity=clamp((since-.35)/.8);
-      dusting=clamp((since-.72)/.75);
-    }else if(mode==='enter-gap'){
-      build=ease(clamp((since-.15)/1.0));opacity=clamp(since/.6);dusting=1;
-    }else if(mode==='exit-gap'){
-      build=1;opacity=1-ease(clamp(since/1.05));dusting=1;
-    }else if(mode==='exit-collage'){
-      build=1-ease(clamp(since/.85));opacity=1-ease(clamp(since/1.1));dusting=clamp(1-since/.6);
-    }else if(mode==='inactive') { g.clearRect(0,0,w,h);root.classList.remove('ff-active');return; }
-    if(mode!=='exit-collage'&&mode!=='exit-gap'&&mode!=='enter-collage')dusting=1;
-    // One renderer owns moving artwork pixels during the entrance.
-    if(originalCanvas)originalCanvas.style.opacity=mode==='enter-collage'&&artwork.length?'0':String(1-dusting);
     root.classList.toggle('ff-active',mode!=='inactive');
-
-    const gatesX=stops(),yTop=flow.lineTop,yBottom=flow.lineBottom;
-    const labelY=flow.labelY;
-    // A subdued, architectural frame that belongs to the same family as the deck's network artwork.
-    g.save();g.lineWidth=.7;
-    gatesX.forEach((x,j)=>{
-      const fade=opacity*(.25+j*.03);
-      const grad=g.createLinearGradient(x,yTop,x,yBottom);
-      grad.addColorStop(0,alpha('#d5a368',0));grad.addColorStop(.20,alpha('#d5a368',fade));
-      grad.addColorStop(.80,alpha('#d5a368',fade*.8));grad.addColorStop(1,alpha('#d5a368',0));
-      g.strokeStyle=grad;g.beginPath();g.moveTo(x,yTop);g.lineTo(x,yBottom);g.stroke();
-      // Five stage names now sit on one baseline just above the filaments.
-      g.fillStyle=alpha(j===3?'#f0c98d':'#d6ba90',opacity*.94);
-      g.font=`${narrow?(w<480?9:10):12}px "DM Sans",Arial,sans-serif`;
-      g.textAlign='center';g.letterSpacing=narrow?'0.4px':'1.4px';
-      g.fillText(gates[j][0],x,labelY);
-      g.fillStyle=alpha('#9b8262',opacity*.65);
-      g.font='10px "EB Garamond",Georgia,serif';g.letterSpacing='0px';
-      g.fillText(String(j+1).padStart(2,'0'),x,labelY-17);
-    });
-    // Required is the origin, not a barrier; align it with the four steps.
-    const needX=sourceX(); // Required is the starting point, not another filter
-    g.fillStyle=alpha('#e4bf8a',opacity*.94);
-    g.textAlign='center';g.letterSpacing='1.4px';
-    g.font=`${narrow?(w<480?9:10):12}px "DM Sans",Arial,sans-serif`;
-    g.letterSpacing=narrow?'0.4px':'1.4px';
-    g.fillText('REQUIRED',needX,labelY);
-    g.fillStyle=alpha('#9b8262',opacity*.65);
-    g.letterSpacing='0px';g.font='10px "EB Garamond",Georgia,serif';
-    g.fillText('00',needX,labelY-17);
-    g.restore();
-
-    // The gallery's real sampled pixels fold into the filament field.
-    if(mode==='enter-collage'&&artwork.length){
-      g.save();
-      for(const mote of artwork){
-        const t=clamp((since-.07-mote.delay*.8)/1.26);
-        if(t<=0||t>=1)continue;
-        const k=ease(t),strand=geom[mote.id%N];
-        const dest=position(strand,.035+.33*hash(mote.id*53+3));
-        const turn=Math.sin(Math.PI*k);
-        const x=point(mote.x,dest.x,k)+(hash(mote.id*97)-.5)*42*turn;
-        const y=point(mote.y,dest.y,k)-23*turn;
-        const a=clamp(t/.11)*clamp((1-t)/.27)*(.72+.2*hash(mote.id*9));
-        const size=point(mote.size,1.1,k);
-        g.globalAlpha=a;g.fillStyle=mote.color;
-        g.fillRect(x-size*.5,y-size*.5,size,size);
-      }
-      g.restore();
-    }
-    geom.forEach((strand,i)=>{
-      const hot=i===hovered||i===pinned;
-      const atten=hot?1:((hovered>=0||pinned>=0)?.24:1);
-      const twinkle=1+.085*Math.sin(clock*.65+i*1.1);
-      const origin=strand.nodes[0];
-      if(build<.999&&!artwork.length){
-        // Fallback when the gallery did not provide any sampled image pixels.
-        const src=sources[i%sources.length]||{x:w*.5,y:h*.52};
-        const k=ease(clamp((since-.16)/.9));
-        const x=point(src.x,origin.x,k),y=point(src.y,origin.y,k);
-        dot(x,y,1.5+2*k,strand.color,opacity*(.45+.4*k),true);
-      }
-      for(let j=0;j<5;j++){
-        const stage=clamp(build*5-j);
-        let a=(j===0?.35:j===1?.26:j===2?.20:j===3?.14:.09)*opacity*atten*twinkle;
-        if(j>strand.end)a*=.095;
-        if(hot)a*=.32; // bright focus is painted only behind the pulse head
-        drawLine(strand,j,a,stage);
-      }
-      if(build>.4){
-        const travelling=pulses.some(p=>!p.inspection&&p.id===i&&clock-p.at>=0&&clock-p.at<p.duration);
-        const a=opacity*clamp((build-.4)/.5)*(hot?1:.76)*atten*(travelling ? 0.2 : clamp((clock-reborn[i])/.65));
-        dot(origin.x,origin.y,hot?4.0:2.35,strand.color,a,true);
-      }
-      if(hot&&build>.9){
-        // Highlight is drawn only as far as this journey has travelled.
-        const head=terminal(strand)*ease(clamp((clock-highlightAt)/2.7));
-        for(let j=0;j<5;j++){
-          const partial=clamp(head*5-j);
-          if(partial>0)drawLine(strand,j,.88*opacity,partial);
-        }
-      }
-    });
-    // Passing motes: the survivor is brighter; most die at a predetermined gate.
-    if(mode==='rest'||mode==='exit-gap'){
-      pulses=pulses.filter(p=>clock-p.at<p.duration+.2);
-      for(const p of pulses){
-        const thread=geom[p.id];if(!thread)continue;
-        const time=clamp((clock-p.at)/p.duration);
-        const success=thread.end===4;
-        const travel=terminal(thread);
-        const along=travel*ease(clamp(time/(success?.82:1))),pnt=position(thread,along);
-        const fadeAt=success?.82:.76;
-        const dissipate=time>fadeAt?1-ease((time-fadeAt)/(1-fadeAt)):1;
-        const a=(p.inspection?.97:.82)*dissipate*opacity;
-        dot(pnt.x,pnt.y,p.inspection?4.3:2.8,thread.color,a,true);
-        if(success&&time>=.82){
-          if(!p.bloomed){
-            p.bloomed=true;
-            root.dispatchEvent(new CustomEvent('filament-create',{detail:{strand:p.id,capability:activeItem(p.id).name}}));
-          }
-          // An earned burst at Create; blocked journeys only dissolve.
-          const burst=clamp((time-.82)/.18),peak=1-ease(burst),origin=position(thread,travel);
-          dot(origin.x,origin.y,6+14*ease(burst),'#ffdfa1',opacity*peak*.58,true);
-          g.strokeStyle=alpha('#ffdfa1',opacity*peak*.66);
-          g.lineWidth=1.1;g.beginPath();g.arc(origin.x,origin.y,4+29*ease(burst),0,Math.PI*2);g.stroke();
-          for(let j=0;j<13;j++){
-            const angle=(j/13+hash(p.id*71)*.11)*Math.PI*2;
-            const rad=(5+32*ease(burst))*(.75+.5*hash(p.id*31+j*53));
-            dot(origin.x+Math.cos(angle)*rad,origin.y+Math.sin(angle)*rad,
-              .85+hash(j*31+p.id)*.7,thread.color,opacity*peak*.88,false);
-          }
-        }
-        if(time>.77&&!success){
-          for(let j=0;j<4;j++){
-            const dx=(hash(p.id*13+j*31)-.5)*36*(time-.74)*4;
-            const dy=(hash(p.id*41+j*11)-.5)*34*(time-.74)*4;
-            dot(pnt.x+dx,pnt.y+dy,1.1,thread.color,a*.31,false);
-          }
-        }
-      }
-    }
-
-  };
-  const update=()=>{
-    raf=0;const t=now(),dt=clamp((t-(last||t))/1000,0,.06);last=t;
+    const rest=mode==='rest',entry=mode==='enter-collage'||mode==='enter-gap';
+    const t=Math.max(0,(now()-start)/1000);
+    const fade=entry?ease(clamp((t-.25)/1.55)):mode.startsWith('exit')?1-ease(clamp(t/.95)):rest?1:0;
+    if(oldCanvas)oldCanvas.style.opacity=mode==='exit-collage'?String(1-fade):mode==='inactive'?'1':'0';
+    hits.classList.toggle('is-ready',rest&&owned());
     if(mode==='inactive')return;
-    clock+=dt;
-    if(mode==='rest'&&!motionOff()&&owned()){
-      if(clock>=launchAt){
-        let id=Math.floor(hash(++pulseId*617+77)*N);
-        // Periodic illustrative success, not an empirical conversion funnel.
-        if(pulseId%8===0){
-          const successes=geom.filter(s=>s.end===4);
-          if(successes.length)id=successes[Math.floor(hash(pulseId*37)*successes.length)].id;
-        }
-        pulses.push({id,at:clock,duration:2.2+hash(pulseId*77)*1.6,inspection:false});
-        launchAt=clock+.37+hash(pulseId*37)*.45;
-
+    const {r:active,s:selected}=pick(),small=w<760;
+    g.textAlign='center';g.textBaseline='middle';
+    g.font=(small?(w<420?9:10):11)+'px "DM Sans",Arial,sans-serif';
+    stages.forEach((name,s)=>{
+      const x=node(0,s).x;
+      g.fillStyle=alpha('#d6ba90',fade*.9);
+      g.fillText(s===0&&small?'Need':name,x,flow.labelY);
+      line({x,y:flow.lineTop},{x,y:flow.lineBottom},'#a5865c',fade*.12);
+    });
+    geom.forEach((nodes,r)=>{
+      const isActive=r===active,opacity=inspection&&!isActive?.53:1;
+      g.textAlign='left';
+      g.font=(small?10:14)+'px "EB Garamond",Georgia,serif';
+      g.fillStyle=alpha(isActive?'#efe6d6':'#b8a98f',fade*(isActive?.95:.68));
+      g.fillText(small?String(r+1).padStart(2,'0'):journeys[r][0],w*(small?.025:.09),nodes[0].y);
+      for(let s=0;s<S;s++){
+        const past=s<=seen[r],unreached=s>end(r),terminal=s===end(r);
+        if(s<S-1)line(nodes[s],nodes[s+1],gold,fade*opacity*(s<seen[r]?.58:unreached||terminal?.10:.28),unreached||terminal);
+        const p=nodes[s],c=terminal?tone(r,s):past?gold:'#9a805d';
+        if(unreached){g.strokeStyle=alpha('#8b7353',fade*opacity*.38);g.lineWidth=.8;g.beginPath();g.arc(p.x,p.y,2.1,0,7);g.stroke();}
+        else dot(p,terminal?2.9:2.3,c,fade*opacity*(past?.88:.60));
       }
-      for(const p of pulses){
-        if(p.inspection||p.replaced||clock-p.at<p.duration||p.id===hovered||p.id===pinned)continue;
-        p.replaced=true;
-        assignments[p.id]=(assignments[p.id]+17)%catalogue.length;
-        reborn[p.id]=clock;
-        hits.children[p.id]?.setAttribute('aria-label',`Inspect ${activeItem(p.id).name}`);
-        geom[p.id].color=colors[activeItem(p.id).type]||'#d3b180';
-      }
+    });
+    if(entry&&mode==='enter-collage'&&t<2.15){
+      const all=geom.flat();
+      const motes=artwork.length?artwork:sources;
+      motes.forEach((m,i)=>{
+        const p=all[i%all.length],q=clamp((t-(m.delay||0)*.65)/1.40);
+        if(q>=1)return;
+        const k=ease(q),x=m.x+(p.x-m.x)*k+(hash(i*17)-.5)*28*Math.sin(Math.PI*k),y=m.y+(p.y-m.y)*k;
+        g.globalAlpha=(1-k*.72)*.85;g.fillStyle=m.color||gold;
+        const size=(m.size||2)*(1-k*.42);g.fillRect(x-size/2,y-size/2,size,size);
+      });g.globalAlpha=1;
     }
-    if(mode==='enter-collage'&&latest()>2.35)mode='rest';
-    if(mode==='enter-gap'&&latest()>1.25)mode='rest';
-    if(mode==='exit-gap'&&latest()>1.3)mode='inactive';
-    if(mode==='exit-collage'&&latest()>1.35)mode='inactive';
+    if(!rest)return;
+    if(inspection){
+      dot(node(active,selected),4.2,selected>end(active)?rust:ink,.95,true);return;
+    }
+    if(phase==='between')return;
+    let p=node(row,step),r=4.1,c=step===end(row)?tone(row,step):ink;
+    if(phase==='charge'){
+      const k=clamp(age/.68);r*=1+.65*Math.sin(Math.PI*k);
+      g.strokeStyle=alpha(c,Math.sin(Math.PI*k)*.62);g.lineWidth=1;
+      g.beginPath();g.arc(p.x,p.y,4+22*k,0,7);g.stroke();
+    }else if(phase==='travel'){
+      const dest=node(row,step+1),k=ease(clamp(age/.58));
+      p={x:p.x+(dest.x-p.x)*k,y:p.y+(dest.y-p.y)*k};
+      line(node(row,step),p,gold,.82);
+    }else if(phase==='born')r*=.35+.65*ease(clamp(age/.25));
+    dot(p,r,c,.98,true);
+  }
+  function arrive(newRow=false){
+    phase=newRow?'born':'hold';age=0;seen[row]=Math.max(seen[row],step);
+    show(row,step);
+    if(step===S-1)root.dispatchEvent(new CustomEvent('filament-create',{detail:{strand:row,capability:journeys[row][1]}}));
+  }
+  // A single clock owns all phases. No interval, overlapping pulse or timer
+  // survives an inspection, hidden tab, navigation or overview.
+  function advance(dt){
+    if(inspection||still()||!owned())return;
+    age+=dt;
+    if(phase==='born'&&age>=.25){phase='hold';age=0;}
+    else if(phase==='hold'&&age>=(step===0?5:4.2)){phase='charge';age=0;}
+    else if(phase==='charge'&&age>=.68){hide();age=0;phase=step===end(row)?'between':'travel';}
+    else if(phase==='travel'&&age>=.58){step++;arrive();}
+    else if(phase==='between'&&age>=.30){row=(row+1)%N;step=0;if(row===0)seen=Array(N).fill(-1);arrive(true);}
+  }
+  function update(){
+    raf=0;const t=now(),dt=clamp((t-last)/1000,0,.1);last=t;
+    if(mode==='inactive'||document.hidden||overview())return;
+    if(mode==='enter-collage'&&t-start>=2150||mode==='enter-gap'&&t-start>=1250){mode='rest';arrive(true);}
+    else if(mode.startsWith('exit')&&t-start>=1050){mode='inactive';hide();}
+    else if(mode==='rest')advance(dt);
     draw();
-    if(mode!=='inactive'&&!document.hidden&&!document.getElementById('overview')?.classList.contains('on'))raf=requestAnimationFrame(update);
-  };
-  const wake=()=>{
-    if(raf)return;
-    last=now();raf=requestAnimationFrame(update);
-  };
-  const begin=(m,ctx)=>{
-    visit=ctx;mode=motionOff()||ctx?.rest||ctx?.direct?'rest':m;
+    if(mode!=='inactive'&&!still())raf=requestAnimationFrame(update);
+  }
+  function stop(){if(raf)cancelAnimationFrame(raf);raf=0;}
+  function wake(){if(!raf&&mode!=='inactive'&&!document.hidden&&!overview()&&!still()){last=now();raf=requestAnimationFrame(update);}}
+  function begin(m,ctx){
+    stop();visit=ctx;mode=still()||ctx?.rest||ctx?.direct?'rest':m;
+    start=last=now();row=step=age=0;phase='hold';seen=Array(N).fill(-1);inspection=null;pinned=false;hide();
     artwork=m==='enter-collage'&&Array.isArray(root.filamentArtwork)?root.filamentArtwork:[];
-    start=now();last=start;clock=0;pulseId=0;pulses=[];launchAt=.4;
-    hovered=-1;pinned=-1;note.classList.remove('is-on');
-    layout();
-    if(m==='enter-collage'&&originalSnapshot){
-      const snap=originalSnapshot();
-      sources=(snap.named||[]).concat(snap.dust||[]).map(p=>{
-        const rect=canvasArea();return{x:p.x-rect.left,y:p.y-rect.top};
-      });
-    }else sources=[];
-    if(mode==='rest'&&originalCanvas)originalCanvas.style.opacity='0';
-    draw();wake();
-  };
-  const leave=(ctx)=>{
-    if(mode==='inactive')return;
-    if(raf)cancelAnimationFrame(raf);raf=0;
-    mode=ctx?.to===0?'exit-collage':ctx?.to===2?'exit-gap':'inactive';
-    artwork=[];start=now();pulses=[];hovered=pinned=-1;note.classList.remove('is-on');
-    if(mode==='inactive'&&originalCanvas)originalCanvas.style.opacity='1';
-    draw();wake();
-  };
-  const restore=ctx=>{
-    if(ctx?.to===1){begin('rest',ctx);} else{
-      artwork=[];
-      if(raf)cancelAnimationFrame(raf);raf=0;mode='inactive';
-      if(originalCanvas)originalCanvas.style.opacity='1';
-      note.classList.remove('is-on');
+    sources=[];
+    if(m==='enter-collage'&&!artwork.length&&originalSnapshot){
+      const b=rect(),snap=originalSnapshot();
+      sources=[...(snap.named||[]),...(snap.dust||[])].map(p=>({x:p.x-b.left,y:p.y-b.top,color:p.color,size:p.r||2}));
     }
-  };
-  const snapshot=()=>{
-    if(!w||!h)layout();
-    const rect=canvasArea();
-    const named=geom.map((s,i)=>{
-      const k=i%3===0?.18:i%3===1?.02:.4;
-      const p=position(s,k);
-      return{x:p.x+rect.left,y:p.y+rect.top,p:1+hash(i*11)*2,r:i%3===1?4:2.5,color:s.color};
-    });
+    if(!artwork.length&&!sources.length&&m==='enter-collage')sources=Array.from({length:N*S},(_,i)=>({x:w*.5+(hash(i)-.5)*w*.7,y:h*.5+(hash(i+300)-.5)*h*.6,color:gold,size:2}));
+    layout();if(mode==='rest')arrive();draw();wake();
+  }
+  function leave(ctx){
+    stop();inspection=null;pinned=false;hide();
+    mode=still()?'inactive':ctx?.to===0?'exit-collage':ctx?.to===2?'exit-gap':'inactive';
+    start=last=now();artwork=[];draw();wake();
+  }
+  function restore(ctx){
+    if(ctx?.to!==1){stop();mode='inactive';hide();draw();return;}
+    // Same-visit resize/recovery/overview must preserve the active story.
+    if(mode!=='rest'&&mode!=='enter-collage'&&mode!=='enter-gap'){begin('rest',ctx);return;}
+    stop();if(mode!=='rest'){mode='rest';arrive();}
+    layout();draw();wake();
+  }
+  function snapshot(){
+    if(!geom.length)layout();
+    const b=rect(),named=geom.flatMap((nodes,r)=>nodes.map((p,s)=>({x:p.x+b.left,y:p.y+b.top,p:1+hash(r*S+s),r:2.6,color:tone(r,s)})));
     const dust=Array.from({length:260},(_,i)=>{
-      const s=geom[i%N],t=hash(i*137+10),p=position(s,t);
-      return{x:p.x+rect.left+(hash(i*47)-.5)*8,y:p.y+rect.top+(hash(i*49)-.5)*8,color:s.color};
+      const r=i%N,s=Math.floor(hash(i*31)*5),a=node(r,s),z=node(r,s+1),t=hash(i*137+10);
+      return{x:a.x+(z.x-a.x)*t+b.left,y:a.y+b.top+(hash(i*49)-.5)*3,color:gold};
     });
     return{named,dust};
-  };
-  // Preserve the original scene's material-into-chart public contract.
-  root.snapshot = snapshot; // Late handoffs still inherit the filament geometry.
-  const observer=new ResizeObserver(()=>{layout();if(mode!=='inactive')wake();});
-  observer.observe(root);
-  const heading=slide.querySelector('.split h1');
-  if(heading)observer.observe(heading);
-  // A late font load changes headline height without changing the canvas box.
-  document.fonts?.addEventListener?.('loadingdone',()=>{layout();if(mode!=='inactive')wake();});
-  addEventListener('deck-motion',()=>{if(owned())begin('rest',visit);});
-  addEventListener('deck-overview',()=>{if(document.getElementById('overview')?.classList.contains('on')){
-    if(raf)cancelAnimationFrame(raf);raf=0;
-  }else if(owned()&&mode!=='inactive')wake();});
-  document.addEventListener('visibilitychange',()=>{if(document.hidden){if(raf)cancelAnimationFrame(raf);raf=0;}else if(mode!=='inactive')wake();});
-  window.FilamentField={enter:begin,exit:leave,restore,snapshot,
-    layoutMetrics:()=>({...flow,sourceX:sourceX(),gatesX:stops(),height:h}),
-    ready:()=>mode!=='inactive'};
+  }
+  root.snapshot=snapshot; // Preserve slide 3's material-into-chart contract.
+  const observer=new ResizeObserver(()=>{layout();wake();});observer.observe(root);
+  const heading=slide.querySelector('.split h1');if(heading)observer.observe(heading);
+  const footer=slide.querySelector('.ff-conclusion');if(footer)observer.observe(footer);
+  document.fonts?.addEventListener?.('loadingdone',()=>{layout();wake();});
+  addEventListener('deck-motion',()=>{if(!owned())return;stop();if(mode!=='rest'){mode='rest';arrive();}if(still()&&phase!=='hold'){phase='hold';age=0;show(row,step);}draw();wake();});
+  addEventListener('deck-overview',()=>{if(overview())stop();else if(owned())wake();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else wake();});
+  window.FilamentField={enter:begin,exit:leave,restore,snapshot,layoutMetrics:()=>({...flow}),ready:()=>mode!=='inactive',
+    // Read-only evidence for exact checkpoint and animation ownership tests.
+    state:()=>({mode,row,step,phase,age,inspection:inspection&&{...inspection},pinned,shown:shown&&{...shown},seen:[...seen],ends:journeys.map((_,r)=>end(r))})};
   layout();
-  if (slide.classList.contains('on')) begin('rest', window.deckNav || { rest:true, direct:true });
+  if(slide.classList.contains('on'))begin('rest',window.deckNav||{rest:true,direct:true});
 })();
