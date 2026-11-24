@@ -1090,10 +1090,10 @@
     const margin=w<760?9:Math.max(12,w*.035),above=p.y-nh-15,below=p.y+15;
     // Prefer above. Early rows use below; there is no reserved blank band.
     const safeTop=flow.headlineBottom+2,safeBottom=Math.min(h-12,flow.dotsBottom+55);
-    const down=above<safeTop&&below+nh<=safeBottom;
+    const down=above<safeTop&&below+nh<=Math.max(safeBottom,h-12);
     const x=clamp(p.x-nw/2,margin,Math.max(margin,w-margin-nw));
-    const y=down?below:Math.max(safeTop,above);
-    note.style.left=x+'px';note.style.top=Math.min(y,Math.max(0,h-nh-8))+'px';
+    const y=down?below:Math.max(6,above);
+    note.style.left=x+'px';note.style.top=clamp(y,6,Math.max(6,h-nh-8))+'px';
     note.style.setProperty('--ff-arrow',clamp(p.x-x,9,nw-9)+'px');
     note.classList.toggle('is-below',down);
   }
@@ -1232,7 +1232,7 @@
   function update(){
     raf=0;const t=now(),dt=clamp((t-last)/1000,0,.1);last=t;
     if(mode==='inactive'||document.hidden||overview())return;
-    if(mode==='enter-collage'&&t-start>=2150||mode==='enter-gap'&&t-start>=1250){mode='rest';arrive(true);}
+    if((mode==='enter-collage'&&t-start>=2150)||(mode==='enter-gap'&&t-start>=1250)){mode='rest';arrive(true);}
     else if(mode.startsWith('exit')&&t-start>=1050){mode='inactive';hide();}
     else if(mode==='rest')advance(dt);
     draw();

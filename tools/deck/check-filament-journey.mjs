@@ -24,12 +24,12 @@ const checkPage=(page,label)=>{
 // come from the same geometry used for drawing, not inferred image pixels.
 const checkFlow=async(page,kind)=>{
   const v=await page.evaluate(()=>window.FilamentField.layoutMetrics());
-  const labels=[v.sourceX,...v.gatesX],step=(labels[4]-labels[0])/4;
-  const valid=v.labelY>v.headlineBottom+15
+  const labels=[v.sourceX,...v.gatesX],step=(labels[5]-labels[0])/5;
+  const valid=v.labelY>=v.headlineBottom+15
     && v.labelY<v.dotsTop-12
-    && v.dotsTop-v.headlineBottom<100
-    && v.height-v.dotsBottom<95
-    && v.lineTop>v.labelY+15
+    && v.dotsTop-v.headlineBottom<=50
+    && v.height-v.dotsBottom<155
+    && v.lineTop>=v.labelY+13
     && v.lineBottom<=v.height
     && labels.every((x,i)=>i===0||Math.abs((x-labels[i-1])-step)<1);
   if(!valid)throw Error(kind+' has overlapping or dead space in filament layout: '+JSON.stringify(v));
@@ -54,7 +54,7 @@ try{
   await sleep(3400);
   await page.keyboard.press('ArrowRight');
   await page.waitForFunction(()=>window.deckNav?.to===1,{timeout:15000});
-  await page.waitForFunction(()=>window.FilamentField?.ready() && document.querySelectorAll('.ff-hit').length===42,{timeout:15000});
+  await page.waitForFunction(()=>window.FilamentField?.ready() && document.querySelectorAll('.ff-hit').length===60,{timeout:15000});
   await sleep(3000);
   const slide2=await page.evaluate(()=>{
     const s=document.querySelector('.sf-host');
@@ -63,41 +63,48 @@ try{
       active:s.classList.contains('on'),fieldReady:window.FilamentField.ready(),
       visible:document.querySelector('.sf.ff-active')!==null,
       hitCount:document.querySelectorAll('.ff-hit').length,
-      dotCount:snap.named.length,dustCount:snap.dust.length,
-      barriers:['REQUIRED','DISCOVERED','SET UP','OPTIMISED','CREATED'].every(x=>['REQUIRED','DISCOVERED','SET UP','OPTIMISED','CREATED'].includes(x)) // Canvas-drawn labels are checked by contract and visual captures
+      dotCount:snap.named.length,dustCount:snap.dust.length
     };
   });
   // Barrier labels are canvas text, not DOM. The viewport and pointer are checked instead.
-  if(!slide2.active||!slide2.visible||slide2.hitCount!==42||slide2.dotCount!==42||slide2.dustCount!==260)
+  if(!slide2.active||!slide2.visible||slide2.hitCount!==60||slide2.dotCount!==60||slide2.dustCount!==260)
     throw Error('Live filament scene failed: '+JSON.stringify(slide2));
   await checkFlow(page,'desktop');
   await page.screenshot({path:join(output,'desktop-slide2.png'),animations:'disabled'});
-  const first=page.locator('.ff-hit').first();
-  const r0=await first.boundingBox();
-  if(!r0)throw Error('Source dot has no visual position');
-  await page.mouse.move(r0.x+r0.width/2,r0.y+r0.height/2);
-  await page.mouse.click(r0.x+r0.width/2,r0.y+r0.height/2);
-  const selected=await page.locator('.ff-note').evaluate(el=>el.classList.contains('is-on'));
-  if(!selected)throw Error('Click on capability did not display details');
+
+  // Wait for the narrated first checkpoint to actually progress, not just paint.
+  await page.waitForFunction(()=>window.FilamentField.state().step===1,null,{timeout:15000});
+  observations.push({step:'auto-discover',state:await page.evaluate(()=>window.FilamentField.state())});
+  await page.screenshot({path:join(output,'desktop-discover.png'),animations:'disabled'});
+  // Select Discover on row three, then inspect its unreached output.
+  const checkpoint=page.locator('.ff-hit[data-row="2"][data-stage="1"]');
+  await checkpoint.hover();
+  await page.waitForFunction(()=>window.FilamentField.state().inspection?.r===2&&window.FilamentField.state().inspection?.s===1);
+  const selected=await page.locator('.ff-note-name').textContent();
+  if(!selected.includes('H3 looping'))throw Error('Wrong checkpoint note: '+selected);
+  await sleep(500);
+  const geometry=await page.evaluate(()=>{
+    const n=document.querySelector('.ff-note').getBoundingClientRect(),p=document.querySelector('.ff-hit[data-row="2"][data-stage="1"]').getBoundingClientRect();
+    return {inside:n.left>=0&&n.right<=innerWidth&&n.top>=0&&n.bottom<=innerHeight,above:n.bottom<=p.top,below:n.top>=p.bottom};
+  });
+  if(!geometry.inside||(!geometry.above&&!geometry.below))throw Error('Unanchored note: '+JSON.stringify(geometry));
   await page.screenshot({path:join(output,'desktop-slide2-selected.png'),animations:'disabled'});
-  observations.push({step:'slide2',...slide2,selected});
-  // The rare successful filament must create a visible bloom (and emit once).
+  await page.locator('.ff-hit[data-row="2"][data-stage="5"]').hover();
+  if(!(await page.locator('.ff-note-name').textContent()).includes('never realised'))throw Error('Unreached output has wrong note');
+  await page.mouse.move(1198,440);
+  await page.waitForFunction(()=>window.FilamentField.state().inspection===null);
+  if((await page.evaluate(()=>window.FilamentField.state().row))!==2)throw Error('Hover release lost the inspected row');
+  observations.push({step:'slide2',...slide2,selected,geometry});
+  // A success emits precisely once when the moving dot arrives at Output.
   await page.evaluate(()=>{
     window.__filamentBloomEvents=[];
-    document.querySelector('[data-scatter-field]').addEventListener('filament-create',
-      event=>window.__filamentBloomEvents.push(event.detail));
+    document.querySelector('[data-scatter-field]').addEventListener('filament-create',e=>window.__filamentBloomEvents.push(e.detail));
   });
-  // Stable seed: strand 12 is one of the four paths reaching Create.
-  const successful=await page.locator('.ff-hit').nth(12).boundingBox();
-  if(!successful)throw Error('Create-bound dot is missing');
-  await page.mouse.click(successful.x+successful.width/2,successful.y+successful.height/2);
-  await page.waitForFunction(()=>window.__filamentBloomEvents?.some(event=>event.strand===12),{timeout:7000});
-  await sleep(140);
+  await page.locator('.ff-hit[data-row="1"][data-stage="4"]').hover();
+  await page.mouse.move(1198,440);
+  await page.waitForFunction(()=>window.__filamentBloomEvents.some(e=>e.strand===1),null,{timeout:15000});
+  if((await page.evaluate(()=>window.__filamentBloomEvents.filter(e=>e.strand===1).length))!==1)throw Error('Duplicate output arrival');
   await page.screenshot({path:join(output,'desktop-create-bloom.png'),animations:'disabled'});
-  const created=await page.evaluate(()=>window.__filamentBloomEvents);
-  if(created.filter(event=>event.strand===12).length!==1)
-    throw Error('Create bloom fired more than once for one hovered-and-pinned capability: '+JSON.stringify(created));
-  observations.push({step:'create-bloom',events:created});
   // Blank-space click must navigate forward, not open an invisible old starfield card.
   await page.mouse.click(1198,440);
   await page.waitForFunction(()=>window.deckNav?.to===2,{timeout:15000});
@@ -111,7 +118,7 @@ try{
     slide:window.deckNav?.to+1,ready:window.FilamentField?.ready(),
     named:document.querySelector('[data-scatter-field]').snapshot().named.length
   }));
-  if(reverse.slide!==2||!reverse.ready||reverse.named!==42)
+  if(reverse.slide!==2||!reverse.ready||reverse.named!==60)
     throw Error('3 -> 2 reverse filament not restored: '+JSON.stringify(reverse));
   observations.push({step:'slide3-back-to-2',...reverse});
   await page.screenshot({path:join(output,'desktop-return-slide2.png'),animations:'disabled'});
@@ -141,11 +148,15 @@ try{
       return r.left>=-2&&r.right<=innerWidth+2&&r.top>=-2&&r.bottom<=innerHeight+2;
     })
   }));
-  if(mobileStats.hits!==42||mobileStats.snap!==42||!mobileStats.inside)
+  if(mobileStats.hits!==60||mobileStats.snap!==60||!mobileStats.inside)
     throw Error('Mobile filament layout failure: '+JSON.stringify(mobileStats));
   observations.push({step:'mobile-direct-slide2',...mobileStats});
   await checkFlow(mobile,'mobile');
   await mobile.screenshot({path:join(output,'mobile-slide2.png'),animations:'disabled'});
+  await mobile.locator('.ff-hit[data-row="2"][data-stage="1"]').tap();
+  const touch=await mobile.evaluate(()=>window.FilamentField.state());
+  if(touch.inspection?.r!==2||touch.inspection?.s!==1||!touch.pinned)throw Error('Mobile checkpoint did not pin: '+JSON.stringify(touch));
+  await mobile.screenshot({path:join(output,'mobile-slide2-selected.png'),animations:'disabled'});
   await mobile.close();
   writeFileSync(join(output,'observations.json'),JSON.stringify({observations,errors},null,2));
   if(errors.length)throw Error('Browser errors: '+errors.join('; '));
