@@ -118,7 +118,11 @@ try{
   await checkFlow(page,'desktop');
   await page.screenshot({path:join(output,'desktop-slide2.png'),animations:'disabled'});
   const early=await page.evaluate(()=>window.FilamentField.state());
-  if(early.concluded)throw Error('Conclusion revealed before first journey ended');
+  // At the end of entry, the conclusion must reveal within its first
+  // settled second, before the Requirement checkpoint has advanced.
+  await page.waitForFunction(()=>{const s=window.FilamentField.state();return s.concluded&&s.row===0&&s.step===0;},null,{timeout:3000});
+  const revealed=await page.evaluate(()=>window.FilamentField.state());
+  if(revealed.conclusionAge<.999||revealed.conclusionAge>1.11)throw Error('Conclusion timing drift: '+JSON.stringify(revealed));
   const initial=await checkNote(page,early.row,early.step);
   if(initial.placement!=='below'||initial.note.x<=initial.hit.x||initial.note.y<=initial.hit.y)throw Error('Initial note not down-right: '+JSON.stringify(initial));
 

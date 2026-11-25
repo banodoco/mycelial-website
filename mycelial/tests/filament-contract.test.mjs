@@ -88,7 +88,7 @@ for(const [w,h] of [[1280,720],[390,844],[812,375]]){
 }
 test('one dot holds, charges, travels horizontally, and is born again only after a terminal stop',()=>{
   const {api,state,tick}=harness(1280,720);api.enter('rest',{direct:true});
-  tick(4900);assert.equal(state().phase,'hold');assert.equal(state().step,0);assert.equal(state().concluded,false);
+  tick(4900);assert.equal(state().phase,'hold');assert.equal(state().step,0);assert.equal(state().concluded,true);
   tick(150);assert.equal(state().phase,'charge');assert.equal(state().step,0);
   tick(700);assert.equal(state().phase,'travel');assert.equal(state().row,0);
   tick(650);assert.equal(state().step,1);assert.equal(state().phase,'hold');
@@ -142,4 +142,16 @@ test('first card goes down-right, edge cards stay inside and clear their exact h
       b.emit('pointerleave');
     }
   }
+});
+
+test('conclusion appears after one second of settled grid time, even during inspection',()=>{
+  const {api,state,hit,tick}=harness(1280,720);api.enter('rest',{direct:true});
+  assert.equal(state().concluded,false);
+  hit(0,0).emit('pointerenter');tick(950);
+  assert.equal(state().concluded,false);
+  tick(50);assert.equal(state().concluded,true);assert.equal(state().step,0);
+  assert.deepEqual(state().inspection,{r:0,s:0});
+  api.exit({to:2});assert.equal(state().concluded,false);
+  api.enter('rest',{direct:true});assert.equal(state().concluded,false);
+  tick(1000);assert.equal(state().concluded,true);
 });

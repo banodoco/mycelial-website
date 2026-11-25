@@ -1030,7 +1030,7 @@
   const rect=()=>root.getBoundingClientRect();
   let w=0,h=0,dpr=1,geom=[],flow={},mode='inactive',visit=null,raf=0,start=0,last=0;
   let row=0,step=0,phase='hold',age=0,seen=Array(N).fill(-1),inspection=null,pinned=false,artwork=[],sources=[];
-  let shown=null,noteAnchor=null,concluded=false;
+  let shown=null,noteAnchor=null,concluded=false,conclusionAge=0;
   const conclusion=slide.querySelector('.ff-conclusion');
   function revealConclusion(on){concluded=on;conclusion?.classList.toggle('is-revealed',on);conclusion?.setAttribute('aria-hidden',String(!on));}
   const node=(r,s)=>geom[r][s];
@@ -1255,7 +1255,7 @@
     age+=dt;
     if(phase==='born'&&age>=.25){phase='hold';age=0;}
     else if(phase==='hold'&&age>=(step===0?5:4.2)){phase='charge';age=0;}
-    else if(phase==='charge'&&age>=.68){if(step===end(row)&&!concluded)revealConclusion(true);hide();age=0;phase=step===end(row)?'between':'travel';}
+    else if(phase==='charge'&&age>=.68){hide();age=0;phase=step===end(row)?'between':'travel';}
     else if(phase==='travel'&&age>=.58){step++;arrive();}
     else if(phase==='between'&&age>=.30){row=(row+1)%N;step=0;if(row===0)seen=Array(N).fill(-1);arrive(true);}
   }
@@ -1264,7 +1264,11 @@
     if(mode==='inactive'||document.hidden||overview())return;
     if((mode==='enter-collage'&&t-start>=2150)||(mode==='enter-gap'&&t-start>=1250)){mode='rest';arrive(true);}
     else if(mode.startsWith('exit')&&t-start>=1050){mode='inactive';hide();}
-    else if(mode==='rest')advance(dt);
+    else if(mode==='rest'){
+      // This reveal follows settled grid time, independent of checkpoint inspection.
+      if(!concluded&&owned()){conclusionAge+=dt;if(conclusionAge>=1-1e-9)revealConclusion(true);}
+      advance(dt);
+    }
     draw();
     if(mode!=='inactive'&&!still())raf=requestAnimationFrame(update);
   }
@@ -1272,7 +1276,7 @@
   function wake(){if(!raf&&mode!=='inactive'&&!document.hidden&&!overview()&&!still()){last=now();raf=requestAnimationFrame(update);}}
   function begin(m,ctx){
     stop();visit=ctx;mode=still()||ctx?.rest||ctx?.direct?'rest':m;
-    start=last=now();row=step=age=0;phase='hold';seen=Array(N).fill(-1);inspection=null;pinned=false;hide();revealConclusion(!!still());
+    start=last=now();row=step=age=0;phase='hold';seen=Array(N).fill(-1);inspection=null;pinned=false;hide();conclusionAge=0;revealConclusion(!!still());
     artwork=m==='enter-collage'&&Array.isArray(root.filamentArtwork)?root.filamentArtwork:[];
     sources=[];
     if(m==='enter-collage'&&!artwork.length&&originalSnapshot){
@@ -1313,7 +1317,7 @@
   document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else wake();});
   window.FilamentField={enter:begin,exit:leave,restore,snapshot,layoutMetrics:()=>({...flow}),ready:()=>mode!=='inactive',
     // Read-only evidence for exact checkpoint and animation ownership tests.
-    state:()=>({mode,row,step,phase,age,concluded,noteAnchor:noteAnchor&&{...noteAnchor},inspection:inspection&&{...inspection},pinned,shown:shown&&{...shown},seen:[...seen],ends:journeys.map((_,r)=>end(r))})};
+    state:()=>({mode,row,step,phase,age,concluded,conclusionAge,noteAnchor:noteAnchor&&{...noteAnchor},inspection:inspection&&{...inspection},pinned,shown:shown&&{...shown},seen:[...seen],ends:journeys.map((_,r)=>end(r))})};
   layout();
   if(slide.classList.contains('on'))begin('rest',window.deckNav||{rest:true,direct:true});
 })();
