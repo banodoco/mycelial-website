@@ -984,29 +984,46 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
   .j-rail, .j-rail:not(.j-rail-column) { transition: none; }
 }
 
-/* Decoration appears softly once its complete link is readable. Text keeps
-   the original per-word opacity; only the dotted line changes strength. */
+/* Static links are already readable, so they have a quiet solid underline.
+   In the animated manifesto, draw the same-colour line only after the
+   complete closing paragraph has settled. Paint only: no layout movement. */
 .manifesto-chapter-link {
   pointer-events: auto;
   color: inherit;
   text-decoration-line: underline;
-  text-decoration-style: dotted;
-  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-decoration-style: solid;
+  text-decoration-color: currentColor;
   text-decoration-thickness: 1px;
   text-underline-offset: .22em;
   text-decoration-skip-ink: auto;
   cursor: pointer;
-  transition: color .2s ease, text-decoration-color .85s ease;
+  transition: color .2s ease;
 }
 .manifesto-link-ink { text-decoration: none; }
+.j-manifesto .manifesto-chapter-link {
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 0% 1px;
+  --link-draw-delay: .15s;
+}
+.j-manifesto .manifesto-chapter-link:nth-of-type(2) { --link-draw-delay: .85s; }
+.j-manifesto .manifesto-chapter-link:nth-of-type(3) { --link-draw-delay: 1.55s; }
+.j-manifesto.is-open .j-manifesto-line.shown.is-settled .manifesto-chapter-link {
+  animation: manifesto-link-draw .55s cubic-bezier(.22, 1, .36, 1) var(--link-draw-delay) both;
+}
+@keyframes manifesto-link-draw {
+  from { background-size: 0% 1px; }
+  to { background-size: 100% 1px; }
+}
 .manifesto-chapter-link:hover,
 .manifesto-chapter-link:focus-visible {
   color: #f6cb8b;
-  text-decoration-color: color-mix(in srgb, currentColor 70%, transparent);
 }
 .manifesto-chapter-link:focus-visible { outline: 1px solid #d7ad6980; outline-offset: 4px; border-radius: 2px; }
-/* A LINK ON A STRAND (2026-11-12). seeding, nourishing and connecting rest
-   in their strand's colour (dots included, through currentColor) and light
+/* A LINK ON A STRAND. Connecting, equipping and nourishing rest
+   in their strand's colour (underline included, through currentColor) and light
    to its brighter tone on hover or focus. Their ink carries the strand's
    swell, whose fill would hold the resting colour against the hover, so the
    lit state is asserted over it. */
@@ -1026,6 +1043,11 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
 @media (prefers-reduced-motion: reduce) {
   .manifesto-chapter-link,
   .manifesto-chapter-link.is-tinted .manifesto-concept { transition: none; }
+  .j-manifesto.is-open .j-manifesto-line.shown .manifesto-chapter-link,
+  .j-manifesto.is-open .j-manifesto-line.shown.is-settled .manifesto-chapter-link {
+    animation: none;
+    background-size: 100% 1px;
+  }
 }
 .manifesto-link-tooltip {
   position: fixed;
