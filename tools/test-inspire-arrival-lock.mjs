@@ -39,8 +39,9 @@ function ride(source, dur) {
     }
   }
   assert.equal(starts.length, 3, 'all three markers have arrived');
-  assert.ok(heading !== null && starts[0] - Math.max(dur, heading) >= 0.30,
-    'first ember waits a visible beat after camera and words');
+  const firstDelay = starts[0] - Math.max(dur, heading);
+  assert.ok(heading !== null && firstDelay >= 0.12 && firstDelay <= 0.24,
+    `first ember follows camera and words with a short beat, got ${firstDelay}s`);
   for (let i = 1; i < starts.length; i++) {
     assert.ok(Math.abs(starts[i] - starts[i - 1] - HOTSPOT_ARRIVAL.beatGapMs / 1000) < 2 * STEP,
       'preserve the three-beat cadence');

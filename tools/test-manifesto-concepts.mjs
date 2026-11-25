@@ -10,7 +10,7 @@ const accents = (i, id) => [...matches[i]].filter(([, match]) => match.id === id
 assert.equal(stanzas.length, 6, 'six stanzas');
 const last = stanzas.length - 1;
 for (const [stanza, id, words] of [[0, 'passage', ['Spores']], [0, 'sun', ['Food']], [0, 'soil', ['Threads']],
-  [1, 'passage', ['LoRA']], [1, 'sun', ['tool']], [1, 'soil', []], [2, 'passage', []], [2, 'sun', []], [2, 'soil', []],
+  [1, 'passage', ['LoRA']], [1, 'sun', ['sculpts']], [1, 'soil', ['tool']], [2, 'passage', []], [2, 'sun', []], [2, 'soil', []],
   ...[3, 4, 5].flatMap(i => [[i, 'passage', []], [i, 'sun', []], [i, 'soil', []]])]) {
   const found = accents(stanza, id);
   assert.deepEqual(found.map(([word]) => word), words, `stanza ${stanza + 1}: ${id} accents only ${words.join(', ') || 'nothing'}`);
@@ -45,7 +45,11 @@ assert.deepEqual(accents(3, 'vitality').map(([, match]) => match.ink),
 assert.ok(!matches.some(m => [...m.values()].some(match => match.id === 'kinship' || match.id === 'imagination')),
   'the kinship thread and imagination spectrum are dormant');
 const total = matches.reduce((n, m) => n + m.size, 0);
-assert.equal(total, 5 + 3 + 6 + 7, 'nothing else is highlighted');
+assert.equal(total, 6 + 3 + 6 + 7, 'nothing else is highlighted');
+const strandOrder = stanza => [...matches[stanza]].sort(([a], [b]) => a - b)
+  .filter(([, match]) => match.role === 'organism').map(([, match]) => match.id);
+assert.deepEqual(strandOrder(0), ['passage', 'soil', 'sun']);
+assert.deepEqual(strandOrder(1), strandOrder(0), 'LoRA, tool, sculpts repeat the opening blue, rose, green order');
 const links = manifestoLinks(stanzas[last]);
 assert.deepEqual([...links.values()].map(link => [link.phrase, link.concept]),
   [['seeding', 'passage'], ['nourishing', 'sun'], ['connecting', 'soil']], 'each link carries its strand');
@@ -71,4 +75,4 @@ assert.deepEqual(opening.lineStarts.slice(1).map(start => opening.beats[start] -
   [VERSE_PAUSE_BEATS, VERSE_PAUSE_BEATS], 'the opening keeps its short breaths though its lines end in full stops');
 assert.equal(CONTENT.manifesto.holds.length, CONTENT.manifesto.lines.length, 'one hold per stanza');
 assert.ok(!/\n/.test(CONTENT.manifesto.body) && CONTENT.manifesto.body.includes('wind. Threads'), 'body reads as prose');
-console.log('PASS manifesto strands (Spores/LoRA, Food/tool, Threads), tinted links, blue-rose-green synthesis, receding machines and verse beats.');
+console.log('PASS manifesto strands (Spores/LoRA, Threads/tool, Food/sculpts), tinted links, blue-rose-green synthesis, receding machines and verse beats.');

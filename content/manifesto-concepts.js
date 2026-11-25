@@ -1,6 +1,6 @@
 // Match authored words and phrases, not fixed word offsets, so copy edits keep their accents.
 // THREE STRANDS, ONE WORD EACH (2026-11-12, the verse text). The opening
-// stanza's spores, threads and food, and the story's LoRA and tool, share
+// stanza's spores, threads and food, and the story's LoRA, tool and sculpts, share
 // the three pastel palettes; the closing links carry the same strands
 // (content/manifesto-links.js). Each word is matched in its own stanza only,
 // so "the threads" in the last stanza stays plain. Every one
@@ -10,7 +10,8 @@ const STRANDS = [
   { id: 'soil', word: 'threads', stanza: 0 },
   { id: 'sun', word: 'food', stanza: 0 },
   { id: 'passage', word: 'lora', stanza: 1 },
-  { id: 'sun', word: 'tool', stanza: 1 },
+  { id: 'soil', word: 'tool', stanza: 1 },
+  { id: 'sun', word: 'sculpts', stanza: 1 },
 ];
 // The kinship thread (and the imagination spectrum in branch.js) are dormant
 // treatments: no phrase of the current text selects them.

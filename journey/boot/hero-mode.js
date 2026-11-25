@@ -225,7 +225,9 @@ function viewFor(mode) {
     // The supplied phone screenshot calls for about 17 CSS px downward
     // relative to the previous -13px lift. Keep the aspect-dependent pose,
     // horizontal Equip alignment and independently solved growth landing.
-    const restPitchDownPx = 4;
+    // Follow-up visual review: keep the opening copy where it is, but
+    // lower the fully grown specimen by another ten CSS pixels.
+    const restPitchDownPx = 14;
     v.targetY += restPitchDownPx * 2 * v.camZ * Math.tan(v.fov * Math.PI / 360) / frameH;
   }
   /* ONE LANDSCAPE HERO BALANCE FIELD. Physical screen inches are not a web

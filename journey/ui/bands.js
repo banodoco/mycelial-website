@@ -87,7 +87,10 @@ const ARRIVE_MIN_SHARE = 0.5;
    during the approach. The linear gate preserves the authored ember order:
    0.3375 gate units x 1.6 seconds = 540 ms between beats, matching Equip's
    deliberate scene-owned cadence and the marker formation tempo. */
-export const INSPIRE_LANDING_DELAY_S = 0.20;
+// The second visual review preferred a shorter gap. Keep the camera/copy
+// arrival gate and 540ms cadence; the first ember's own threshold gives
+// it a natural ~160ms breath without a separate 200ms hold.
+export const INSPIRE_LANDING_DELAY_S = 0;
 export const INSPIRE_LANDING_GATE_S = 1.60;
 export function inspireLandingGate(secondsAfterCopy) {
   return clamp01((secondsAfterCopy - INSPIRE_LANDING_DELAY_S) / INSPIRE_LANDING_GATE_S);
