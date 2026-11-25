@@ -1030,7 +1030,9 @@
   const rect=()=>root.getBoundingClientRect();
   let w=0,h=0,dpr=1,geom=[],flow={},mode='inactive',visit=null,raf=0,start=0,last=0;
   let row=0,step=0,phase='hold',age=0,seen=Array(N).fill(-1),inspection=null,pinned=false,artwork=[],sources=[];
-  let shown=null;
+  let shown=null,noteAnchor=null,concluded=false;
+  const conclusion=slide.querySelector('.ff-conclusion');
+  function revealConclusion(on){concluded=on;conclusion?.classList.toggle('is-revealed',on);conclusion?.setAttribute('aria-hidden',String(!on));}
   const node=(r,s)=>geom[r][s];
   const valid=(r,s)=>Number.isInteger(r)&&Number.isInteger(s)&&r>=0&&r<N&&s>=0&&s<S;
   const describe=(r,s)=>{
@@ -1049,7 +1051,8 @@
     const measured=heading?.bottom-b.top;
     const headlineBottom=Number.isFinite(measured)&&measured>0&&measured<h*.75?measured:h*.25;
     const measuredFooter=footer?.top-b.top;
-    const bottom=Number.isFinite(measuredFooter)&&measuredFooter>headlineBottom+80&&measuredFooter<h?measuredFooter-12:h-(short?57:narrow?105:88);
+    const footerTop=Number.isFinite(measuredFooter)&&measuredFooter>headlineBottom+80&&measuredFooter<h?measuredFooter:h-(short?57:narrow?105:88);
+    const bottom=footerTop-(short?19:narrow?25:34);
     const labelY=headlineBottom+(short?15:23);
     const lineTop=labelY+(short?13:17);
     const dotsTop=lineTop+(short?5:8);
@@ -1057,7 +1060,7 @@
     const x0=w*(narrow?.10:.25),x1=w*(narrow?.92:.91);
     const xs=Array.from({length:S},(_,s)=>x0+(x1-x0)*s/(S-1));
     geom=Array.from({length:N},(_,r)=>xs.map(x=>({x,y:dotsTop+(dotsBottom-dotsTop)*r/(N-1)})));
-    flow={headlineBottom,labelY,lineTop,lineBottom:dotsBottom+4,dotsTop,dotsBottom,sourceX:x0,gatesX:xs.slice(1),height:h};
+    flow={headlineBottom,footerTop,labelY,lineTop,lineBottom:dotsBottom+4,dotsTop,dotsBottom,sourceX:x0,gatesX:xs.slice(1),height:h};
     const pitch=(dotsBottom-dotsTop)/(N-1);
     Array.from(hits.children).forEach((b,i)=>{
       const p=geom[Math.floor(i/S)][i%S];
@@ -1086,23 +1089,43 @@
   };
   function placeNote(r,s){
     if(!geom.length)return;
-    const p=node(r,s),nw=note.offsetWidth||Math.min(330,w-16),nh=note.offsetHeight||115;
-    const margin=w<760?9:Math.max(12,w*.035),above=p.y-nh-15,below=p.y+15;
-    // Prefer above. Early rows use below; there is no reserved blank band.
-    const safeTop=flow.headlineBottom+2,safeBottom=Math.min(h-12,flow.dotsBottom+55);
-    const down=above<safeTop&&below+nh<=Math.max(safeBottom,h-12);
-    const x=clamp(p.x-nw/2,margin,Math.max(margin,w-margin-nw));
-    const y=down?below:Math.max(6,above);
-    note.style.left=x+'px';note.style.top=clamp(y,6,Math.max(6,h-nh-8))+'px';
-    note.style.setProperty('--ff-arrow',clamp(p.x-x,9,nw-9)+'px');
-    note.classList.toggle('is-below',down);
+    const p=node(r,s),nw=note.offsetWidth||Math.min(w<760?260:310,w-20),nh=note.offsetHeight||115;
+    const margin=w<760?12:Math.max(12,w*.035);
+    const right=p.x+19,left=p.x-nw-19;
+    const maxX=Math.max(margin,w-margin-nw);
+    // Down and right is the preferred quadrant. Mirror horizontally only
+    // when the card would clip; never create a permanent blank card region.
+    let x=right<=maxX?right:left>=margin?left:clamp(right,margin,maxX);
+    const pitch=(flow.dotsBottom-flow.dotsTop)/(N-1);
+    const gap=Math.max(20,Math.min(34,pitch-1)/2+7);
+    const below=p.y+gap,above=p.y-gap-nh;
+    const safeTop=flow.headlineBottom+4,safeBottom=flow.footerTop-5;
+    let y,placement;
+    if(below+nh<=safeBottom){y=below;placement='below';}
+    else if(above>=safeTop){y=above;placement='above';}
+    else if(right<=maxX||left>=margin){
+      // Short landscape: a sideways card still clears the selected hit.
+      y=clamp(p.y-nh*.3,safeTop,Math.max(safeTop,safeBottom-nh));placement='side';
+      // Clear the entire target, not just its centre.
+      const sideGap=Math.min(44,(flow.gatesX[0]-flow.sourceX)-3)/2+7;
+      x=right<=maxX?clamp(p.x+sideGap,margin,maxX):clamp(p.x-nw-sideGap,margin,maxX);
+    }else{
+      // Extremely small viewports: prefer vertical clearance and the screen
+      // bounds over the headline/footnote. Keep the inspected dot visible.
+      y=below+nh<=h-8?below:above>=6?above:clamp(below,6,Math.max(6,h-nh-8));
+      placement=y>=p.y?'below':'above';
+    }
+    y=clamp(y,6,Math.max(6,h-nh-8));
+    note.style.left=x+'px';note.style.top=y+'px';
+    note.dataset.placement=placement;
+    noteAnchor={x,y,w:nw,h:nh,r,s};
   }
   function show(r,s,announce=false){
     if(!valid(r,s))return;
     const [title,detail,time]=describe(r,s),j=journeys[r];
     if(!shown||shown.r!==r||shown.s!==s){
       note.querySelector('.ff-kind').textContent=String(r+1).padStart(2,'0')+' / '+stages[s]+(s>end(r)?' · not reached':s===end(r)&&blocked(r)?' · stopped':'');
-      note.querySelector('.ff-time').textContent=time;
+      note.querySelector('.ff-time').textContent=time?'e.g. '+time:'';
       note.querySelector('.ff-note-name').textContent=title;
       note.querySelector('.ff-note-detail').textContent=detail+(s===1&&blocked(r)&&end(r)===1?' Existing capability: '+j[1]+'.':'');
       note.querySelector('.ff-mini').innerHTML=mini(r,s);
@@ -1112,7 +1135,7 @@
     note.setAttribute('aria-live',announce?'polite':'off');
     note.classList.add('is-on');
   }
-  function hide(){note.classList.remove('is-on');shown=null;}
+  function hide(){note.classList.remove('is-on');shown=null;noteAnchor=null;}
   const pick=()=>inspection||{r:row,s:step};
   function inspect(r,s,lock=false,announce=false){
     if(!owned()||mode!=='rest'||!valid(r,s))return;
@@ -1197,6 +1220,13 @@
       });g.globalAlpha=1;
     }
     if(!rest)return;
+    // A fine diagonal leader replaces the old centred arrow. It originates
+    // at the exact checkpoint and ends on the nearest edge of the note.
+    if(noteAnchor&&shown){
+      const a=noteAnchor,p=node(a.r,a.s);
+      const target={x:clamp(p.x,a.x,a.x+a.w),y:clamp(p.y,a.y,a.y+a.h)};
+      line(p,target,tone(a.r,a.s),.48);
+    }
     if(inspection){
       dot(node(active,selected),4.2,selected>end(active)?rust:ink,.95,true);return;
     }
@@ -1225,7 +1255,7 @@
     age+=dt;
     if(phase==='born'&&age>=.25){phase='hold';age=0;}
     else if(phase==='hold'&&age>=(step===0?5:4.2)){phase='charge';age=0;}
-    else if(phase==='charge'&&age>=.68){hide();age=0;phase=step===end(row)?'between':'travel';}
+    else if(phase==='charge'&&age>=.68){if(step===end(row)&&!concluded)revealConclusion(true);hide();age=0;phase=step===end(row)?'between':'travel';}
     else if(phase==='travel'&&age>=.58){step++;arrive();}
     else if(phase==='between'&&age>=.30){row=(row+1)%N;step=0;if(row===0)seen=Array(N).fill(-1);arrive(true);}
   }
@@ -1242,7 +1272,7 @@
   function wake(){if(!raf&&mode!=='inactive'&&!document.hidden&&!overview()&&!still()){last=now();raf=requestAnimationFrame(update);}}
   function begin(m,ctx){
     stop();visit=ctx;mode=still()||ctx?.rest||ctx?.direct?'rest':m;
-    start=last=now();row=step=age=0;phase='hold';seen=Array(N).fill(-1);inspection=null;pinned=false;hide();
+    start=last=now();row=step=age=0;phase='hold';seen=Array(N).fill(-1);inspection=null;pinned=false;hide();revealConclusion(!!still());
     artwork=m==='enter-collage'&&Array.isArray(root.filamentArtwork)?root.filamentArtwork:[];
     sources=[];
     if(m==='enter-collage'&&!artwork.length&&originalSnapshot){
@@ -1253,12 +1283,12 @@
     layout();if(mode==='rest')arrive();draw();wake();
   }
   function leave(ctx){
-    stop();inspection=null;pinned=false;hide();
+    stop();inspection=null;pinned=false;hide();revealConclusion(false);
     mode=still()?'inactive':ctx?.to===0?'exit-collage':ctx?.to===2?'exit-gap':'inactive';
     start=last=now();artwork=[];draw();wake();
   }
   function restore(ctx){
-    if(ctx?.to!==1){stop();mode='inactive';hide();draw();return;}
+    if(ctx?.to!==1){stop();mode='inactive';hide();revealConclusion(false);draw();return;}
     // Same-visit resize/recovery/overview must preserve the active story.
     if(mode!=='rest'&&mode!=='enter-collage'&&mode!=='enter-gap'){begin('rest',ctx);return;}
     stop();if(mode!=='rest'){mode='rest';arrive();}
@@ -1278,12 +1308,12 @@
   const heading=slide.querySelector('.split h1');if(heading)observer.observe(heading);
   const footer=slide.querySelector('.ff-conclusion');if(footer)observer.observe(footer);
   document.fonts?.addEventListener?.('loadingdone',()=>{layout();wake();});
-  addEventListener('deck-motion',()=>{if(!owned())return;stop();if(mode!=='rest'){mode='rest';arrive();}if(still()&&phase!=='hold'){phase='hold';age=0;show(row,step);}draw();wake();});
+  addEventListener('deck-motion',()=>{if(!owned())return;stop();if(mode!=='rest'){mode='rest';arrive();}if(still()){revealConclusion(true);if(phase!=='hold'){phase='hold';age=0;show(row,step);}}draw();wake();});
   addEventListener('deck-overview',()=>{if(overview())stop();else if(owned())wake();});
   document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else wake();});
   window.FilamentField={enter:begin,exit:leave,restore,snapshot,layoutMetrics:()=>({...flow}),ready:()=>mode!=='inactive',
     // Read-only evidence for exact checkpoint and animation ownership tests.
-    state:()=>({mode,row,step,phase,age,inspection:inspection&&{...inspection},pinned,shown:shown&&{...shown},seen:[...seen],ends:journeys.map((_,r)=>end(r))})};
+    state:()=>({mode,row,step,phase,age,concluded,noteAnchor:noteAnchor&&{...noteAnchor},inspection:inspection&&{...inspection},pinned,shown:shown&&{...shown},seen:[...seen],ends:journeys.map((_,r)=>end(r))})};
   layout();
   if(slide.classList.contains('on'))begin('rest',window.deckNav||{rest:true,direct:true});
 })();

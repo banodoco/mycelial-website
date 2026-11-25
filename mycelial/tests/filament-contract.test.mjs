@@ -27,7 +27,7 @@ function harness(width,height,{motion=true}={}){
       setAttribute(k,v){this.attributes[k]=v;},addEventListener(k,fn){listeners.set(k,fn);},
       dispatchEvent(e){events.push(e);},emit(k,e={}){listeners.get(k)?.({pointerType:'mouse',preventDefault(){},stopPropagation(){},...e});},
       getBoundingClientRect:bbox,querySelector(sel){if(!selectors.has(sel))selectors.set(sel,mk('span'));return selectors.get(sel);},
-      innerHTML:'',textContent:'',offsetWidth:Math.min(306,width-26),offsetHeight:108,contains(){return false;}};
+      innerHTML:'',textContent:'',offsetWidth:Math.min(width<760?260:310,width-24),offsetHeight:108,contains(){return false;}};
     if(tag==='canvas'){el.getContext=()=>g;el.width=el.height=0;}
     return el;
   };
@@ -57,7 +57,8 @@ test('preserves artwork sampling, both directions, and chart snapshot contract',
     /root\.filamentArtwork=motes\.filter/,/root\.filamentSuppressMotes=!!window\.FilamentField/,/!root\.filamentSuppressMotes \|\| rewind/,
     /const grid = root\.snapshot/,/rewind && m\.grid \? m\.grid : q/,/root\.snapshot=snapshot/])assert.match(source,pattern);
   assert.match(page,/class="slide sf-host ff-layout"/);assert.match(page,/data-gap/);assert.match(page,/\.ff-hit:focus-visible/);
-  assert.match(page,/Illustrative journeys/);assert.match(addon,/explicitly illustrative/);
+  assert.doesNotMatch(page,/Illustrative journeys ·/);assert.match(addon,/explicitly illustrative/);
+  assert.match(page,/limits the output of the ecosystem as a whole/);
 });
 for(const [w,h] of [[1280,720],[390,844],[812,375]]){
   test('tight finite grid and usable per-checkpoint hit geometry at '+w+'×'+h,()=>{
@@ -79,19 +80,20 @@ for(const [w,h] of [[1280,720],[390,844],[812,375]]){
       assert.ok(parseFloat(b.style.height)<pitch);
       assert.ok(parseFloat(b.style.width)<xs[1]-xs[0]);
     }
-    assert.ok(note.classList.contains('is-on'));assert.ok(note.classList.contains('is-below'));
+    assert.ok(note.classList.contains('is-on'));assert.equal(note.dataset.placement,'below');
+    assert.ok(api.state().concluded);
     api.exit({to:2});assert.equal(api.snapshot().named.length,60);api.restore({to:1});assert.ok(api.ready());
     api.exit({to:0});assert.equal(api.ready(),false);
   });
 }
 test('one dot holds, charges, travels horizontally, and is born again only after a terminal stop',()=>{
   const {api,state,tick}=harness(1280,720);api.enter('rest',{direct:true});
-  tick(4900);assert.equal(state().phase,'hold');assert.equal(state().step,0);
+  tick(4900);assert.equal(state().phase,'hold');assert.equal(state().step,0);assert.equal(state().concluded,false);
   tick(150);assert.equal(state().phase,'charge');assert.equal(state().step,0);
   tick(700);assert.equal(state().phase,'travel');assert.equal(state().row,0);
   tick(650);assert.equal(state().step,1);assert.equal(state().phase,'hold');
   tick(5600);assert.equal(state().step,2);assert.equal(state().row,0);
-  tick(4950);assert.equal(state().phase,'between');assert.equal(state().row,0);
+  tick(4950);assert.equal(state().phase,'between');assert.equal(state().row,0);assert.equal(state().concluded,true);
   tick(400);assert.equal(state().row,1);assert.equal(state().step,0);
 });
 test('exact hover, unreached cells, pin/unpin and release preserve correct journey',()=>{
@@ -125,4 +127,19 @@ test('successful output emits once on arrival, not from hover or pin',()=>{
   assert.equal(events.filter(e=>e.type==='filament-create').length,1);
   hit(1,5).emit('pointerenter');hit(1,5).emit('click');tick(10000);
   assert.equal(events.filter(e=>e.type==='filament-create').length,1);
+});
+
+test('first card goes down-right, edge cards stay inside and clear their exact hit',()=>{
+  for(const [w,h] of [[1280,720],[390,844],[812,375]]){
+    const {api,state,hit}=harness(w,h,{motion:false});api.enter('rest',{direct:true});
+    const start=state().noteAnchor,p0=api.snapshot().named[0];
+    assert.ok(start.x>p0.x&&start.y>p0.y,'first note is not down-right');
+    for(let r=0;r<10;r++)for(let s=0;s<6;s++){
+      const b=hit(r,s);b.emit('pointerenter');
+      const a=state().noteAnchor,p=api.snapshot().named[r*6+s],hw=parseFloat(b.style.width)/2,hh=parseFloat(b.style.height)/2;
+      assert.ok(a.x>=0&&a.y>=0&&a.x+a.w<=w&&a.y+a.h<=h,'clipped '+r+':'+s+' '+w);
+      assert.ok(a.x>=p.x+hw||a.x+a.w<=p.x-hw||a.y>=p.y+hh||a.y+a.h<=p.y-hh,'overlap '+r+':'+s+' '+w);
+      b.emit('pointerleave');
+    }
+  }
 });
