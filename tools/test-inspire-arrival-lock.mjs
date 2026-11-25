@@ -1,35 +1,68 @@
-/* Intro -> Inspire: the arrival is locked to the camera's flight. Bounds how far
-   the heading, the three embers and the chips may run PAST touchdown, and that
-   they do not begin before the camera is mostly there. Pure math: the same
-   duration table, quintic and gate the shipped code spends. */
+/* The owner changed the click arrival: the words and camera land first,
+   then the three Inspire embers and markers form in their existing order. */
 import assert from 'node:assert/strict';
 import { navigationDurationSeconds } from '../journey/navigation-timing.js';
 import { blendEase } from '../journey/camera-blend.js';
-import { navCopyArrival, introInspireGate, ARRIVE_WITH_CAMERA_LEAD_S } from '../journey/ui/bands.js';
+import { restProgress } from '../journey/route.js';
+import { createCopyArrival } from '../journey/ui/copy-arrival.js';
 import { HOTSPOT_ARRIVAL } from '../journey/constants/copy.js';
+import { connectEntryLightProgress, CONNECT_ENTRY_DURATION_S, CONNECT_LIGHT_LEAD_S } from '../journey/chapters/connect/entry-timing.js';
 
+const STEP = 1 / 120;
+const targetP = restProgress('inspire');
+const thresholds = [0.10, 0.4375, 0.775];
+function fixture() {
+  return createCopyArrival({ blocks: {}, actionRows: {}, heroBlock: null,
+    rail: { setHeroEase() {} }, reduceMotion: { matches: false } });
+}
+function ride(source, dur) {
+  const copy = fixture();
+  const fromP = restProgress(source);
+  copy.step({ chapterId: source, dt: 0, travelP: fromP });
+  const ticket = { fromP, targetP, phase: 0, elapsed: 0, dur };
+  for (let t = 0; t < dur; t += STEP) {
+    ticket.elapsed = t; ticket.phase = blendEase(t / dur);
+    copy.step({ chapterId: 'inspire', dt: t === 0 ? 0 : STEP,
+      travelP: fromP + (targetP - fromP) * ticket.phase, railFlight: ticket });
+    assert.equal(copy.ease('inspire'), 0, 'no ember while the camera is flying');
+  }
+  ticket.elapsed = dur; ticket.phase = 1;
+  copy.step({ chapterId: 'inspire', dt: STEP, travelP: targetP, railFlight: ticket });
+  assert.equal(copy.ease('inspire'), 0, 'no ember on the final in-flight frame');
+  let heading = null;
+  const starts = [];
+  for (let t = dur; t < dur + 4; t += STEP) {
+    copy.step({ chapterId: 'inspire', dt: STEP, travelP: targetP });
+    if (heading === null && copy.debug.bands.inspire.eased >= 0.995) heading = t;
+    while (starts.length < thresholds.length && copy.ease('inspire') >= thresholds[starts.length]) {
+      starts.push(t);
+    }
+  }
+  assert.equal(starts.length, 3, 'all three markers have arrived');
+  assert.ok(heading !== null && starts[0] - Math.max(dur, heading) >= 0.30,
+    'first ember waits a visible beat after camera and words');
+  for (let i = 1; i < starts.length; i++) {
+    assert.ok(Math.abs(starts[i] - starts[i - 1] - HOTSPOT_ARRIVAL.beatGapMs / 1000) < 2 * STEP,
+      'preserve the three-beat cadence');
+  }
+  assert.ok(copy.ease('inspire') >= 0.999, 'arrival completes');
+  return { source, dur, heading, starts };
+}
 const dur = navigationDurationSeconds(1.2, 'mission', 'inspire');
 const back = navigationDurationSeconds(1.2, 'inspire', 'mission');
 assert.equal(dur, back, 'mission<->inspire is symmetric');
-assert.ok(dur > 3.2 && dur < 3.5, `one slow arc, got ${dur}`);
-const quintic = (f) => blendEase(f);
-assert.ok(Math.abs(quintic(0.5) - 0.5) < 1e-12 && quintic(1) === 1);
-
-const STEP = 0.001;
-const firstAt = (pred, tMax = dur + 3) => { for (let t = 0; t <= tMax; t += STEP) if (pred(t)) return t; return Infinity; };
-const gateAt = (t) => introInspireGate(Math.min(1, t / dur));
-// Inspire's ember thresholds (chapters/inspire/index.js LAND_ON / STEP / RISE)
-const ON = [0.10, 0.10 + 0.3375, 0.10 + 2 * 0.3375], RISE = 0.1575;
-const embersStart = ON.map((th) => firstAt((t) => gateAt(t) >= th));
-const emberDone = firstAt((t) => gateAt(t) >= ON[2] + RISE);
-const heading = firstAt((t) => navCopyArrival(t, dur, ARRIVE_WITH_CAMERA_LEAD_S) >= 0.995);
-// chips: beat armed when each ember opens, floored by beatGapMs, formed over formMs
-let prev = -Infinity, chipDone = 0;
-for (const s of embersStart) { const at = Math.max(s, prev + HOTSPOT_ARRIVAL.beatGapMs / 1000); prev = at; chipDone = at + HOTSPOT_ARRIVAL.formMs / 1000; }
-
-assert.ok(Math.abs(heading - dur) <= 0.1, `heading full within 100 ms of touchdown: ${heading - dur}`);
-assert.ok(embersStart[0] > 0.5 * dur, 'embers wait until the camera is past half-way');
-assert.ok(emberDone - dur <= 0.25, `last ember lit within 250 ms of touchdown: ${emberDone - dur}`);
-assert.ok(chipDone - dur <= 0.35, `chips settled within 350 ms of touchdown: ${chipDone - dur}`);
-assert.ok(gateAt(dur) === 1 && gateAt(0) === 0, 'gate is whole at both ends');
-console.log('Inspire arrival lock: ok', JSON.stringify({ dur, heading, embersStart, emberDone, chipDone }));
+assert.ok(dur > 3.2 && dur < 3.5, 'preserve the existing camera arc');
+const intro = ride('mission', dur);
+const reverse = ride('equip', 1.6);
+const placement = fixture();
+placement.step({ chapterId: 'inspire', dt: 0, travelP: targetP });
+assert.equal(placement.ease('inspire'), 1, 'direct placement stays settled');
+// Connect's lead is in wall-clock seconds, not a faster formation envelope.
+assert.equal(connectEntryLightProgress(0), 0, 'waiting entry remains dark');
+assert.equal(connectEntryLightProgress(1), 1, 'entry settles at the same endpoint');
+for (const t of [0.25, 0.9, 1.4, 2.1, 2.5]) {
+  const shifted = connectEntryLightProgress(blendEase(t / CONNECT_ENTRY_DURATION_S));
+  const expected = blendEase(Math.min(1, (t + CONNECT_LIGHT_LEAD_S) / CONNECT_ENTRY_DURATION_S));
+  assert.ok(Math.abs(shifted - expected) < 1e-6, '500 ms lead, existing easing');
+}
+console.log('Chapter arrival timing: ok', JSON.stringify({ intro, reverse }));

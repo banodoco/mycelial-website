@@ -83,13 +83,14 @@ const ARRIVE_LEAD_S = 1.3;
 export const ARRIVE_WITH_CAMERA_LEAD_S = 0.85;
 const ARRIVE_MIN_SHARE = 0.5;
 
-/* Intro -> Inspire chapter gate (embers, hence chips), as a pure function of
-   the flight's FRACTION f = t / dur — the same blend clock the camera is
-   spent on, so no duration or dropped-frame stretch can separate them. */
-export const INTRO_INSPIRE_GATE = { onset: 0.45, land: 1 };
-export function introInspireGate(f) {
-  return INTRO_INSPIRE_GATE.land
-    * smoothA((f - INTRO_INSPIRE_GATE.onset) / (1 - INTRO_INSPIRE_GATE.onset));
+/* Inspire's click arrival: a beat AFTER the camera and words settle, not
+   during the approach. The linear gate preserves the authored ember order:
+   0.3375 gate units x 1.6 seconds = 540 ms between beats, matching Equip's
+   deliberate scene-owned cadence and the marker formation tempo. */
+export const INSPIRE_LANDING_DELAY_S = 0.20;
+export const INSPIRE_LANDING_GATE_S = 1.60;
+export function inspireLandingGate(secondsAfterCopy) {
+  return clamp01((secondsAfterCopy - INSPIRE_LANDING_DELAY_S) / INSPIRE_LANDING_GATE_S);
 }
 
 /** The schedule for a flight of `dur` seconds. */

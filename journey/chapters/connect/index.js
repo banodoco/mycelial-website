@@ -61,6 +61,7 @@ import { railDock } from '../../layout/rail-geometry.js';
    see THE ARRIVAL IS PERFORMED at LIGHT_PACE_RATE. */
 import { HOTSPOT_ARRIVAL } from '../../constants/copy.js';
 import { createPlumeFade } from '../../plume-fade.js';
+import { CONNECT_ENTRY_DURATION_S, connectEntryLightProgress } from './entry-timing.js';
 
 const smooth01 = (x) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
 const sm = (a, b, x) => smooth01((x - a) / (b - a));
@@ -578,7 +579,6 @@ const GAZE_LO = -0.1253;   // sin(-7.2 deg) — at/below this: fully resolved
 // light at about 0.26 camera resolve; using the same floor prevents a jump from
 // spending the replay while the travelling camera still cannot show the soil.
 const ENTRY_CAMERA_READY = 0.24;
-const ENTRY_DURATION_S = 3.2;
 
 export function createConnect(sceneApi) {
   const phoneMedia = typeof matchMedia === 'function'
@@ -1515,7 +1515,7 @@ export function createConnect(sceneApi) {
      *  reset as well as the fronts, so a downward-looking source pose cannot
      *  leak the resolved network on the click frame. Placement paths never call
      *  these hooks. */
-    entryDuration: ENTRY_DURATION_S,
+    entryDuration: CONNECT_ENTRY_DURATION_S,
     beginEntry() {
       entryReveal = 0;
       plumeFade.enter();   // driveEntry carries no p; a nav entry lands here
@@ -1536,7 +1536,7 @@ export function createConnect(sceneApi) {
     },
     driveEntry(f) {
       entryReveal = sm(0, 0.12, f);
-      driveAt(SPAN_LO + (REST_P - SPAN_LO) * f);
+      driveAt(SPAN_LO + (REST_P - SPAN_LO) * connectEntryLightProgress(f));
       updateAdosExclusion();
     },
     /** Deep links / capture (placeAt): jump the eased arming to its target so

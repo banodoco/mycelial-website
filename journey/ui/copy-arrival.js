@@ -72,7 +72,7 @@
 import { JOURNEY_SCHEMA } from '../structure.js';
 import {
   bandOpacity, clamp01, smoothA, navCopyArrival, navCopyDeparture, ticketClock, ARRIVE_WITH_CAMERA_LEAD_S,
-  INTRO_INSPIRE_GATE, introInspireGate,
+  inspireLandingGate,
 } from './bands.js';
 import { createArrivalMotion } from './arrival-motion.js';
 import {
@@ -151,15 +151,8 @@ function copyDepartureOpacity(phase) {
 const FLIGHT_ENVELOPES = {
   standard: { onset: 0.76, land: 0.38 },
   hero: { onset: 0.64, land: 0.74 },
-  /* Intro -> Inspire: the destination's embers kindle IN the flight's closing
-     stretch so the last is lit at touchdown (the owner: content should come
-     in with the camera). The 0.38 ceiling above exists so a second ember
-     never kindles while the exits are still off-frame (inspire/index.js,
-     LAND_ON); on this route-faithful leg the authored arrival pose has the
-     exits in view from about f 0.5, so the gate rides the flight CLOCK (not
-     the quintic phase, which is nearly done by f 0.8) across [onset, 1]. The
-     chips' own 540/700 ms floors then finish ~0.3 s after landing. */
-  introInspire: INTRO_INSPIRE_GATE, // gate itself: bands.js introInspireGate(f)
+  // Inspire's post-landing gate is carried by the ticket below. Its visual
+  // copy still uses ARRIVE_WITH_CAMERA_LEAD_S when coming from the Intro.
 };
 
 export function createCopyArrival({ blocks, actionRows, heroBlock, rail, reduceMotion }) {
@@ -474,6 +467,7 @@ export function createCopyArrival({ blocks, actionRows, heroBlock, rail, reduceM
         id: inAir.id,
         floor: eased[inAir.id] || 0,
         gate: Number.isFinite(inAir.gate) ? inAir.gate : eased[inAir.id] || 0,
+        inspireElapsed: 0,
         atP: Number.isFinite(inAir.ticket.targetP) ? inAir.ticket.targetP : travelP,
         // the seconds-priced arrival keeps its own clock across touchdown
         clock: clock ? { t: clock.t, dur: clock.dur, from: inAir.from, lead: inAir.lead } : null,
@@ -494,10 +488,24 @@ export function createCopyArrival({ blocks, actionRows, heroBlock, rail, reduceM
       clocked = a < 1;
       if (!clocked) nav.clock = null;
     }
-    nav.gate += (nav.floor - nav.gate) * Math.min(1, dt * COPY_IN_K * settled);
+    const inspire = nav.id === 'inspire' && !reduceMotion.matches;
+    // A genuine placement, unlike a live camera touchdown, settles the
+    // authored arrival. Never strand a capture on a half-finished welcome.
+    if (inspire && dt === 0 && !inAir) { nav = null; return null; }
+    if (inspire) {
+      // The ticket has retired: the camera has arrived. Wait for the PAINTED
+      // copy (including a short flight's post-touchdown tail), then count
+      // the beat on the same capped frame clock as the rest of the journey.
+      if (eased[nav.id] >= 0.995 && settled >= 0.95) {
+        nav.inspireElapsed += Math.max(0, dt);
+      }
+      nav.gate = inspireLandingGate(nav.inspireElapsed);
+    } else {
+      nav.gate += (nav.floor - nav.gate) * Math.min(1, dt * COPY_IN_K * settled);
+    }
     const carried = { id: nav.id, floor: nav.floor, clocked };
     if (!clocked && bandTarget * travelHold >= nav.floor - 0.001
-        && nav.gate >= nav.floor - 0.001) nav = null;
+        && nav.gate >= (inspire ? 0.999 : nav.floor - 0.001)) nav = null;
     return carried;
   }
 
@@ -645,11 +653,13 @@ export function createCopyArrival({ blocks, actionRows, heroBlock, rail, reduceM
           ? smoothA((phase - 0.4) / 0.55)
           : clock ? navCopyArrival(clock.t, clock.dur, inAir.lead)
             : smoothA((phase - (1 - NAV_COPY_FADE_PHASE)) / NAV_COPY_FADE_PHASE);
-        const env = FLIGHT_ENVELOPES[fromIntro ? 'introInspire' : COPY_SURFACES[id].flightLead];
-        const gateLead = fromIntro ? introInspireGate(Math.min(1, clock.t / clock.dur)) / env.land
-          : smoothA((phase - env.onset) / (1 - env.onset));
+        const env = FLIGHT_ENVELOPES[COPY_SURFACES[id].flightLead];
+        const gateLead = smoothA((phase - env.onset) / (1 - env.onset));
         const gateLanding = Math.max(inAir.gateFrom, env.land);
-        inAir.gate = inAir.gateFrom + (gateLanding - inAir.gateFrom) * gateLead;
+        // Only Inspire changes: its incoming light/marker sequence cannot
+        // start until the flight ticket has retired and the copy is settled.
+        inAir.gate = id === 'inspire' && !reduceMotion.matches ? 0
+          : inAir.gateFrom + (gateLanding - inAir.gateFrom) * gateLead;
         return inAir.from + (1 - inAir.from) * arrival;
       }
       const departure = Number(inAir.departure[id]) || 0;
