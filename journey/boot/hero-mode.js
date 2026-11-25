@@ -220,10 +220,13 @@ function viewFor(mode) {
     v.camY += lowerBy;
     v.targetY = 3.09 + 1.2 * t + lowerBy;
     v.camZ = 11.5 + 1.3 * t;
-    // A modest lift toward the tighter cap/copy framing: about thirteen CSS
-    // pixels above the original rest. Only change the final pitch; the
-    // landing's independently solved starting view stays anchored to Equip.
-    v.targetY -= 13 * 2 * v.camZ * Math.tan(v.fov * Math.PI / 360) / frameH;
+    // Mobile optical rebalance (owner, 2026-11-25): the completed cap was
+    // too close to Explore / Overview, with much more air below the stalk.
+    // The supplied phone screenshot calls for about 17 CSS px downward
+    // relative to the previous -13px lift. Keep the aspect-dependent pose,
+    // horizontal Equip alignment and independently solved growth landing.
+    const restPitchDownPx = 4;
+    v.targetY += restPitchDownPx * 2 * v.camZ * Math.tan(v.fov * Math.PI / 360) / frameH;
   }
   /* ONE LANDSCAPE HERO BALANCE FIELD. Physical screen inches are not a web
      layout input: display scaling and window chrome give the same laptop many

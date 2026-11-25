@@ -364,7 +364,12 @@
           // A probe resolves the same responsive rail position without reading
           // its entrance animation or its moving chapter layout; stretched
           // top to bottom, the same probe reads the fixed box's height.
-          probe.style.cssText = 'position:fixed;visibility:hidden;bottom:calc(var(--nav-centre-bottom) + var(--nav-hero-lift) + var(--nav-major) / 2);height:0;';
+          const portraitPhone = matchMedia('(max-width: 600px) and (orientation: portrait)').matches;
+          // Use the visible rings, not the larger interactive hit boxes.
+          const railRadius = portraitPhone
+            ? 'var(--nav-ring-d) * var(--nav-content-max) / 2'
+            : 'var(--nav-major) / 2';
+          probe.style.cssText = 'position:fixed;visibility:hidden;bottom:calc(var(--nav-centre-bottom) + var(--nav-hero-lift) + ' + railRadius + ');height:0;';
           body.append(probe);
           const probeTop = probe.getBoundingClientRect().top;
           probe.style.cssText = 'position:fixed;visibility:hidden;top:0;bottom:0;';
@@ -374,12 +379,18 @@
           const visibleBottom = vv && Math.abs(vv.scale - 1) < 0.01 && vv.height > 0
             ? Math.min(boxHeight, vv.offsetTop + vv.height) : boxHeight;
           const railTop = probeTop - (boxHeight - visibleBottom);
-          const normalTop = hero.offsetTop + parseFloat(heroStyle.paddingTop);
+          const normalTop = hero.offsetTop + parseFloat(heroStyle.paddingTop)
+            + (portraitPhone ? (hero.offsetParent?.getBoundingClientRect().top || 0) : 0);
           // The cues ride with the copy, so they belong to the block being centred.
           const cues = hero.querySelector('.hero-cues');
           const cueHeight = cues ? cues.offsetHeight + parseFloat(getComputedStyle(cues).marginTop) : 0;
           const contentHeight = heading.offsetHeight + parseFloat(headingStyle.marginBottom) + sub.offsetHeight + cueHeight;
-          const centeredTop = (header.getBoundingClientRect().bottom + railTop - contentHeight) / 2;
+          // The header's generous bottom padding is not visible furniture.
+          // Centre the initial copy against the actual logo ring, otherwise
+          // half of that padding is counted as part of the header and pushes
+          // the optical centre of the copy too far down on portrait phones.
+          const headerEdge = portraitPhone ? (header.querySelector('.logo') || header) : header;
+          const centeredTop = (headerEdge.getBoundingClientRect().bottom + railTop - contentHeight) / 2;
           const target = `${Math.max(normalTop, centeredTop).toFixed(2)}px`;
           hero.style.setProperty('--hero-lift-normal', `${normalTop.toFixed(2)}px`);
           hero.style.setProperty('--hero-lift-target', target);
@@ -391,6 +402,8 @@
         layoutObserver.observe(hero);
         layoutObserver.observe(hero.querySelector('h1'));
         layoutObserver.observe(hero.querySelector('.sub'));
+        const cues = hero.querySelector('.hero-cues');
+        if (cues) layoutObserver.observe(cues);
         for (const type of ['resize', 'pageshow', 'load']) addEventListener(type, () => measureLift());
         vv?.addEventListener('resize', () => measureLift());
         vv?.addEventListener('scroll', () => measureLift());
