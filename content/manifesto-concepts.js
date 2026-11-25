@@ -3,15 +3,15 @@
 // stanza's spores, threads and food, and the story's LoRA, tool and sculpts, share
 // the three pastel palettes; the closing links carry the same strands
 // (content/manifesto-links.js). Each word is matched in its own stanza only,
-// so "the threads" in the last stanza stays plain. Every one
+// so each story paragraph carries just its own strand. Every one
 // takes the slow organism swell on its own reveal beat.
 const STRANDS = [
   { id: 'passage', word: 'spores', stanza: 0 },
   { id: 'soil', word: 'threads', stanza: 0 },
   { id: 'sun', word: 'food', stanza: 0 },
   { id: 'passage', word: 'lora', stanza: 1 },
-  { id: 'soil', word: 'tool', stanza: 1 },
-  { id: 'sun', word: 'sculpts', stanza: 1 },
+  { id: 'soil', word: 'tool', stanza: 2 },
+  { id: 'sun', word: 'sculpts', stanza: 3 },
 ];
 // The kinship thread (and the imagination spectrum in branch.js) are dormant
 // treatments: no phrase of the current text selects them.

@@ -70,16 +70,18 @@ export const CONTENT = {
     // long one (about a second). `body` still reads as prose.
     lines: [
       "Spores on the wind.\nThreads through the soil.\nFood on the forest floor.",
-      "A painter wants to make a short film in her own style,\nso she trains a LoRA on years of her work.\n\nAn engineer she'll never meet\nbuilds a tool for sculpting in 3D.\n\nA year later, a stranger making a murder mystery\nsculpts a planet so small everyone on it is a suspect,\nits hills, trees and sky\nmade of her thick, unruly strokes.",
+      "A painter wants to make a short film in her own style, so she trains a LoRA on years of her work. And shares it.",
+      "An engineer she’ll never meet builds a tool for sculpting in 3D. He shares that too.",
+      "A year later, a stranger making a murder mystery sculpts a planet so small everyone on it is a suspect, its hills, trees and sky made of her thick, unruly strokes.",
       "Some dream of endless content and ever smarter machines.",
       "We dream of a world that bustles with this kind of creative life.",
-      "One where people and models are deeply intertwined,\nwhere every finished work is the start of someone else's,\neach one making its corner of the world a little more beautiful.",
-      "Mycelial aims to be the threads\nbeneath the open ecosystem that makes this possible,\nseeding, nourishing and connecting all that grows."
+      "Where the end of one person’s obsessive creative pursuit is the beginning of someone else’s.",
+      "Mycelial is our attempt to help this world take root — connecting its makers, equipping their ambitions, and nourishing what grows between them."
     ],
     // Extra seconds the reveal holds after each stanza, on top of the usual
     // breath between stanzas (one entry per stanza above; read by
     // journey/manifesto/pose.js). The two short stanzas each stand alone.
-    holds: [0, 0, 1, 1, 0, 0],
+    holds: [0, 0, 0, 0, 1, 1, 0, 0],
     get body() { return this.lines.join(' ').replace(/\s*\n\s*/g, ' '); },
   },
   chapters: {

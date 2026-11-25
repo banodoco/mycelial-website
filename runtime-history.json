@@ -50,6 +50,7 @@
     {"hash": "28eeeb6f3f9acc197e05dfd686b47221e2ce664c3f542c78c66461ead72f3797", "date": "2026-11-25T00:51:00Z", "release": false, "label": "unreleased: mobile hero optical balance"},
     {"hash": "77f310074e1e4a18a51c7f9be41e8af0330ac3649f4c8bcb1edbe82ed2c905c1", "date": "2026-11-25T00:55:00Z", "release": true, "label": "mobile homepage and chapter arrival timing"},
     {"hash": "f7ac8027974085066a7914b73e514183c27bd7a048506d4d8a9835a92477be35", "date": "2026-11-25T01:05:45Z", "release": true, "label": "fine-tune mobile framing, Inspire and manifesto strands"},
-    {"hash": "3bab847827a41ea6b6a049af772fd9af9b4b637d3c0c313502fb1a2a07f125ab", "date": "2026-11-25T01:11:53Z", "release": true, "label": "Inspire welcome follows visible text"}
+    {"hash": "3bab847827a41ea6b6a049af772fd9af9b4b637d3c0c313502fb1a2a07f125ab", "date": "2026-11-25T01:11:53Z", "release": true, "label": "Inspire welcome follows visible text"},
+    {"hash": "3d33177a666e4d092c5b9bf6140c14f162c563fb411e1e7d32f6e0429b03741c", "date": "2026-11-25T13:24:00Z", "release": true, "label": "Updated Mycelial manifesto"}
   ]
 }
