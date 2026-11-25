@@ -83,14 +83,12 @@ const ARRIVE_LEAD_S = 1.3;
 export const ARRIVE_WITH_CAMERA_LEAD_S = 0.85;
 const ARRIVE_MIN_SHARE = 0.5;
 
-/* Inspire's click arrival: a beat AFTER the camera and words settle, not
-   during the approach. The linear gate preserves the authored ember order:
-   0.3375 gate units x 1.6 seconds = 540 ms between beats, matching Equip's
-   deliberate scene-owned cadence and the marker formation tempo. */
-// The second visual review preferred a shorter gap. Keep the camera/copy
-// arrival gate and 540ms cadence; the first ember's own threshold gives
-// it a natural ~160ms breath without a separate 200ms hold.
-export const INSPIRE_LANDING_DELAY_S = 0;
+/* Inspire's click arrival follows visible text, even during the final
+   approach. At 20% painted copy opacity, start the ticket clock. The 100ms
+   hold plus the first ember's 0.10 threshold (~160ms) gives a ~260ms beat.
+   0.3375 gate units x 1.6 seconds = 540ms between the existing embers. */
+export const INSPIRE_COPY_VISIBLE = 0.20;
+export const INSPIRE_LANDING_DELAY_S = 0.10;
 export const INSPIRE_LANDING_GATE_S = 1.60;
 export function inspireLandingGate(secondsAfterCopy) {
   return clamp01((secondsAfterCopy - INSPIRE_LANDING_DELAY_S) / INSPIRE_LANDING_GATE_S);

@@ -976,10 +976,11 @@ export function createInspire(sceneApi) {
      among them. The six shot 2026-08-21 on a different host sit in the FAIL
      band as they did before this edit, and the control for that is
      mission@1440x900 at 2.17 — a chapter these constants do not reach.
-     On a nav jump, copy-arrival.js now holds the gate at zero until the
-     camera has landed and the chapter copy has finished. Its carried
-     landing clock then gives these same thresholds a deliberate beat
-     between them. Scrub and settled placement retain the existing gate. */
+     On a nav jump, copy-arrival.js starts the gate from visible chapter
+     copy, possibly during the camera's final approach. The same ticket
+     continues across touchdown; the scene's furnOf ceiling still prevents
+     a marker appearing before its rim is visible. Scrub and settled
+     placement retain the existing gate. */
   const LAND_ON = 0.10;              // first kindle ~44 ms after settle
   const LAND_GATE_STEP = 0.3375;     // gate units between beats (see above)
   const LAND_GATE_RISE = 0.1575;     // gate units each ember takes to bloom
