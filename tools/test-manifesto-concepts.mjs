@@ -29,6 +29,11 @@ assert.equal(phrase[1][1].characterOffset, phrase[0][1].ink.length + 1, 'palette
 assert.equal(phrase.at(-1)[1].characterOffset + phrase.at(-1)[1].ink.length, phrase[0][1].characterTotal,
   'palette reaches its final partner color at the last glyph');
 const css = (await import('node:fs')).readFileSync(new URL('../mycelial.css', import.meta.url), 'utf8');
+const verseStyle = css.match(/\.j-manifesto-verse,\s*\.manifesto-static \.manifesto-verse\s*\{([^}]+)\}/)?.[1];
+assert.ok(verseStyle, 'live and static share the verse block');
+assert.match(verseStyle, /padding-left:\s*0;/, 'soft wraps share the first line\'s left edge');
+assert.match(verseStyle, /text-indent:\s*0;/, 'no hanging indent');
+assert.match(verseStyle, /display:\s*block;/, 'authored verse breaks remain blocks');
 assert.match(css, /--synthesis-from: var\(--palette-passage\);\s*--synthesis-via: var\(--palette-soil\);\s*--synthesis-to: var\(--palette-sun\);/,
   'the strokes run blue, rose, green');
 // 2026-11-12: the machines' phrase recedes (hollow), on its own stanza

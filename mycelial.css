@@ -198,21 +198,16 @@ body, button, input, select, textarea { font-family: var(--mycelial-body); }
   letter-spacing: .015em;
   text-transform: none;
 }
-/* EACH VERSE LINE STARTS ITS OWN LINE (2026-11-12). A stanza's verse lines
-   (branch.js .j-manifesto-verse, the static page's .manifesto-verse) are
-   blocks; one too long for the column wraps under a small hanging indent,
-   so a wrap never reads as a new verse line. Descendants that are block
-   containers (the inking layers, the quivering glyphs) must not inherit
-   the negative indent. Stanza spacing stays the paragraphs' own. */
+/* Authored verse lines remain blocks. Natural wraps share the first
+   line's left edge (owner, 2026-11-25); preserve stanza spacing and the
+   desktop fit.js width constraint in both reading tiers. */
 .j-manifesto-verse,
 .manifesto-static .manifesto-verse {
   display: block;
   box-sizing: border-box;   /* fit.js may hold a line short of the navigation */
-  padding-left: 1.4em;
-  text-indent: -1.4em;
+  padding-left: 0;
+  text-indent: 0;
 }
-.j-manifesto-verse *,
-.manifesto-static .manifesto-verse * { text-indent: 0; }
 @media (max-width: 720px) {
   .j-manifesto-verse + .j-manifesto-verse,
   .manifesto-static .manifesto-verse + .manifesto-verse { margin-top: .2em; }
