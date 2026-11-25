@@ -1124,7 +1124,7 @@
     if(!valid(r,s))return;
     const [title,detail,time]=describe(r,s),j=journeys[r];
     if(!shown||shown.r!==r||shown.s!==s){
-      note.querySelector('.ff-kind').textContent=String(r+1).padStart(2,'0')+' / '+stages[s]+(s>end(r)?' · not reached':s===end(r)&&blocked(r)?' · stopped':'');
+      note.querySelector('.ff-kind').textContent=stages[s]+(s>end(r)?' · not reached':s===end(r)&&blocked(r)?' · stopped':'');
       note.querySelector('.ff-time').textContent=time?'e.g. '+time:'';
       note.querySelector('.ff-note-name').textContent=title;
       note.querySelector('.ff-note-detail').textContent=detail+(s===1&&blocked(r)&&end(r)===1?' Existing capability: '+j[1]+'.':'');
@@ -1175,6 +1175,9 @@
     g.strokeStyle=alpha(c,o);g.lineWidth=.8;g.setLineDash(dashed?[2,5]:[]);
     g.beginPath();g.moveTo(a.x,a.y);g.lineTo(b.x,b.y);g.stroke();g.setLineDash([]);
   }
+  const holdDuration=s=>s===0?5:4.2;
+  const ringProgress=()=>mode==='rest'&&owned()&&!inspection&&!still()&&phase==='hold'?clamp(age/holdDuration(step)):null;
+  const ringRadius=()=>w<760?8.5:10;
   function draw(){
     if(!w||!h||!geom.length)return;
     g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
@@ -1232,10 +1235,24 @@
     }
     if(phase==='between')return;
     let p=node(row,step),r=4.1,c=step===end(row)?tone(row,step):ink;
-    if(phase==='charge'){
+    if(phase==='hold'){
+      const progress=ringProgress();
+      if(progress!==null){
+        // Quiet track, then a clockwise sweep from twelve o'clock. Its
+        // clock is the actual card dwell, not an independent animation.
+        const radius=ringRadius(),top=-Math.PI/2;
+        g.lineWidth=1.4;g.lineCap='round';
+        g.strokeStyle=alpha(c,.18);g.beginPath();g.arc(p.x,p.y,radius,top,top+Math.PI*2);g.stroke();
+        if(progress>0){
+          g.strokeStyle=alpha(c,.98);g.beginPath();g.arc(p.x,p.y,radius,top,top+Math.PI*2*progress);g.stroke();
+        }
+        g.lineCap='butt';
+      }
+    }else if(phase==='charge'){
+      // The finished countdown ring itself becomes the single departure pulse.
       const k=clamp(age/.68);r*=1+.65*Math.sin(Math.PI*k);
-      g.strokeStyle=alpha(c,Math.sin(Math.PI*k)*.62);g.lineWidth=1;
-      g.beginPath();g.arc(p.x,p.y,4+22*k,0,7);g.stroke();
+      g.strokeStyle=alpha(c,.98*(1-ease(k)));g.lineWidth=1.4;
+      g.beginPath();g.arc(p.x,p.y,ringRadius()+17*ease(k),-Math.PI/2,3*Math.PI/2);g.stroke();
     }else if(phase==='travel'){
       const dest=node(row,step+1),k=ease(clamp(age/.58));
       p={x:p.x+(dest.x-p.x)*k,y:p.y+(dest.y-p.y)*k};
@@ -1254,7 +1271,7 @@
     if(inspection||still()||!owned())return;
     age+=dt;
     if(phase==='born'&&age>=.25){phase='hold';age=0;}
-    else if(phase==='hold'&&age>=(step===0?5:4.2)){phase='charge';age=0;}
+    else if(phase==='hold'&&age>=holdDuration(step)-1e-9){phase='charge';age=0;}
     else if(phase==='charge'&&age>=.68){hide();age=0;phase=step===end(row)?'between':'travel';}
     else if(phase==='travel'&&age>=.58){step++;arrive();}
     else if(phase==='between'&&age>=.30){row=(row+1)%N;step=0;if(row===0)seen=Array(N).fill(-1);arrive(true);}
@@ -1317,7 +1334,7 @@
   document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else wake();});
   window.FilamentField={enter:begin,exit:leave,restore,snapshot,layoutMetrics:()=>({...flow}),ready:()=>mode!=='inactive',
     // Read-only evidence for exact checkpoint and animation ownership tests.
-    state:()=>({mode,row,step,phase,age,concluded,conclusionAge,noteAnchor:noteAnchor&&{...noteAnchor},inspection:inspection&&{...inspection},pinned,shown:shown&&{...shown},seen:[...seen],ends:journeys.map((_,r)=>end(r))})};
+    state:()=>({mode,row,step,phase,age,concluded,conclusionAge,ringProgress:ringProgress(),noteAnchor:noteAnchor&&{...noteAnchor},inspection:inspection&&{...inspection},pinned,shown:shown&&{...shown},seen:[...seen],ends:journeys.map((_,r)=>end(r))})};
   layout();
   if(slide.classList.contains('on'))begin('rest',window.deckNav||{rest:true,direct:true});
 })();

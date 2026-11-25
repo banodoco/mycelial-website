@@ -15,10 +15,10 @@ const classList=()=>{
 };
 function harness(width,height,{motion=true}={}){
   let time=1000,id=0,quiet=!motion;
-  const frames=new Map(),events=[],globalEvents=new Map();
+  const frames=new Map(),events=[],globalEvents=new Map(),arcs=[];let pathArcs=[];
   const bounds=(left,top,w,h)=>({left,top,right:left+w,bottom:top+h,width:w,height:h});
   const bbox=()=>bounds(0,0,width,height);
-  const g={setTransform(){},clearRect(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},fill(){},fillRect(){},arc(){},fillText(){},setLineDash(){},
+  const g={setTransform(){},clearRect(){arcs.length=0;},beginPath(){pathArcs=[];},moveTo(){},lineTo(){},stroke(){arcs.push(...pathArcs.map(a=>({...a,color:this.strokeStyle,width:this.lineWidth})));},fill(){},fillRect(){},arc(x,y,r,from,to){pathArcs.push({x,y,r,from,to});},fillText(){},setLineDash(){},
     createRadialGradient(){return{addColorStop(){}};}};
   const mk=tag=>{
     const selectors=new Map(),listeners=new Map();
@@ -49,7 +49,7 @@ function harness(width,height,{motion=true}={}){
     time+=50;const batch=[...frames.values()];frames.clear();batch.forEach(fn=>fn(time));}};
   const state=()=>JSON.parse(JSON.stringify(api.state()));
   const hit=(r,s)=>surface.children[r*6+s];
-  return {api,field,note,dust,surface,hit,state,tick,events,frames,document,globalEvents,setQuiet:v=>{quiet=v;}};
+  return {api,field,note,dust,surface,hit,state,tick,events,arcs,frames,document,globalEvents,setQuiet:v=>{quiet=v;}};
 }
 test('preserves artwork sampling, both directions, and chart snapshot contract',()=>{
   for(const pattern of [/const dissolve = \(ctx\) =>/,/const regather = \(ctx\) =>/,/root\.filamentItems = ITEMS\.map/,
@@ -59,6 +59,10 @@ test('preserves artwork sampling, both directions, and chart snapshot contract',
   assert.match(page,/class="slide sf-host ff-layout"/);assert.match(page,/data-gap/);assert.match(page,/\.ff-hit:focus-visible/);
   assert.doesNotMatch(page,/Illustrative journeys ·/);assert.match(addon,/explicitly illustrative/);
   assert.match(page,/limits the output of the ecosystem as a whole/);
+  assert.match(page,/\.sf-host\.ff-layout \.sf-whisper, \.sf-host\.ff-layout \.sf-card, \.sf-host\.ff-layout \.sf-legend/);
+  assert.doesNotMatch(page,/\.sf\.ff-active \.sf-legend/);
+  assert.match(page,/\.sf-host\.ff-layout:not\(\.on\) > \.ff-conclusion,/);
+  assert.match(page,/\.sf-host\.ff-layout > \.ff-conclusion:not\(\.is-revealed\)\s*\{\s*opacity:0!important;visibility:hidden!important;transition:none!important;/);
 });
 for(const [w,h] of [[1280,720],[390,844],[812,375]]){
   test('tight finite grid and usable per-checkpoint hit geometry at '+w+'×'+h,()=>{
@@ -154,4 +158,38 @@ test('conclusion appears after one second of settled grid time, even during insp
   api.exit({to:2});assert.equal(state().concluded,false);
   api.enter('rest',{direct:true});assert.equal(state().concluded,false);
   tick(1000);assert.equal(state().concluded,true);
+});
+
+test('countdown paints clockwise from twelve, hands the completed ring to one pulse, then resets at the next checkpoint',()=>{
+  for(const width of [1280,390]){
+    const {api,state,tick,arcs,note}=harness(width,844);api.enter('rest',{direct:true});
+    const snap=api.snapshot().named,at=(p)=>arcs.filter(a=>a.x===p.x&&a.y===p.y&&a.width===1.4);
+    const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-7, a+' != '+b);
+    assert.equal(note.querySelector('.ff-kind').textContent,'Requirement');
+    assert.equal(state().ringProgress,0);
+    tick(2500);near(state().ringProgress,.5);
+    const halfway=at(snap[0]);assert.equal(halfway.length,2);
+    near(halfway[0].from,-Math.PI/2);near(halfway[0].to,3*Math.PI/2);
+    near(halfway[1].from,-Math.PI/2);near(halfway[1].to,Math.PI/2);
+    const radius=width<760?8.5:10;near(halfway[1].r,radius);
+    tick(2500);assert.equal(state().phase,'charge');assert.equal(state().ringProgress,null);
+    const pulse=at(snap[0]);assert.equal(pulse.length,1);near(pulse[0].r,radius);
+    near(pulse[0].to-pulse[0].from,Math.PI*2);
+    tick(350);assert.ok(at(snap[0])[0].r>radius);
+    tick(350);assert.equal(state().phase,'travel');assert.equal(at(snap[0]).length,0);
+    tick(600);assert.equal(state().step,1);near(state().ringProgress,0);
+    assert.equal(note.querySelector('.ff-kind').textContent,'Discover');
+    tick(2100);near(state().ringProgress,.5);
+    const next=at(snap[1]);assert.equal(next.length,2);near(next[1].to,Math.PI/2);
+  }
+});
+test('inspection and reduced motion do not imply a running countdown; releasing inspection starts a fresh dwell',()=>{
+  const {api,state,tick,hit,arcs,setQuiet,globalEvents}=harness(1280,720);api.enter('rest',{direct:true});
+  tick(2000);assert.ok(state().ringProgress>0);
+  hit(2,1).emit('pointerenter');assert.equal(state().ringProgress,null);
+  tick(7000);assert.equal(state().ringProgress,null);assert.ok(!arcs.some(a=>a.width===1.4));
+  hit(2,1).emit('pointerleave');assert.equal(state().ringProgress,0);
+  setQuiet(true);globalEvents.get('deck-motion')();assert.equal(state().ringProgress,null);
+  setQuiet(false);globalEvents.get('deck-motion')();tick(1000);assert.ok(state().ringProgress>0);
+  api.exit({to:2});assert.equal(state().ringProgress,null);assert.equal(state().concluded,false);
 });
