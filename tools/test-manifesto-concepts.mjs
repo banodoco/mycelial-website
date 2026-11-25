@@ -30,6 +30,13 @@ assert.equal(phrase[1][1].characterOffset, phrase[0][1].ink.length + 1, 'palette
 assert.equal(phrase.at(-1)[1].characterOffset + phrase.at(-1)[1].ink.length, phrase[0][1].characterTotal,
   'palette reaches its final partner color at the last glyph');
 const css = (await import('node:fs')).readFileSync(new URL('../mycelial.css', import.meta.url), 'utf8');
+// Mobile: adding a paragraph must not switch on a bottom clipping mask.
+const mobileReading = css.match(/\.j-manifesto\.is-scroll-reading \.j-manifesto-lines\s*\{([^}]*--reading-mask-top:[^}]+)\}/)?.[1];
+assert.ok(mobileReading, 'mobile reading aperture exists');
+assert.match(mobileReading, /height:\s*100%;/, 'the reading box does not grow with the text');
+assert.match(mobileReading, /padding-bottom:\s*max\(24px, var\(--reading-pad-bottom, 1rem\)\);/, 'final ink rests clear of the fade');
+assert.equal((mobileReading.match(/#000 calc\(100% - 20px\), transparent/g) || []).length, 2, 'fixed bottom fade in both mask implementations');
+assert.doesNotMatch(css, /\.has-reading-below[^{}]*\{[^}]*\}/, 'new scrollable content cannot toggle the painted bottom edge');
 const verseStyle = css.match(/\.j-manifesto-verse,\s*\.manifesto-static \.manifesto-verse\s*\{([^}]+)\}/)?.[1];
 assert.ok(verseStyle, 'live and static share the verse block');
 assert.match(verseStyle, /padding-left:\s*0;/, 'soft wraps share the first line\'s left edge');
