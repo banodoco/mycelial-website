@@ -30,7 +30,8 @@ assert.equal(phrase[1][1].characterOffset, phrase[0][1].ink.length + 1, 'palette
 assert.equal(phrase.at(-1)[1].characterOffset + phrase.at(-1)[1].ink.length, phrase[0][1].characterTotal,
   'palette reaches its final partner color at the last glyph');
 const css = (await import('node:fs')).readFileSync(new URL('../mycelial.css', import.meta.url), 'utf8');
-// The final links draw in reading order, only after the whole paragraph settles.
+// Each closing underline follows its own readable word, not the paragraph's
+// settle timer. Use the existing runtime accessibility/reveal clock.
 const chapterLinkStyle = css.match(/\.manifesto-chapter-link\s*\{([^}]+)\}/)?.[1];
 assert.ok(chapterLinkStyle);
 assert.match(chapterLinkStyle, /text-decoration-style:\s*solid;/);
@@ -39,12 +40,13 @@ const animatedLinkStyle = css.match(/\.j-manifesto \.manifesto-chapter-link\s*\{
 assert.ok(animatedLinkStyle);
 assert.match(animatedLinkStyle, /background-image:\s*linear-gradient\(currentColor, currentColor\);/);
 assert.match(animatedLinkStyle, /background-size:\s*0% 1px;/);
-assert.match(animatedLinkStyle, /--link-draw-delay:\s*\.15s;/);
-assert.match(css, /\.manifesto-chapter-link:nth-of-type\(2\)\s*\{\s*--link-draw-delay:\s*\.85s;/);
-assert.match(css, /\.manifesto-chapter-link:nth-of-type\(3\)\s*\{\s*--link-draw-delay:\s*1\.55s;/);
-assert.match(css, /\.j-manifesto\.is-open \.j-manifesto-line\.shown\.is-settled \.manifesto-chapter-link\s*\{\s*animation:\s*manifesto-link-draw \.55s [^;]+var\(--link-draw-delay\) both;/);
-assert.match(css, /@keyframes manifesto-link-draw\s*\{\s*from\s*\{\s*background-size:\s*0% 1px;\s*\}\s*to\s*\{\s*background-size:\s*100% 1px;\s*\}/);
-assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.manifesto-chapter-link,[\s\S]*?\.j-manifesto\.is-open \.j-manifesto-line\.shown\.is-settled \.manifesto-chapter-link\s*\{\s*animation:\s*none;\s*background-size:\s*100% 1px;/);
+assert.match(animatedLinkStyle, /transition:\s*color \.2s ease, background-size 1\.5s cubic-bezier\(\.4, 0, \.2, 1\);/);
+assert.match(css, /\.j-manifesto\.is-open \.j-manifesto-line\.shown \.manifesto-chapter-link\[aria-disabled="false"\]\s*\{\s*background-size:\s*100% 1px;\s*\}/);
+assert.doesNotMatch(css, /--link-draw-delay|manifesto-link-draw|\.is-settled \.manifesto-chapter-link/, 'no paragraph-wide or index-based underline delay');
+const branchSource = (await import('node:fs')).readFileSync(new URL('../journey/manifesto/branch.js', import.meta.url), 'utf8');
+assert.match(branchSource, /elapsed >= readingStarts\[paragraph\] \+ beat \* WORD_STAGGER_SECONDS \+ WORD_VISIBLE_SECONDS/, 'availability follows each link word becoming readable');
+assert.match(branchSource, /link\.setAttribute\('aria-disabled', String\(!available\)\)/, 'the existing per-link gate drives the CSS');
+assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.manifesto-chapter-link,[\s\S]*?\.j-manifesto \.manifesto-chapter-link\s*\{\s*transition:\s*none;\s*\}/, 'reduced motion shows the underline instantly when available');
 // Mobile: adding a paragraph must not switch on a bottom clipping mask.
 const mobileReading = css.match(/\.j-manifesto\.is-scroll-reading \.j-manifesto-lines\s*\{([^}]*--reading-mask-top:[^}]+)\}/)?.[1];
 assert.ok(mobileReading, 'mobile reading aperture exists');

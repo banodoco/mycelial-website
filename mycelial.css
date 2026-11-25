@@ -985,8 +985,9 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
 }
 
 /* Static links are already readable, so they have a quiet solid underline.
-   In the animated manifesto, draw the same-colour line only after the
-   complete closing paragraph has settled. Paint only: no layout movement. */
+   In the animated manifesto, each line starts drawing when its own link
+   becomes readable (branch.js's per-word aria-disabled gate). The longer
+   sweep follows the ink without waiting for the paragraph to settle. */
 .manifesto-chapter-link {
   pointer-events: auto;
   color: inherit;
@@ -1006,16 +1007,10 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
   background-repeat: no-repeat;
   background-position: left bottom;
   background-size: 0% 1px;
-  --link-draw-delay: .15s;
+  transition: color .2s ease, background-size 1.5s cubic-bezier(.4, 0, .2, 1);
 }
-.j-manifesto .manifesto-chapter-link:nth-of-type(2) { --link-draw-delay: .85s; }
-.j-manifesto .manifesto-chapter-link:nth-of-type(3) { --link-draw-delay: 1.55s; }
-.j-manifesto.is-open .j-manifesto-line.shown.is-settled .manifesto-chapter-link {
-  animation: manifesto-link-draw .55s cubic-bezier(.22, 1, .36, 1) var(--link-draw-delay) both;
-}
-@keyframes manifesto-link-draw {
-  from { background-size: 0% 1px; }
-  to { background-size: 100% 1px; }
+.j-manifesto.is-open .j-manifesto-line.shown .manifesto-chapter-link[aria-disabled="false"] {
+  background-size: 100% 1px;
 }
 .manifesto-chapter-link:hover,
 .manifesto-chapter-link:focus-visible {
@@ -1043,11 +1038,7 @@ body.j-manifesto-open .j-rail .j-rail-purpose-child .j-rail-name,
 @media (prefers-reduced-motion: reduce) {
   .manifesto-chapter-link,
   .manifesto-chapter-link.is-tinted .manifesto-concept { transition: none; }
-  .j-manifesto.is-open .j-manifesto-line.shown .manifesto-chapter-link,
-  .j-manifesto.is-open .j-manifesto-line.shown.is-settled .manifesto-chapter-link {
-    animation: none;
-    background-size: 100% 1px;
-  }
+  .j-manifesto .manifesto-chapter-link { transition: none; }
 }
 .manifesto-link-tooltip {
   position: fixed;
