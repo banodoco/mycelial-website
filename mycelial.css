@@ -359,11 +359,15 @@ body:has(.manifesto-static) .manifesto-static .sub { font-size: 17px; line-heigh
     transform: translate(-50%, -50%);
   }
 }
-/* Portrait frames centre the copy (hero.css), and the cues join its axis.
-   The navigator is then nearly straight below; hero-cues.js refines it. */
+/* Portrait frames centre the copy (hero.css), and the cues join its axis. */
 @media (max-width: 900px) and (orientation: portrait) {
   .ui .hero .hero-cues { justify-content: center; }
-  .ui .hero .hero-cue-explore { --cue-aim: 90deg; }
+}
+/* Mobile Explore is a straight down arrow, not a bearing to the rail.
+   Override the inline angle written by hero-cues.js, including after resize
+   and when a retained runtime is selected. Desktop still aims at the rail. */
+@media (pointer: coarse), (max-width: 720px), (max-width: 900px) and (orientation: portrait) {
+  .ui .hero .hero-cue-explore { --cue-aim: 90deg !important; }
 }
 /* Phones: the specimen's cap rises to just under the copy, so the row stays
    slim; the 44px pad above still makes the touch box. The block starts
