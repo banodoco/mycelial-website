@@ -1881,6 +1881,51 @@
   }
   @media (prefers-reduced-motion:reduce){.ff-note{transition:none}}
 
+  /* Journey grid uses the deck's existing typography and floating-note language. */
+  .ff-hits {pointer-events:none}
+  .ff-hits.is-ready .ff-hit {pointer-events:auto}
+  .ff-hit {cursor:crosshair;touch-action:manipulation}
+   .ff-note {width:min(310px,calc(100vw - 24px));background:#15100bf5;padding:10px 12px 12px}
+  .ff-note-kind {display:flex;justify-content:space-between;gap:8px;text-transform:uppercase;letter-spacing:.08em;font-size:10px}
+  .ff-time {text-transform:none;letter-spacing:0;white-space:nowrap;color:#c3ad8a}
+  .ff-note-body {display:flex;align-items:center;gap:10px}
+  .ff-note-body > div:first-child {flex:1;min-width:0}
+  .ff-note-name {display:block;font-size:22px;margin:0 0 4px}
+  .ff-note-detail {display:block;font-size:15px;line-height:1.23}
+  .ff-mini {width:76px;flex:0 0 76px;border:1px solid #8d70493d;overflow:hidden}
+  .ff-mini svg {display:block;width:100%;height:auto}
+  /* The canvas draws the diagonal checkpoint-to-card leader. */
+  .ff-note[data-tone="blocked"] {border-left-color:#c28a72}
+  .ff-note[data-tone="blocked"] .ff-note-name {color:#d9a18c}
+  .ff-note[data-tone="success"] {border-left-color:#b4c8a0}
+  .ff-note[data-tone="success"] .ff-note-name {color:#bfd0b0}
+   .ff-conclusion {position:absolute;left:9vw;right:9vw;bottom:59px;z-index:1;pointer-events:none;opacity:0;visibility:hidden;transform:translateY(5px);transition:opacity .85s ease,transform .85s ease,visibility 0s linear .85s}
+  .ff-conclusion.is-revealed {opacity:1;visibility:visible;transform:none;transition:opacity .85s ease,transform .85s ease,visibility 0s}
+  .ff-conclusion p {margin:0;font:400 clamp(18px,2vw,26px)/1.1 "Cormorant Garamond",Georgia,serif;color:var(--soft)}
+  .ff-conclusion em {color:#e1bb83}
+  @media(max-width:760px){
+    html[data-ver="f"] .sf-host.ff-layout {padding-left:18px;padding-right:18px;padding-top:clamp(30px,5vh,50px)}
+    .ff-conclusion {left:18px;right:18px;bottom:60px}
+    .ff-conclusion p {font-size:20px}
+    html[data-ver="f"] .sf-host.ff-layout h1 {font-size:clamp(27px,7.35vw,38px);line-height:1.04;text-wrap:initial}
+    .ff-note {width:min(260px,calc(100vw - 24px));max-width:none;padding:9px 10px 10px}
+    .ff-note-body {gap:7px}
+    .ff-mini {width:56px;flex-basis:56px}
+    .ff-note-name {font-size:20px}
+    .ff-note-detail {font-size:14px;line-height:1.22}
+  }
+  @media(max-height:510px){
+    html[data-ver="f"] .sf-host.ff-layout {padding-top:20px}
+    html[data-ver="f"] .sf-host.ff-layout > .num {margin-bottom:8px}
+    html[data-ver="f"] .sf-host.ff-layout h1 {font-size:clamp(22px,5.8vh,34px)}
+    .ff-conclusion {bottom:44px}
+    .ff-conclusion p {font-size:17px}
+    .ff-note-name {font-size:18px}
+    .ff-note-detail {font-size:13px}
+    .ff-mini {width:56px;flex-basis:56px}
+  }
+  @media (prefers-reduced-motion:reduce){.ff-conclusion{transition:none!important}}
+
 </style>
 </head>
 <body>
@@ -1932,10 +1977,11 @@
     <div class="num">02<span class="act">The problem</span></div>
     <div class="split">
       <div>
-        <h1>But its capabilities are scattered across thousands of repos and threads — so <em>few artists, creators and everyday people can use them.</em></h1>
+        <h1>But its capabilities are inaccessible <em>and scattered across thousands of repos and threads.</em></h1>
       </div>
       <div class="vis" aria-hidden="true"></div>
     </div>
+    <div class="ff-conclusion" aria-hidden="true"><p>This friction inhibits people’s creativity <em>and limits the output of the ecosystem as a whole.</em></p></div>
   </section>
 
   <section class="slide gap-host" data-v="f">
