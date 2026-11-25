@@ -325,11 +325,17 @@ body:has(.manifesto-static) .manifesto-static .sub { font-size: 17px; line-heigh
   rotate: var(--cue-aim);
   transition: translate .25s cubic-bezier(.22, 1, .36, 1);
 }
-.ui .hero .hero-cue:hover { color: var(--gold-bright); }
-/* The nudge travels along the arrow's own bearing. */
-.ui .hero .hero-cue:hover .hero-cue-arrow {
-  translate: calc(cos(var(--cue-aim)) * 2.5px) calc(sin(var(--cue-aim)) * 2.5px);
+/* Overview has its own centered diagonal path; only Explore needs rotation. */
+.ui .hero .hero-cue-overview .hero-cue-arrow { rotate: none; }
+/* Touch browsers can retain :hover after a tap. Only a real hover pointer
+   should nudge the arrow; touch gets momentary colour feedback instead. */
+@media (hover: hover) and (pointer: fine) {
+  .ui .hero .hero-cue:hover { color: var(--gold-bright); }
+  .ui .hero .hero-cue:hover .hero-cue-arrow {
+    translate: calc(cos(var(--cue-aim)) * 2.5px) calc(sin(var(--cue-aim)) * 2.5px);
+  }
 }
+.ui .hero .hero-cue:active { color: var(--gold-bright); }
 .ui .hero .hero-cue:focus-visible {
   outline: 2px solid var(--gold-bright);
   outline-offset: 4px;
